@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  /* 标题栏平时隐藏（0908第23轮用户裁定：去标题、按钮上提）；堆牌被压时露出作为切牌条 */
+  #head {
+    display: none; align-items: center; gap: 8px;
+    padding: 0 14px; height: 38px;
+    cursor: grab;
+  }
+  body.deckbehind #head { display: flex; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+
+  /* 留白/瓷砖间距的屏幕像素下限公式与生成卡同款（0909：右键拖拽要有地方抓；见 gen.html 注释） */
+  #card { --pad: max(10px, calc(8px * var(--zi, 1))); }
+  #body { flex: 1; min-height: 0; overflow: hidden; padding: var(--pad); display: flex; flex-direction: column; }
+
+  /* 三个瓷砖与校色卡同构（0908第23轮用户裁定：按钮要大、要跟卡一起等比缩放、位置上提）：
+     瓷砖三等分撑满整个卡身，单位全是普通 px → 卡缩放/拉伸时按钮同步放大缩小；
+     图标/标签用容器单位(cqmin)随瓷砖自身尺寸走 */
+  #grid3 {
+    flex: 1; min-height: 0;
+    container-type: size;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1fr;
+    justify-items: center; align-items: center;
+    gap: var(--pad);
+  }
+  .bubble {
+    /* 正方形，边长=三等分列宽与整行高取小：任何窗口形状都是最大正方形，不留空档也不溢出（两道缝=2×--pad） */
+    width: min((100cqw - 2 * var(--pad)) / 3, 100cqh); height: min((100cqw - 2 * var(--pad)) / 3, 100cqh);
+    container-type: size;
+    border-radius: 22%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 5%;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), background 0.2s;
+  }
+  .bubble:hover { background: var(--lg-tile-hover); transform: translateY(-3px); }
+  .bubble:active { transform: scale(0.94); }
+  .bubble .ico { display: flex; color: var(--accent-text); }
+  /* 0908用户裁定：去掉所有文字标注只留 logo 按钮——图标放大到瓷砖 58%（原 46% 是给下方标签留位的） */
+  .bubble .ico svg { width: 58cqmin; height: 58cqmin; }
+  /* 开启任一模式=红色警示光（0903用户裁定，与批处理同款#ff3b30）：伪装传图在跑，必须一眼看见 */
+  .bubble.on {
+    background: rgba(255, 59, 48, 0.14);
+    animation: antiBubble 1.1s ease-in-out infinite;
+  }
+  .bubble.on .ico { color: #ff6b63; }
+  @keyframes antiBubble {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.6), 0 0 6px 1px rgba(255, 59, 48, 0.65); }
+    50% { box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.9), 0 0 18px 5px rgba(255, 59, 48, 0.9); }
+  }
+
+  /* 卡牌边框红色爆闪环=theme.css共用.warnring（批处理/抗截断/参考图三卡同款） */
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>抗截断</span>
+    <div class="sp"></div>
+  </div>
+
+  <div id="body">
+    <div id="grid3">
+      <div class="bubble lg-tile" data-mode="1" title="翻转：传图前把选区图上下垂直翻转→生图→回图后自动翻转还原。适合构图敏感被误杀的场景。">
+        <div class="ico" id="ico1"></div>
+      </div>
+      <div class="bubble lg-tile" data-mode="2" title="色相：传图前把选区图色相反转180°→生图→回图后自动把颜色反正还原。适合肤色/敏感色触发审核的场景。">
+        <div class="ico" id="ico2"></div>
+      </div>
+      <div class="bubble lg-tile" data-mode="3" title="色相+翻转：双保险→生图→回图后一起还原。最强伪装，过审率最高。">
+        <div class="ico" id="ico3"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const S24 = (p) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+  $('ico').innerHTML = window.ORANGE_ICONS.anti;
+  // 三模式图标统一盾牌语言（0904用户裁定）：盾+翻转箭头 / 盾+半填充(色相反转) / 盾+半填充+箭头
+  const SHIELD = '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>';
+  const HALF = '<path d="M12 2.3C10.4 3.7 7.2 5 5 5a1 1 0 0 0-1 1v7c0 5 3.5 7.5 7.67 8.94l.33.06z" fill="currentColor" stroke="none" opacity="0.45"/>';
+  const FLIP = '<line x1="12" y1="8" x2="12" y2="16"/><polyline points="9.9 10.1 12 8 14.1 10.1"/><polyline points="9.9 13.9 12 16 14.1 13.9"/>';
+  $('ico1').innerHTML = S24(SHIELD + FLIP);
+  $('ico2').innerHTML = S24(SHIELD + HALF);
+  $('ico3').innerHTML = S24(SHIELD + HALF + FLIP);
+
+  // 三模式互斥选择；激活的持续红闪+卡牌边框红色爆闪环，再点一次取消
+  let antiMode = 0;
+  function sync() {
+    document.querySelectorAll('.bubble').forEach((b) => {
+      const on = Number(b.dataset.mode) === antiMode;
+      b.classList.toggle('on', on);
+    });
+    const lg = document.querySelector('.lg');
+    let ring = lg.querySelector(':scope > .warnring');
+    if (antiMode && !ring) {
+      ring = document.createElement('div');
+      ring.className = 'glowring warnring';
+      lg.appendChild(ring);
+    } else if (!antiMode && ring) {
+      ring.remove();
+    }
+  }
+  document.querySelectorAll('.bubble').forEach((b) => {
+    b.addEventListener('click', () => {
+      const m = Number(b.dataset.mode);
+      antiMode = (antiMode === m) ? 0 : m;   // 再点=取消
+      sync();
+      window.orange.setConfig({ gen: { antiMode } });
+    });
+  });
+
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    antiMode = Number(cfg.gen.antiMode) || 0;
+    sync();
+  })();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+
+  #body {
+    flex: 1; overflow-y: auto;
+    padding: 4px 18px 18px;
+  }
+  #body::-webkit-scrollbar { width: 0; }
+  #text {
+    font-size: 12px;
+    line-height: 1.9;
+    color: var(--text);
+    text-align: justify;
+    letter-spacing: 0.3px;
+  }
+  #text p + p { margin-top: 10px; }
+  .hl { color: var(--accent-text); font-weight: 600; }
+  #contact { margin-top: 10px; }
+  #contact p { margin: 0; line-height: 1.45; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>声明</span>
+    <div class="sp"></div>
+  </div>
+  <div id="body">
+    <div id="text">
+      <p>本插件名字为：<span class="hl">来福</span> 由<span class="hl">原作者 oranG</span>使用vscode-claude-fable-5 AI撰写开发，完全是大文豪写插件模式，本插件<span class="hl">完全开源免费</span>，如遇到收费倒卖等行为请及时举报，</p>
+      <p>最终致谢感谢claude感谢党感谢人民感谢爱慕老师感谢夏三七老师感谢妈妈感谢爸爸感谢盆感谢红果短剧感谢合成天下（200元大果）感谢美团感谢人民大会堂细支香烟感谢R9-9950x和5090显卡（不带d不带V2d的满血5090显卡）和192G内存（6000频率28时序）感谢感谢非常感谢！</p>
+      <div id="contact">
+        <p>原作者QQ：<span class="hl">1120703462</span></p>
+        <p>交流群1：<span class="hl">967314202</span></p>
+        <p>交流群2：<span class="hl">1085031993</span></p>
+        <p>交流群3：<span class="hl">1106115858</span> 欢迎进群交流喵！</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  document.getElementById('ico').innerHTML = window.ORANGE_ICONS.statement || window.ORANGE_ICONS.orange;
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

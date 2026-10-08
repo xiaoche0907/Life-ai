@@ -1,0 +1,58 @@
+{
+  "id": "042-grain",
+  "label": "添加噪点层",
+  "group": "输出",
+  "icon": "qp-grain",
+  "desc": "50% 灰层柔光 + 单色高斯杂色，压 AI 味 / 统一颗粒。数量在 JSON 里调。",
+  "params": {
+    "amount": 3
+  },
+  "names": [
+    "噪点"
+  ],
+  "steps": [
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layer"
+        }
+      ],
+      "using": {
+        "_obj": "layer",
+        "name": "噪点·{{n}}",
+        "mode": {
+          "_enum": "blendMode",
+          "_value": "softLight"
+        }
+      }
+    },
+    {
+      "_obj": "fill",
+      "using": {
+        "_enum": "fillContents",
+        "_value": "gray"
+      },
+      "opacity": {
+        "_unit": "percentUnit",
+        "_value": 100
+      },
+      "mode": {
+        "_enum": "blendMode",
+        "_value": "normal"
+      }
+    },
+    {
+      "_obj": "addNoise",
+      "distort": {
+        "_enum": "distort",
+        "_value": "gaussianDistribution"
+      },
+      "noise": {
+        "_unit": "percentUnit",
+        "_value": "{{amount}}"
+      },
+      "monochromatic": true
+    }
+  ]
+}

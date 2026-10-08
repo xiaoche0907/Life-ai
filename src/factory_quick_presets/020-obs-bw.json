@@ -1,0 +1,157 @@
+{
+  "id": "020-obs-bw",
+  "label": "黑白观察组",
+  "group": "观察",
+  "icon": "qp-obs-bw",
+  "desc": "黑白调整层 + 加对比曲线，打组置顶。看明暗过渡和瑕疵，修完关掉或删掉。",
+  "params": {},
+  "names": [
+    "观察组·黑白"
+  ],
+  "steps": [
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer"
+        }
+      ],
+      "using": {
+        "_obj": "adjustmentLayer",
+        "name": "黑白",
+        "type": {
+          "_obj": "blackAndWhite",
+          "presetKind": {
+            "_enum": "presetKindType",
+            "_value": "presetKindDefault"
+          },
+          "red": 40,
+          "yellow": 60,
+          "green": 40,
+          "cyan": 60,
+          "blue": 20,
+          "magenta": 80,
+          "useTint": false
+        }
+      }
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer"
+        }
+      ],
+      "using": {
+        "_obj": "adjustmentLayer",
+        "name": "对比",
+        "type": {
+          "_obj": "curves",
+          "presetKind": {
+            "_enum": "presetKindType",
+            "_value": "presetKindDefault"
+          }
+        }
+      }
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "curves",
+        "presetKind": {
+          "_enum": "presetKindType",
+          "_value": "presetKindCustom"
+        },
+        "adjustment": [
+          {
+            "_obj": "curvesAdjustment",
+            "channel": {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "composite"
+            },
+            "curve": [
+              {
+                "_obj": "point",
+                "horizontal": 0,
+                "vertical": 0
+              },
+              {
+                "_obj": "point",
+                "horizontal": 64,
+                "vertical": 40
+              },
+              {
+                "_obj": "point",
+                "horizontal": 192,
+                "vertical": 215
+              },
+              {
+                "_obj": "point",
+                "horizontal": 255,
+                "vertical": 255
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "黑白"
+        }
+      ],
+      "selectionModifier": {
+        "_enum": "selectionModifierType",
+        "_value": "addToSelection"
+      },
+      "makeVisible": false
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layerSection"
+        }
+      ],
+      "from": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "targetEnum"
+      },
+      "using": {
+        "_obj": "layerSection",
+        "name": "观察组·黑白·{{n}}"
+      },
+      "name": "观察组·黑白·{{n}}"
+    }
+  ],
+  "after": [
+    {
+      "_obj": "move",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "front"
+      },
+      "_note": "移到最顶（已在顶时 PS 报\"不可用\"但结果已达成）"
+    }
+  ]
+}

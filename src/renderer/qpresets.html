@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 6px; padding: 12px 14px 8px; cursor: grab; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; flex-shrink: 0; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--btn-bg); color: var(--text); flex-shrink: 0; }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+  .hbtn.on { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
+  .hbtn svg { width: 14px; height: 14px; }
+  #list { flex: 1; overflow-y: auto; padding: 2px 14px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-content: start;
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 26px), transparent 100%); mask-image: linear-gradient(180deg, #000 calc(100% - 26px), transparent 100%); }
+  #list::-webkit-scrollbar { width: 4px; }
+  #list::-webkit-scrollbar-thumb { background: var(--btn-bg-hover); border-radius: 2px; }
+  .grp { grid-column: 1 / -1; font-size: 10.5px; color: var(--text-dim); letter-spacing: 1px; padding: 6px 4px 0; }
+  .tile { position: relative; display: flex; align-items: center; gap: 7px; padding: 9px 9px 9px 10px; min-width: 0; border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .tile:hover { border-color: var(--accent-border); }
+  .tile.busy { border-color: var(--accent-text); background: var(--accent-soft); pointer-events: none; }
+  .tile.ok { border-color: var(--ok, #30d158); }
+  .tile.err { border-color: var(--err); }
+  .tile .ico { flex-shrink: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; color: var(--accent-text); font-size: 12px; }
+  .tile .ico svg { width: 16px; height: 16px; }
+  .tile .name { flex: 1; min-width: 0; font-size: 12px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile .spin { width: 11px; height: 11px; border: 2px solid var(--btn-bg-hover); border-top-color: var(--accent-text); border-radius: 50%; animation: spin 0.8s linear infinite; display: none; flex-shrink: 0; }
+  .tile.busy .spin { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* 编辑模式：瓦片右上角 ✕（二段确认），点瓦片=编辑 */
+  .tile .del { display: none; position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--btn-bg-hover); color: var(--text); align-items: center; justify-content: center; font-size: 10px; border: 1px solid var(--inset-border); }
+  .tile .del svg { width: 10px; height: 10px; }
+  .tile .del.confirm { background: color-mix(in srgb, var(--err) 45%, transparent); color: #fff; border-color: var(--err); width: auto; padding: 0 6px; font-size: 10px; }
+  #list.edit .tile .del { display: flex; }
+  #list.edit .tile { border-style: dashed; }
+  #list.edit .tile.modified { border-color: var(--accent-border); }
+  #empty { grid-column: 1 / -1; text-align: center; font-size: 11.5px; color: var(--text-dim); padding: 30px 10px; line-height: 1.6; }
+  #foot { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; min-height: 26px; }
+  #status { flex: 1; font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #status.ok { color: var(--ok, #30d158); } #status.err { color: var(--err); }
+  .mini { height: 24px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: var(--text); font-size: 10.5px; cursor: pointer; display: none; }
+  #list.edit ~ #foot .mini { display: inline-flex; align-items: center; }
+  .mini.confirm { border-color: var(--err); color: var(--err); }
+  /* 编辑弹层（卡内覆盖，不用原生对话框——铁律9） */
+  #dlg { display: none; position: absolute; inset: 0; background: rgba(10, 10, 14, 0.92); border-radius: 22px; padding: 14px; flex-direction: column; gap: 8px; overflow-y: auto; z-index: 20; }
+  #dlg.on { display: flex; }
+  #dlg::-webkit-scrollbar { width: 4px; }
+  #dlg .dt { font-size: 13px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
+  #dlg .dt .sp { flex: 1; }
+  #dlg label { font-size: 10.5px; color: var(--text-dim); letter-spacing: 1px; margin-top: 2px; }
+  #dlg input[type=text], #dlg select, #dlg input[type=number] { height: 28px; border: 1px solid var(--inset-border); border-radius: 8px; background: var(--inset-bg); color: var(--text); font-size: 12px; padding: 0 9px; outline: none; user-select: text; width: 100%; }
+  #dlg input:focus, #dlg select:focus { border-color: var(--accent-border); }
+  #dlg select option { background: #1e1e24; color: #fff; }
+  .row2 { display: flex; gap: 6px; }
+  .row2 > * { flex: 1; min-width: 0; }
+  #icons { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+  #icons .ic { aspect-ratio: 1 / 1; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--inset-bg); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text); }
+  #icons .ic svg { width: 15px; height: 15px; }
+  #icons .ic:hover { border-color: var(--accent-border); }
+  #icons .ic.sel { border-color: var(--accent-text); background: var(--accent-soft); color: var(--accent-text); }
+  #params { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  #params .pv { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text); }
+  #params .pv span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #params .pv input { width: 64px; height: 24px; flex: none; }
+  .seg { display: flex; border: 1px solid var(--inset-border); border-radius: 8px; overflow: hidden; }
+  .seg div { flex: 1; text-align: center; font-size: 11px; padding: 6px 0; cursor: pointer; color: var(--text-dim); }
+  .seg div.on { background: var(--accent-soft); color: var(--accent-text); }
+  #dlg .btns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+  #dlg .btn { height: 28px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: var(--text); font-size: 12px; cursor: pointer; }
+  #dlg .btn.pri { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+  #dlgErr { font-size: 10.5px; color: var(--err); min-height: 12px; }
+  .hint { font-size: 10px; color: var(--text-dim); line-height: 1.5; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>快捷预设</span>
+    <span class="sp"></span>
+    <div class="hbtn" id="btnAdd" data-pass title="新建预设：绑定 PS 动作面板里的动作，或复制现有预设改参数"></div>
+    <div class="hbtn" id="btnEdit" data-pass title="编辑模式：点预设改名/换图标/改参数，右上角 ✕ 删除"></div>
+    <div class="hbtn" id="btnFolder" data-pass title="打开预设文件夹（json 直接改也行）"></div>
+    <div class="hbtn" id="btnReload" data-pass title="重新读取预设"></div>
+  </div>
+  <div id="list"></div>
+  <div id="foot">
+    <div id="status"></div>
+    <button class="mini" id="btnRestore" data-pass title="清掉对出厂预设的改动和删除，用户自建的不受影响">恢复出厂</button>
+  </div>
+  <div id="dlg">
+    <div class="dt"><span id="dlgTitle">新建预设</span><span class="sp"></span><div class="hbtn" id="dlgClose" data-pass></div></div>
+    <div id="srcWrap">
+      <label>来源</label>
+      <div class="seg" id="srcSeg"><div data-src="action" class="on">播放 PS 动作</div><div data-src="copy">复制现有预设</div></div>
+      <div id="srcAction" class="row2" style="margin-top:6px">
+        <select id="selSet" data-pass><option value="">动作组…</option></select>
+        <select id="selAct" data-pass><option value="">动作…</option></select>
+      </div>
+      <div id="srcCopy" class="row2" style="margin-top:6px; display:none"><select id="selBase" data-pass></select></div>
+      <div class="hint" id="srcHint">在 PS「动作」面板里录好的动作，这里绑成一个按钮。列表读不到=PS 没连上。</div>
+    </div>
+    <label>名称</label><input type="text" id="fName" data-pass data-nodrag maxlength="40" placeholder="按钮上显示的名字" />
+    <div class="row2">
+      <div><label>分组</label><select id="fGroup" data-pass></select></div>
+      <div><label>自定义分组名</label><input type="text" id="fGroupNew" data-pass data-nodrag maxlength="12" placeholder="选「新分组…」时填" /></div>
+    </div>
+    <label>图标</label><div id="icons"></div>
+    <div id="paramsWrap"><label>参数</label><div id="params"></div></div>
+    <div id="dlgErr"></div>
+    <div class="btns"><button class="btn" id="dlgCancel" data-pass>取消</button><button class="btn pri" id="dlgOk" data-pass>保存</button></div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const I = window.ORANGE_ICONS || {};
+  $('ico').innerHTML = I.qpresets || '';
+  $('btnAdd').innerHTML = I['qp-plus']; $('btnEdit').innerHTML = I['qp-edit']; $('btnFolder').innerHTML = I.folder; $('btnReload').innerHTML = I.refresh; $('dlgClose').innerHTML = I['qp-x'];
+  const ICONS = Object.keys(I).filter((k) => k.startsWith('qp-') && !['qp-plus', 'qp-edit', 'qp-x', 'qp-check'].includes(k));
+  const GROUPS = ['皮肤', '观察', '图层', '输出', '自定义'];
+  const iconHtml = (name) => (name && I[name]) ? I[name] : (name ? '<span>' + String(name).slice(0, 2) + '</span>' : (I['qp-bolt'] || ''));
+  let presets = [], editMode = false, actionSets = null;
+  const setStatus = (t, cls) => { const s = $('status'); s.textContent = t || ''; s.className = cls || ''; };
+  const flash = (t, cls, ms) => { setStatus(t, cls); setTimeout(() => setStatus(''), ms || 1800); };
+  function render() {
+    const list = $('list'); list.innerHTML = '';
+    list.classList.toggle('edit', editMode); $('btnEdit').classList.toggle('on', editMode);
+    if (!presets.length) { list.innerHTML = '<div id="empty">还没有预设<br>点 ＋ 绑定一个 PS 动作，或点右上角文件夹往里放 json</div>'; return; }
+    let lastGrp = null;
+    for (const p of presets) {
+      const g = p.group || '其它';
+      if (g !== lastGrp) { const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; list.appendChild(h); lastGrp = g; }
+      const t = document.createElement('div');
+      t.className = 'tile' + (p.modified ? ' modified' : ''); t.dataset.pid = p.id; t.setAttribute('data-pass', ''); t.title = (p.desc || '') + (editMode ? '\n（编辑模式：点击=编辑）' : '');
+      t.innerHTML = '<span class="ico"></span><span class="name"></span><span class="spin"></span><span class="del" data-pass title="删除"></span>';
+      t.querySelector('.ico').innerHTML = iconHtml(p.icon);
+      t.querySelector('.name').textContent = p.label;
+      t.querySelector('.del').innerHTML = I['qp-x'];
+      list.appendChild(t);
+    }
+  }
+  // 容器级事件委托（铁律13）：执行 / 编辑 / 删除（二段确认）
+  let delArm = null, delTimer = null;
+  $('list').addEventListener('click', async (e) => {
+    const del = e.target.closest('.del');
+    const tile = e.target.closest('.tile'); if (!tile) return;
+    const id = tile.dataset.pid; const p = presets.find((x) => x.id === id); if (!p) return;
+    if (del) {
+      e.stopPropagation();
+      if (delArm === id) { clearTimeout(delTimer); delArm = null; const r = await window.orange.qpDelete(id); if (r && r.ok) { flash('已删除「' + p.label + '」' + (p.factory ? '（出厂预设可用「恢复出厂」找回）' : ''), 'ok', 2500); await reload(); } else flash('删除失败：' + ((r && r.error) || ''), 'err'); return; }
+      delArm = id; del.classList.add('confirm'); del.textContent = '确认删除?';
+      clearTimeout(delTimer); delTimer = setTimeout(() => { delArm = null; del.classList.remove('confirm'); del.innerHTML = I['qp-x']; }, 2500);
+      return;
+    }
+    if (editMode) { openDlg(p); return; }
+    if (tile.classList.contains('busy')) return;
+    tile.classList.remove('ok', 'err'); tile.classList.add('busy');
+    setStatus('⚡ ' + p.label + ' 执行中…');
+    try { window.orange.glassLog && window.orange.glassLog('[qpresets] 点击 ' + id); } catch (_) {}
+    let r = null;
+    try { r = await window.orange.qpRun(id); } catch (err) { r = { ok: false, error: (err && err.message) || String(err) }; }
+    tile.classList.remove('busy'); tile.classList.add(r && r.ok ? 'ok' : 'err');
+    setStatus(r && r.ok ? ('✓ ' + p.label + ' 完成' + (r.notes && r.notes.length ? '（' + r.notes.join('；') + '）' : '')) : ('✗ ' + p.label + '：' + ((r && r.error) || '失败')), r && r.ok ? 'ok' : 'err');
+    setTimeout(() => tile.classList.remove('ok', 'err'), 1500);
+  });
+  async function reload() { presets = await window.orange.qpList(); render(); }
+  $('btnFolder').addEventListener('click', () => window.orange.qpOpenFolder());
+  $('btnReload').addEventListener('click', async () => { await reload(); flash('已重新读取 ' + presets.length + ' 个预设'); });
+  $('btnEdit').addEventListener('click', () => { editMode = !editMode; render(); setStatus(editMode ? '编辑模式：点预设改名/换图标/改参数，✕ 删除' : ''); });
+  let restoreArm = false, restoreTimer = null;
+  $('btnRestore').addEventListener('click', async () => {
+    const b = $('btnRestore');
+    if (!restoreArm) { restoreArm = true; b.classList.add('confirm'); b.textContent = '确认恢复出厂?'; restoreTimer = setTimeout(() => { restoreArm = false; b.classList.remove('confirm'); b.textContent = '恢复出厂'; }, 2500); return; }
+    clearTimeout(restoreTimer); restoreArm = false; b.classList.remove('confirm'); b.textContent = '恢复出厂';
+    const r = await window.orange.qpRestore(); await reload(); flash('已恢复出厂预设（清掉 ' + ((r && r.restored) || 0) + ' 条改动）', 'ok', 2500);
+  });
+  // ---------- 编辑弹层 ----------
+  let dlgState = null;   // { id?, source:'action'|'copy', icon, params }
+  function buildIcons(sel) { const box = $('icons'); box.innerHTML = ''; for (const k of ICONS) { const d = document.createElement('div'); d.className = 'ic' + (k === sel ? ' sel' : ''); d.dataset.icon = k; d.setAttribute('data-pass', ''); d.innerHTML = I[k]; d.title = k.replace(/^qp-/, ''); box.appendChild(d); } }
+  $('icons').addEventListener('click', (e) => { const d = e.target.closest('.ic'); if (!d) return; dlgState.icon = d.dataset.icon; [...$('icons').children].forEach((x) => x.classList.toggle('sel', x === d)); });
+  function buildGroups(cur) { const s = $('fGroup'); s.innerHTML = ''; const gs = [...new Set(GROUPS.concat(presets.map((p) => p.group).filter(Boolean)))]; if (cur && !gs.includes(cur)) gs.push(cur); for (const g of gs) { const o = document.createElement('option'); o.value = g; o.textContent = g; s.appendChild(o); } const o2 = document.createElement('option'); o2.value = '__new'; o2.textContent = '新分组…'; s.appendChild(o2); s.value = cur || '自定义'; }
+  function buildParams(params) { const box = $('params'); box.innerHTML = ''; const ks = Object.keys(params || {}); $('paramsWrap').style.display = ks.length ? '' : 'none'; for (const k of ks) { const row = document.createElement('div'); row.className = 'pv'; row.innerHTML = '<span></span><input type="number" step="any" data-pass data-nodrag />'; row.querySelector('span').textContent = k; row.querySelector('span').title = k; const inp = row.querySelector('input'); inp.value = params[k]; inp.dataset.k = k; box.appendChild(row); } }
+  function setSrc(kind) { dlgState.source = kind; [...$('srcSeg').children].forEach((d) => d.classList.toggle('on', d.dataset.src === kind)); $('srcAction').style.display = kind === 'action' ? '' : 'none'; $('srcCopy').style.display = kind === 'copy' ? '' : 'none'; $('srcHint').textContent = kind === 'action' ? '在 PS「动作」面板里录好的动作，这里绑成一个按钮。列表读不到=PS 没连上。' : '以现有预设为模板复制一份，参数可改；步骤与模板相同。'; if (kind === 'copy') { const b = presets.find((p) => p.id === $('selBase').value); buildParams(b ? b.params : {}); } else buildParams({}); }
+  $('srcSeg').addEventListener('click', (e) => { const d = e.target.closest('[data-src]'); if (d) setSrc(d.dataset.src); });
+  $('selBase').addEventListener('change', () => { const b = presets.find((p) => p.id === $('selBase').value); buildParams(b ? b.params : {}); if (b && !$('fName').value) $('fName').value = b.label + ' 副本'; if (b) { dlgState.icon = b.icon; buildIcons(b.icon); } });
+  $('selSet').addEventListener('change', () => { const s = (actionSets || []).find((x) => x.set === $('selSet').value); const a = $('selAct'); a.innerHTML = '<option value="">动作…</option>'; for (const n of ((s && s.actions) || [])) { const o = document.createElement('option'); o.value = n; o.textContent = n; a.appendChild(o); } });
+  $('selAct').addEventListener('change', () => { if (!$('fName').value) $('fName').value = $('selAct').value; });
+  async function loadActions() {
+    const sel = $('selSet'); sel.innerHTML = '<option value="">读取中…</option>';
+    const r = await window.orange.qpActions();
+    actionSets = (r && r.ok) ? r.sets : [];
+    sel.innerHTML = '<option value="">' + (r && r.ok ? '动作组…' : ('读不到（' + ((r && r.error) || 'PS 未连接') + '）')) + '</option>';
+    for (const s of actionSets) { const o = document.createElement('option'); o.value = s.set; o.textContent = s.set + '（' + s.actions.length + '）'; sel.appendChild(o); }
+  }
+  function openDlg(p) {
+    dlgState = { id: p ? p.id : null, source: 'action', icon: p ? (p.icon || '') : 'qp-action' };
+    $('dlgTitle').textContent = p ? ('编辑「' + p.label + '」' + (p.factory ? '（出厂预设：改动另存，可恢复）' : '')) : '新建预设';
+    $('srcWrap').style.display = p ? 'none' : '';
+    $('fName').value = p ? p.label : '';
+    buildGroups(p ? p.group : '自定义'); $('fGroupNew').value = '';
+    buildIcons(dlgState.icon);
+    buildParams(p ? p.params : {});
+    $('dlgErr').textContent = '';
+    $('dlg').classList.add('on');
+    if (!p) {
+      const b = $('selBase'); b.innerHTML = ''; for (const x of presets) { const o = document.createElement('option'); o.value = x.id; o.textContent = x.group + ' / ' + x.label; b.appendChild(o); }
+      setSrc('action'); loadActions();
+    }
+  }
+  const closeDlg = () => { $('dlg').classList.remove('on'); dlgState = null; };
+  $('dlgClose').addEventListener('click', closeDlg); $('dlgCancel').addEventListener('click', closeDlg);
+  $('dlgOk').addEventListener('click', async () => {
+    if (!dlgState) return;
+    const label = $('fName').value.trim(); if (!label) { $('dlgErr').textContent = '名称不能为空'; return; }
+    let group = $('fGroup').value; if (group === '__new') { group = $('fGroupNew').value.trim(); if (!group) { $('dlgErr').textContent = '填一个新分组名'; return; } }
+    const params = {}; for (const inp of $('params').querySelectorAll('input')) { const v = Number(inp.value); if (Number.isFinite(v)) params[inp.dataset.k] = v; }
+    const payload = { id: dlgState.id || undefined, label, group, icon: dlgState.icon || '', params };
+    if (!dlgState.id) {
+      if (dlgState.source === 'action') { const set = $('selSet').value, action = $('selAct').value; if (!set || !action) { $('dlgErr').textContent = '要选一个动作组和动作'; return; } payload.source = { type: 'action', set, action }; }
+      else { const from = $('selBase').value; if (!from) { $('dlgErr').textContent = '要选一个模板预设'; return; } payload.source = { type: 'copy', from }; }
+    }
+    const r = await window.orange.qpSave(payload);
+    if (!r || !r.ok) { $('dlgErr').textContent = (r && r.error) || '保存失败'; return; }
+    closeDlg(); await reload(); flash((dlgState && dlgState.id) ? '已保存' : '已新建「' + label + '」', 'ok');
+  });
+  $('btnAdd').addEventListener('click', () => openDlg(null));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('dlg').classList.contains('on')) reload(); });
+  reload();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+{
+  "id": "015-double-curves",
+  "label": "双曲线",
+  "group": "皮肤",
+  "icon": "qp-curves2",
+  "desc": "提亮曲线 + 压暗曲线各配黑蒙版，打组。白画笔在对应蒙版上画光影。",
+  "params": {
+    "up": 160,
+    "down": 96
+  },
+  "names": [
+    "双曲线",
+    "提亮",
+    "压暗"
+  ],
+  "steps": [
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer"
+        }
+      ],
+      "using": {
+        "_obj": "adjustmentLayer",
+        "name": "提亮·{{n}}",
+        "type": {
+          "_obj": "curves",
+          "presetKind": {
+            "_enum": "presetKindType",
+            "_value": "presetKindDefault"
+          }
+        }
+      }
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "curves",
+        "presetKind": {
+          "_enum": "presetKindType",
+          "_value": "presetKindCustom"
+        },
+        "adjustment": [
+          {
+            "_obj": "curvesAdjustment",
+            "channel": {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "composite"
+            },
+            "curve": [
+              {
+                "_obj": "point",
+                "horizontal": 0,
+                "vertical": 0
+              },
+              {
+                "_obj": "point",
+                "horizontal": 128,
+                "vertical": "{{up}}"
+              },
+              {
+                "_obj": "point",
+                "horizontal": 255,
+                "vertical": 255
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "channel",
+          "_enum": "channel",
+          "_value": "mask"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "invert"
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "channel",
+          "_enum": "channel",
+          "_value": "RGB"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer"
+        }
+      ],
+      "using": {
+        "_obj": "adjustmentLayer",
+        "name": "压暗·{{n}}",
+        "type": {
+          "_obj": "curves",
+          "presetKind": {
+            "_enum": "presetKindType",
+            "_value": "presetKindDefault"
+          }
+        }
+      }
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "curves",
+        "presetKind": {
+          "_enum": "presetKindType",
+          "_value": "presetKindCustom"
+        },
+        "adjustment": [
+          {
+            "_obj": "curvesAdjustment",
+            "channel": {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "composite"
+            },
+            "curve": [
+              {
+                "_obj": "point",
+                "horizontal": 0,
+                "vertical": 0
+              },
+              {
+                "_obj": "point",
+                "horizontal": 128,
+                "vertical": "{{down}}"
+              },
+              {
+                "_obj": "point",
+                "horizontal": 255,
+                "vertical": 255
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "channel",
+          "_enum": "channel",
+          "_value": "mask"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "invert"
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "channel",
+          "_enum": "channel",
+          "_value": "RGB"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "提亮·{{n}}"
+        }
+      ],
+      "selectionModifier": {
+        "_enum": "selectionModifierType",
+        "_value": "addToSelection"
+      },
+      "makeVisible": false
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layerSection"
+        }
+      ],
+      "from": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "targetEnum"
+      },
+      "using": {
+        "_obj": "layerSection",
+        "name": "双曲线·{{n}}"
+      },
+      "name": "双曲线·{{n}}"
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+{
+  "id": "012-freq-2",
+  "label": "高低频",
+  "group": "皮肤",
+  "icon": "qp-freq2",
+  "desc": "低频高斯模糊，高频=原图减低频（线性光），打组。8/16 位自动按各自口径算。",
+  "params": {
+    "blur": 8
+  },
+  "names": [
+    "高低频",
+    "低频",
+    "高频"
+  ],
+  "steps": [
+    {
+      "_obj": "duplicate",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "name": "低频·{{n}}",
+      "version": 5
+    },
+    {
+      "_obj": "duplicate",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "name": "高频·{{n}}",
+      "version": 5
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "低频·{{n}}"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "gaussianBlur",
+      "radius": {
+        "_unit": "pixelsUnit",
+        "_value": "{{blur}}"
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "高频·{{n}}"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "applyImageEvent",
+      "with": {
+        "_obj": "calculation",
+        "to": {
+          "_ref": [
+            {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "RGB"
+            },
+            {
+              "_ref": "layer",
+              "_name": "低频·{{n}}"
+            }
+          ]
+        },
+        "calculation": {
+          "_enum": "calculationType",
+          "_value": "subtract"
+        },
+        "scale": 2,
+        "offset": 128
+      },
+      "_when": "depth8"
+    },
+    {
+      "_obj": "applyImageEvent",
+      "with": {
+        "_obj": "calculation",
+        "to": {
+          "_ref": [
+            {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "RGB"
+            },
+            {
+              "_ref": "layer",
+              "_name": "低频·{{n}}"
+            }
+          ]
+        },
+        "invert": true,
+        "calculation": {
+          "_enum": "calculationType",
+          "_value": "add"
+        },
+        "scale": 2,
+        "offset": 0
+      },
+      "_when": "depth16"
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "mode": {
+          "_enum": "blendMode",
+          "_value": "linearLight"
+        }
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "低频·{{n}}"
+        }
+      ],
+      "selectionModifier": {
+        "_enum": "selectionModifierType",
+        "_value": "addToSelection"
+      },
+      "makeVisible": false
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layerSection"
+        }
+      ],
+      "from": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "targetEnum"
+      },
+      "using": {
+        "_obj": "layerSection",
+        "name": "高低频·{{n}}"
+      },
+      "name": "高低频·{{n}}"
+    }
+  ]
+}

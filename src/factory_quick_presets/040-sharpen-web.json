@@ -1,0 +1,65 @@
+{
+  "id": "040-sharpen-web",
+  "label": "导出锐化·网图",
+  "group": "输出",
+  "icon": "qp-sharp-web",
+  "desc": "盖印一层放最顶 → USM 锐化（网图档：数量 60 / 半径 0.8 / 阈值 2）。",
+  "params": {
+    "amount": 60,
+    "radius": 0.8,
+    "threshold": 2
+  },
+  "names": [
+    "锐化"
+  ],
+  "steps": [
+    {
+      "_obj": "mergeVisible",
+      "duplicate": true
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "name": "锐化·{{n}}"
+      }
+    },
+    {
+      "_obj": "unsharpMask",
+      "amount": {
+        "_unit": "percentUnit",
+        "_value": "{{amount}}"
+      },
+      "radius": {
+        "_unit": "pixelsUnit",
+        "_value": "{{radius}}"
+      },
+      "threshold": "{{threshold}}"
+    }
+  ],
+  "after": [
+    {
+      "_obj": "move",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "front"
+      },
+      "_note": "移到最顶（已在顶时 PS 报\"不可用\"但结果已达成）"
+    }
+  ]
+}

@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; flex-shrink: 0; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  /* 搜索框并进标题行=真·最上方 */
+  #head #searchInput {
+    flex: 1; min-width: 0; height: 26px;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 11px; padding: 0 10px; outline: none;
+    user-select: text; cursor: text;
+  }
+  #head #searchInput:focus { border-color: var(--accent-border); }
+  .hbtn {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+  .hbtn svg { width: 14px; height: 14px; }
+
+  /* 翻牌双面：正面=logo网格，背面=分组词条列表（压扁-弹开2D翻牌，3D翻牌在透明窗=闪烁坑38） */
+  #flipWrap { flex: 1; position: relative; overflow: hidden; min-height: 0; }
+  #faceA, #faceB, #faceC, #faceD { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+  #faceB { display: none; }
+
+  /* 分组logo网格（正面整面）：一排4个，滚轮上下滑 */
+  #groups {
+    flex: 1;
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: min-content;
+    gap: 7px; padding: 2px 14px 12px;
+    overflow-y: auto;
+  }
+  #groups::-webkit-scrollbar { width: 0; }
+
+  /* 背面顶栏：返回 + 当前分组logo/名/条数 */
+  #gbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 2px 14px 8px; flex-shrink: 0;
+  }
+  #gbar #gbarIco { display: flex; }
+  #gbar #gbarIco svg { width: 18px; height: 18px; color: var(--accent-text); }
+  #gbar #gbarName { font-size: 12.5px; font-weight: 600; color: #fff; }
+  #gbar #gbarCnt { font-size: 10px; color: var(--text-dim); }
+  .gtile {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 13px 2px;
+    border-radius: 13px;
+    background: var(--btn-bg);
+    border: 1px solid transparent;
+    cursor: pointer; min-width: 0;
+  }
+  .gtile:hover { background: var(--btn-bg-hover); }
+  .gtile.cur { background: var(--accent-soft); border-color: var(--accent-border); box-shadow: 0 0 9px var(--accent-soft); }
+  .gtile svg {
+    width: 29px; height: 29px; stroke-width: 1.45;
+    color: var(--text); flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+  .gtile:hover svg { transform: scale(1.1); }
+  .gtile.cur svg { color: var(--accent-text); }
+  /* 文字标注跟随全局修图模式（控制台-设置）：新手=显示，盲人=纯图标（glass.js挂body.blindmode） */
+  .gtile .glab {
+    font-size: 8.5px; color: var(--text-dim);
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .gtile.cur .glab { color: var(--accent-text); }
+  /* 盲人模式：常态纯图标；悬停=小翻牌亮名字（图标压扁→名字弹开，压扁-弹开安全手法迷你版） */
+  body.blindmode .gtile svg {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scaleX(1);
+    transition: transform 0.12s ease-in;
+  }
+  body.blindmode .gtile:hover svg { transform: translate(-50%, -50%) scaleX(0); }
+  body.blindmode .gtile .glab {
+    position: absolute; left: 0; right: 0; top: 50%;
+    transform: translateY(-50%) scaleX(0);
+    font-size: 10.5px; color: #fff;
+    max-width: none; overflow: visible;
+    text-align: center; white-space: nowrap;
+    transition: transform 0.13s cubic-bezier(0.34, 1.3, 0.64, 1) 0.1s;
+  }
+  body.blindmode .gtile:hover .glab { transform: translateY(-50%) scaleX(1); }
+  /* 悬停亮名字时数量角标退场，不挤名字 */
+  body.blindmode .gtile .gcount { transition: opacity 0.1s; }
+  body.blindmode .gtile:hover .gcount { opacity: 0; }
+  body.blindmode .gtile { min-height: 55px; }
+  .gtile.op { padding: 13px 2px; }
+  .gtile.op svg { width: 22px; height: 22px; color: var(--text-dim); }
+  .gtile.op.on { background: var(--accent-soft); border-color: var(--accent-border); }
+  .gtile.op.on svg { color: var(--accent-text); }
+  /* 删除模式：iOS风抖动 + 红✕角标 */
+  @keyframes gwiggle { 0% { transform: rotate(-1.6deg); } 100% { transform: rotate(1.6deg); } }
+  .gtile.del { animation: gwiggle 0.18s ease-in-out infinite alternate; }
+  .gdel {
+    position: absolute; top: 3px; left: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+    background: rgba(255, 92, 92, 0.92); color: #fff;
+  }
+  /* 词条数量角标：有货的分组一眼看见 */
+  .gcount {
+    position: absolute; top: 4px; right: 5px;
+    min-width: 13px; height: 13px; padding: 0 3px;
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700;
+    background: var(--accent-soft); color: var(--accent-text);
+    border: 1px solid var(--accent-border);
+  }
+
+  /* 弹层里的图标选择器（6列）/ 分组logo选择器（4列） */
+  .dlgGrid {
+    display: none;
+    gap: 5px;
+    max-height: 132px; overflow-y: auto;
+  }
+  .dlgGrid.on { display: grid; }
+  .dlgGrid::-webkit-scrollbar { width: 0; }
+  #dlgIcons { grid-template-columns: repeat(6, 1fr); }
+  #dlgGroups { grid-template-columns: repeat(4, 1fr); }
+  .pick {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; padding: 6px 1px 5px;
+    border-radius: 9px;
+    background: var(--btn-bg);
+    border: 1px solid transparent; cursor: pointer; min-width: 0;
+  }
+  .pick:hover { background: var(--btn-bg-hover); }
+  .pick.cur { background: var(--accent-soft); border-color: var(--accent-border); }
+  .pick svg { width: 16px; height: 16px; color: var(--text); flex-shrink: 0; }
+  .pick.cur svg, .pick.cur .plab { color: var(--accent-text); }
+  .pick .plab { font-size: 8px; color: var(--text-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* 提示词列表 */
+  #list { flex: 1; overflow-y: auto; padding: 2px 14px 10px; display: flex; flex-direction: column; gap: 6px; }
+  #list::-webkit-scrollbar { width: 4px; }
+  #list::-webkit-scrollbar-thumb { background: var(--btn-bg-hover); border-radius: 2px; }
+  .row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: var(--inset-bg);
+    border: 1px solid var(--inset-border);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .row:hover { border-color: var(--accent-border); }
+  .row.sel { border-color: var(--accent-text); background: var(--accent-soft); }
+  .row .heart { display: flex; flex-shrink: 0; color: var(--text-dim); cursor: pointer; }
+  .row .heart:hover { color: var(--accent-text); transform: scale(1.15); }
+  .row .heart.on { color: var(--accent-text); }
+  .row .heart svg { width: 15px; height: 15px; }
+  .row .heart.on svg { fill: var(--accent-text); }
+  /* 词条名完整显示：不截断不省略号，超长自动换行（预览文字让位） */
+  .row .name { font-size: 12px; color: #fff; flex-shrink: 0; max-width: 78%; line-height: 1.35; word-break: break-all; }
+  .row .fbadge {
+    flex-shrink: 0;
+    width: 15px; height: 15px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9.5px; font-weight: 700;
+    border: 1px solid var(--accent-border);
+    color: var(--accent-text);
+  }
+  .row .prev { flex: 1; font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  #empty { text-align: center; font-size: 11.5px; color: var(--text-dim); padding: 30px 10px; }
+
+  /* 底部操作条 */
+  #foot { display: flex; align-items: center; gap: 8px; padding: 0 14px 12px; }
+  .fbtn {
+    height: 28px; padding: 0 13px;
+    border: none; border-radius: 10px;
+    background: var(--btn-bg); color: var(--text);
+    font-size: 11.5px; cursor: pointer;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .fbtn:hover { background: var(--btn-bg-hover); }
+  .fbtn.accent { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
+  .fbtn.icon {
+    width: 26px; height: 26px; padding: 0; justify-content: center; border-radius: 50%;
+    border: 1px solid var(--inset-border); color: #fff;
+  }
+  .fbtn.icon:hover { border-color: var(--accent-border); color: var(--accent-text); }
+  .fbtn.icon svg { width: 13px; height: 13px; }
+  /* 删除二段确认态：圆钮展开成红色胶囊（0904用户裁定） */
+  .fbtn.icon.confirm { width: auto; padding: 0 10px; border-radius: 10px; background: var(--err); color: #fff; font-size: 11px; }
+  .fbtn:disabled { opacity: 0.35; cursor: default; }
+  .fbtn:disabled:hover { background: var(--btn-bg); }
+  #btnDel:not(:disabled):hover { color: var(--err); }
+  #foot .sp { flex: 1; }
+
+  /* 编辑面（新建/改名/保存提示词）：第三个翻牌面，玻璃通透度与其他面一致（弹窗遮罩太闷已废） */
+  #faceC { display: none; gap: 9px; padding: 2px 14px 12px; }
+  #dlgTitle { font-size: 12.5px; font-weight: 600; color: #fff; flex-shrink: 0; }
+  .dlgInput {
+    width: 100%; height: 30px;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 12px; padding: 0 10px; outline: none; user-select: text;
+  }
+  .dlgInput:focus { border-color: var(--accent-border); }
+  #dlgText {
+    width: 100%; flex: 1; min-height: 90px; resize: none;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 11.5px; line-height: 1.5; padding: 8px 10px; outline: none; user-select: text;
+    display: none;
+  }
+  #dlgText.on { display: block; }
+  #dlgText:focus { border-color: var(--accent-border); }
+  #dlgBtns { display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; margin-top: auto; }
+  #dlgDanger { margin-right: auto; color: var(--err) !important; }
+
+  /* 批量导入面（第四翻牌面，0906）：来源选择 → 候选列表(勾选/改名/改组) → 开始导入/撤销 */
+  #faceD { display: none; }
+  #ibar { display: flex; align-items: center; gap: 8px; padding: 2px 14px 8px; flex-shrink: 0; }
+  #ibar #ibarIco { display: flex; } #ibar #ibarIco svg { width: 18px; height: 18px; color: var(--accent-text); }
+  #ibar #ibarName { font-size: 12.5px; font-weight: 600; color: #fff; }
+  #ibar #ibarCnt { font-size: 10px; color: var(--text-dim); }
+  #isrc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 14px 8px; flex-shrink: 0; }
+  #isrc .fbtn { padding: 0 9px; font-size: 11px; white-space: nowrap; }
+  #isrc .fbtn svg { width: 13px; height: 13px; flex: none; }
+  #isrcLab { flex: 1 1 100%; min-width: 0; font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #iempty { line-height: 1.7; }
+  #ilist { flex: 1; overflow-y: auto; padding: 2px 14px 6px; display: flex; flex-direction: column; gap: 5px; min-height: 0; }
+  #ilist::-webkit-scrollbar { width: 4px; }
+  #ilist::-webkit-scrollbar-thumb { background: var(--btn-bg-hover); border-radius: 2px; }
+  .irow {
+    display: flex; align-items: center; gap: 7px; padding: 5px 8px;
+    border-radius: 10px; background: var(--inset-bg); border: 1px solid var(--inset-border);
+  }
+  .irow.off { opacity: 0.42; }
+  .irow.done { border-color: var(--accent-border); }
+  .ick {
+    width: 16px; height: 16px; border-radius: 5px; flex: none; cursor: pointer;
+    border: 1.5px solid var(--text-dim); display: flex; align-items: center; justify-content: center;
+  }
+  .ick.on { background: var(--accent); border-color: var(--accent); }
+  .ick.on::after { content: ''; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); }
+  .imeta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .iname {
+    width: 100%; height: 20px; border: 1px solid transparent; border-radius: 6px; padding: 0 4px;
+    background: transparent; color: #fff; font-size: 11.5px; outline: none; user-select: text;
+  }
+  .iname:hover, .iname:focus { border-color: var(--inset-border); background: var(--inset-bg); }
+  .iprev { font-size: 9.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 4px; }
+  .igrp {
+    flex: none; height: 22px; font-size: 10.5px; border-radius: 7px; padding: 0 4px;
+    background: var(--option-bg); color: var(--text); border: 1px solid var(--inset-border); outline: none; cursor: pointer;
+  }
+  .igrp.unsure { border-color: var(--accent-border); color: var(--accent-text); }   /* 没把握的自动分组：亮边提醒看一眼 */
+  .ibadge { flex: none; font-size: 9px; padding: 1px 5px; border-radius: 6px; background: var(--btn-bg); color: var(--text-dim); }
+  .ibadge.dup { color: #ffb3ad; border: 1px solid rgba(255, 59, 48, 0.5); background: rgba(255, 59, 48, 0.12); }
+  .irow.forge { background: var(--accent-soft); border-color: var(--accent-border); }
+  /* 搬运插件选单（0908）：魔改版可点；其他来福系列插件只列名字、灰掉不可点 */
+  .irow.pick { cursor: pointer; }
+  .irow.pick:hover { border-color: var(--accent-border); background: var(--accent-soft); }
+  .irow.nopick { opacity: 0.42; cursor: not-allowed; }
+  .irow.nopick .iname { color: var(--text-dim); }
+  #ifoot { display: flex; align-items: center; gap: 8px; padding: 0 14px 12px; flex-shrink: 0; }
+  #ifootCnt { font-size: 10px; color: var(--text-dim); }
+  #iempty { text-align: center; font-size: 11.5px; color: var(--text-dim); padding: 26px 10px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>提示词库</span>
+    <input id="searchInput" data-nodrag placeholder="搜索名称…" />
+  </div>
+  <div id="flipWrap">
+    <div id="faceA">
+      <div id="groups"></div>
+    </div>
+    <div id="faceB">
+      <div id="gbar">
+        <span class="hbtn" id="btnBack" data-pass title="返回分组"></span>
+        <span id="gbarIco"></span>
+        <span id="gbarName"></span>
+        <span id="gbarCnt"></span>
+        <div class="sp"></div>
+      </div>
+      <div id="list"></div>
+      <div id="foot">
+        <span class="sp"></span>
+        <button class="fbtn icon" id="btnDel" title="删除选中的提示词（二次确认；可在设置里整体恢复）" disabled></button>
+        <button class="fbtn icon" id="btnExport" title="导出整库为json文件"></button>
+        <button class="fbtn icon" id="btnImport" title="导入 json 库 / txt 文本"></button>
+        <button class="fbtn icon" id="btnSave" title="保存当前提示词（点logo选分组）"></button>
+      </div>
+    </div>
+    <div id="faceC">
+      <div id="dlgTitle"></div>
+      <input class="dlgInput" id="dlgName" data-nodrag placeholder="名称" />
+      <div class="dlgGrid" id="dlgIcons"></div>
+      <div class="dlgGrid" id="dlgGroups"></div>
+      <textarea id="dlgText" data-nodrag placeholder="提示词内容"></textarea>
+      <div id="dlgBtns">
+        <button class="fbtn" id="dlgDanger" style="display:none">删除</button>
+        <button class="fbtn" id="dlgCancel">取消</button>
+        <button class="fbtn accent" id="dlgOk">确定</button>
+      </div>
+    </div>
+    <div id="faceD">
+      <div id="ibar">
+        <span class="hbtn" id="ibtnBack" data-pass title="返回分组"></span>
+        <span id="ibarIco"></span>
+        <span id="ibarName">批量导入</span>
+        <span id="ibarCnt"></span>
+        <div class="sp"></div>
+      </div>
+      <div id="isrc">
+        <button class="fbtn" id="ibtnDir" data-pass title="选一个文件夹：txt / md / json / csv / 带提示词元数据的png 全部识别，子文件夹一起扫">选择文件夹</button>
+        <button class="fbtn" id="ibtnPlugin" data-pass title="把本机来福魔改版插件里的提示词预设复制过来（原插件数据不动；其他来福系列插件只列名字不可搬）">搬运插件</button>
+        <button class="fbtn" id="ibtnRestore" data-pass title="把删除过的提示词整体找回（含内置词条）；库里已有同样内容的不会重复放回">恢复系统提示词</button>
+        <button class="fbtn" id="ibtnCarry" data-pass style="display:none" title="把最近一次从插件搬来的词条整批移出来福库（原有词条不动；插件里的文件从未被改动）">搬回</button>
+        <span id="isrcLab"></span>
+      </div>
+      <div id="ilist"><div id="iempty">选一个文件夹，或搬运魔改版插件里的提示词<br><span style="font-size:10px;opacity:0.75">按文件名自动分组，亮边的是没把握的，导入前可手改</span></div></div>
+      <div id="ifoot">
+        <button class="fbtn icon" id="ibtnAll" data-pass title="全选 / 全不选"></button>
+        <span id="ifootCnt"></span>
+        <span class="sp"></span>
+        <button class="fbtn" id="ibtnUndo" data-pass style="display:none">撤销本次导入</button>
+        <button class="fbtn accent" id="ibtnGo" data-pass disabled>开始导入</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const IC = window.ORANGE_ICONS;
+  $('ico').innerHTML = IC.prompts;
+
+  // 内联小图标（列表行专用）
+  const I_HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
+  const I_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  const I_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>';
+  const I_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
+  const I_MINUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 12h14"/></svg>';
+  // 批量导入：托盘+落入箭头（与全家线描图标同语言）
+  const I_INBOX = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M12 8v4"/><path d="m9.5 10.5 2.5 2.5 2.5-2.5"/></svg>';
+  const I_CHECKALL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>';
+  const I_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+  const I_PLUG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>';
+  const I_RESTORE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>';
+  // 文字标注跟随全局修图模式（控制台-设置里的新手/盲人）：
+  // glass.js收ui-vars给body挂/摘blindmode类，标注由CSS显隐，悬停提示glass.js统一摘还
+
+  // ---------- 翻牌：正面=logo网格 ⇄ 背面=词条列表（压扁-弹开） ----------
+  let view = 'groups';
+  let flipping = false;
+  let delMode = false;   // 分组删除模式（－点亮）
+  function flipTo(v) {
+    if (view === v || flipping) return;
+    flipping = true;
+    delMode = false;   // 翻面即退出删除模式
+    const w = $('flipWrap');
+    w.style.transition = 'transform 0.13s ease-in';
+    w.style.transform = 'scaleX(0.02)';
+    setTimeout(() => {
+      view = v;
+      $('faceA').style.display = v === 'groups' ? 'flex' : 'none';
+      $('faceB').style.display = v === 'list' ? 'flex' : 'none';
+      $('faceC').style.display = v === 'edit' ? 'flex' : 'none';
+      $('faceD').style.display = v === 'import' ? 'flex' : 'none';
+      if (v !== 'edit' && v !== 'import') renderAll();   // 编辑面/导入面的内容各自铺好，不重渲
+      w.style.transition = 'transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1)';
+      w.style.transform = 'scaleX(1)';
+      setTimeout(() => {
+        flipping = false; w.style.transition = '';
+        if (v === 'edit') $('dlgName').focus();
+      }, 180);
+    }, 135);
+  }
+
+  // ---------- 状态 ----------
+  let lib = { groups: [], prompts: [] };
+  let curGroup = 'other';
+  let query = '';
+  let selId = null;   // 当前选中的提示词（右下✕删除的目标）
+
+  const save = () => window.orange.plibSet(lib);
+
+  // ---------- 分组logo ----------
+  const PI = window.PLIB_ICONS || {};
+  function groupIcon(grp) {
+    if (grp.icon && PI[grp.icon]) return PI[grp.icon];
+    if (grp.id === 'forge') return PI.forgeF || IC.prompts;   // F组：字母F标
+    if (grp.id === 'factory') return IC.orange;               // 内置组：来福logo
+    return PI.tag;
+  }
+
+  function renderGroups() {
+    const g = $('groups');
+    g.innerHTML = '';
+    // 每组词条数：角标提示哪组有货
+    const cnt = {};
+    lib.prompts.forEach((p) => { cnt[p.group] = (cnt[p.group] || 0) + 1; });
+    lib.groups.forEach((grp) => {
+      const el = document.createElement('div');
+      el.className = 'gtile' + (curGroup === grp.id ? ' cur' : '') + (delMode ? ' del' : '');
+      el.setAttribute('data-pass', '');   // 锁定模式热区
+      el.innerHTML = groupIcon(grp);
+      const lab = document.createElement('span');
+      lab.className = 'glab';
+      lab.textContent = grp.name || '';
+      el.appendChild(lab);
+      if (delMode) {
+        const d = document.createElement('span');
+        d.className = 'gdel';
+        d.textContent = '✕';
+        el.appendChild(d);
+      }
+      if (cnt[grp.id]) {
+        const b = document.createElement('span');
+        b.className = 'gcount';
+        b.textContent = cnt[grp.id] > 99 ? '99+' : cnt[grp.id];
+        el.appendChild(b);
+      }
+      el.title = (grp.name || '') + (cnt[grp.id] ? '（' + cnt[grp.id] + '条）' : '（空）')
+        + (delMode ? ' · 点击删除该分组' : ' · 点击翻牌进入 · 右键改名/换图标');
+      // 纯图标（盲人模式）：名字只在悬停提示里；点logo=翻牌进组；删除模式下点logo=删组
+      el.addEventListener('click', () => {
+        if (delMode) { removeGroup(grp); return; }
+        curGroup = grp.id; selId = null;
+        flipTo('list');
+      });
+      el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!delMode) editGroup(grp); });
+      g.appendChild(el);
+    });
+
+    // ＋新建分组 / －删除模式开关（纯图标操作钮）
+    const mkLab = (t) => { const s = document.createElement('span'); s.className = 'glab'; s.textContent = t; return s; };
+    const add = document.createElement('div');
+    add.className = 'gtile op';
+    add.setAttribute('data-pass', '');
+    add.innerHTML = I_PLUS;
+    add.appendChild(mkLab('加分组'));
+    add.title = '新建分组';
+    add.addEventListener('click', () => { delMode = false; editGroup(null); });
+    g.appendChild(add);
+
+    const minus = document.createElement('div');
+    minus.className = 'gtile op' + (delMode ? ' on' : '');
+    minus.setAttribute('data-pass', '');
+    minus.innerHTML = I_MINUS;
+    minus.appendChild(mkLab('减分组'));
+    minus.title = delMode ? '退出删除模式' : '删除分组（点亮后点要删的logo，词条并入「其他」不丢）';
+    minus.addEventListener('click', () => { delMode = !delMode; renderGroups(); });
+    g.appendChild(minus);
+
+    // 最后一格：批量导入（logo式按钮，翻到导入面）
+    const imp = document.createElement('div');
+    imp.className = 'gtile op';
+    imp.setAttribute('data-pass', '');
+    imp.setAttribute('data-act', 'import');
+    imp.innerHTML = I_INBOX;
+    imp.appendChild(mkLab('批量导入'));
+    imp.title = '批量导入提示词：选文件夹 / 搬运来福魔改版插件（自动分组，导入前可手改）';
+    imp.addEventListener('click', () => { delMode = false; openImport(); });
+    g.appendChild(imp);
+  }
+
+  // 点分组面板空白处=退出删除模式（抖动取消的自然出口）
+  $('faceA').addEventListener('click', (e) => {
+    if (delMode && (e.target.id === 'groups' || e.target.id === 'faceA')) {
+      delMode = false;
+      renderGroups();
+    }
+  });
+
+  // 删组：词条并入「其他」（没有则并入第一组），不误删内容；留在删除模式可连删
+  function removeGroup(grp) {
+    lib.groups = lib.groups.filter((x) => x.id !== grp.id);
+    if (!lib.groups.length) { lib.groups.push({ id: 'other', name: '其他', icon: 'other' }); delMode = false; }
+    const fb = (lib.groups.find((x) => x.id === 'other') || lib.groups[0]).id;
+    lib.prompts.forEach((p) => { if (p.group === grp.id) p.group = fb; });
+    if (curGroup === grp.id) curGroup = fb;
+    save(); renderGroups();
+  }
+
+  // 背面顶栏：返回键 + 当前分组身份（搜索态显示搜索身份）
+  function renderGbar() {
+    const grp = lib.groups.find((x) => x.id === curGroup) || {};
+    $('gbarIco').innerHTML = query ? IC.prompts : (groupIcon(grp) || '');
+    $('gbarName').textContent = query ? '搜索结果' : (grp.name || '');
+    const n = query ? visiblePrompts().length : lib.prompts.filter((p) => p.group === curGroup).length;
+    $('gbarCnt').textContent = n + ' 条';
+  }
+
+  // ---------- 列表 ----------
+  function visiblePrompts() {
+    if (query) {
+      // 0910用户裁定：只搜标题（搜正文会把"内容里顺带提到"的词条混进来）；按匹配位置排——标题以搜索词开头的最前，
+      // 其次出现位置靠前的，同位再甄选优先、时间倒序
+      const q = query.toLowerCase();
+      return lib.prompts
+        .map((p) => ({ p, at: (p.name || '').toLowerCase().indexOf(q) }))
+        .filter((x) => x.at >= 0)
+        .sort((a, b) => (a.at - b.at) || ((b.p.fav ? 1 : 0) - (a.p.fav ? 1 : 0)) || ((b.p.ts || 0) - (a.p.ts || 0)))
+        .map((x) => x.p);
+    }
+    const arr = lib.prompts.filter((p) => p.group === curGroup);
+    // 甄选(喜欢)的词条置顶（0904用户裁定），其余按时间倒序
+    return arr.slice().sort((a, b) => ((b.fav ? 1 : 0) - (a.fav ? 1 : 0)) || ((b.ts || 0) - (a.ts || 0)));
+  }
+
+  function renderList() {
+    const list = $('list');
+    list.innerHTML = '';
+    const arr = visiblePrompts();
+    if (!arr.length) {
+      const tip = query ? '没有匹配的提示词' : '这里空空如也<br><span style="font-size:10px;opacity:0.7">右下保存键可把当前提示词存进来</span>';
+      list.innerHTML = '<div id="empty">' + tip + '</div>';
+      return;
+    }
+    arr.forEach((p) => {
+      const row = document.createElement('div');
+      row.className = 'row' + (p.id === selId ? ' sel' : '');
+      row.title = (p.text || '').slice(0, 300);
+
+      const heart = document.createElement('span');
+      heart.className = 'heart' + (p.fav ? ' on' : '');
+      heart.innerHTML = I_HEART;
+      heart.title = p.fav ? '取消甄选' : '加入甄选';
+      heart.addEventListener('click', (e) => {
+        e.stopPropagation();
+        p.fav = !p.fav;
+        save();
+        renderList();
+      });
+
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = p.name || '未命名';
+
+      // 单击=选中并填入；F词条→Forge卡正向提示词；普通→提示词卡；双击=编辑
+      row.addEventListener('click', () => {
+        selId = p.id;
+        if (p.forge) {
+          if (window.orange.glassLog) window.orange.glassLog('[plib] 点击F词条 ' + (p.name || '') + ' preset=' + (p.presetName || '无'));
+          // 整预设应用（模型/采样器/步数/重绘/正反向词全套）；老词条无presetName则退回只填正向词
+          if (window.orange.forgeApplyPreset) window.orange.forgeApplyPreset(p.presetName || '', p.text);
+          else if (window.orange.forgeFillPos) window.orange.forgeFillPos(p.text);
+          if (window.orange.armModule) window.orange.armModule('forge');
+        } else {
+          // 来源标记先行（0904机制）：提示词卡收到后，这次填入若带滑块/正则控件就优先翻控件面
+          if (window.orange.glassLog) window.orange.glassLog('[plib] 点击词条 ' + (p.name || '') + ' →发唤醒信号=' + !!window.orange.promptLibFill);
+          if (window.orange.promptLibFill) window.orange.promptLibFill();
+          window.orange.setConfig({ gen: { prompt: p.text } });
+          if (window.orange.armModule) window.orange.armModule('prompt-box');
+        }
+        renderList();
+      });
+      row.addEventListener('dblclick', () => editPrompt(p));
+
+      row.append(heart, name);
+      // F词条标识：爱心右侧的F方框
+      if (p.forge) {
+        const fb = document.createElement('span');
+        fb.className = 'fbadge';
+        fb.textContent = 'F';
+        fb.title = 'Forge 预设提示词';
+        row.insertBefore(fb, name);
+      }
+      list.appendChild(row);
+    });
+    updateDelBtn();
+  }
+
+  function renderAll() { renderGroups(); renderGbar(); renderList(); }
+
+  // ---------- 弹层：分组新建/改名/换图标/删除 与 提示词编辑/保存 ----------
+  let dlgCb = null, dlgIcon = null, dlgGid = null;
+  // 图标自选池（新建/编辑分组时点选）
+  function renderDlgIcons(cur) {
+    dlgIcon = cur;
+    const box = $('dlgIcons');
+    box.innerHTML = '';
+    const NAMES = window.PLIB_ICON_NAMES || {};
+    Object.keys(PI).forEach((k) => {
+      if (k === 'forgeF') return;   // F组专属标不进自选池
+      const el = document.createElement('div');
+      el.className = 'pick' + (dlgIcon === k ? ' cur' : '');
+      el.innerHTML = PI[k];
+      el.title = NAMES[k] || k;   // 纯图标：名字只在悬停提示
+      el.addEventListener('click', () => renderDlgIcons(k));
+      box.appendChild(el);
+    });
+  }
+  // 分组logo选择器（保存提示词时点选目标分组）
+  function renderDlgGroups(cur) {
+    dlgGid = cur;
+    const box = $('dlgGroups');
+    box.innerHTML = '';
+    lib.groups.forEach((grp) => {
+      const el = document.createElement('div');
+      el.className = 'pick' + (dlgGid === grp.id ? ' cur' : '');
+      el.innerHTML = groupIcon(grp);
+      el.title = grp.name || '';   // 纯图标：名字只在悬停提示
+      el.addEventListener('click', () => renderDlgGroups(grp.id));
+      box.appendChild(el);
+    });
+  }
+  // 编辑面=翻牌第三面：记住来处，确定/取消/删除后翻回去
+  let dlgPrev = 'groups';
+  function openDlg({ title, name, text, showText, showDanger, iconPick, groupPick, onOk, onDanger }) {
+    $('dlgTitle').textContent = title;
+    $('dlgName').value = name || '';
+    $('dlgText').value = text || '';
+    $('dlgText').classList.toggle('on', !!showText);
+    $('dlgDanger').style.display = showDanger ? '' : 'none';
+    $('dlgIcons').classList.toggle('on', !!iconPick);
+    $('dlgGroups').classList.toggle('on', !!groupPick);
+    dlgIcon = null; dlgGid = null;
+    if (iconPick) renderDlgIcons(iconPick.cur || 'tag');
+    if (groupPick) renderDlgGroups(groupPick.cur);
+    dlgCb = { onOk, onDanger };
+    if (view !== 'edit') dlgPrev = view;
+    flipTo('edit');
+  }
+  const closeDlg = () => flipTo(dlgPrev);
+  $('dlgCancel').addEventListener('click', closeDlg);
+  $('dlgOk').addEventListener('click', () => {
+    if (dlgCb && dlgCb.onOk) dlgCb.onOk($('dlgName').value.trim(), $('dlgText').value, { icon: dlgIcon, gid: dlgGid });
+    closeDlg();
+  });
+  $('dlgDanger').addEventListener('click', () => {
+    if (dlgCb && dlgCb.onDanger) dlgCb.onDanger();
+    closeDlg();
+  });
+
+  function editGroup(grp) {
+    openDlg({
+      title: grp ? '分组改名 / 换图标 / 删除' : '新建分组 · 点选一个logo',
+      name: grp ? grp.name : '',
+      showDanger: !!grp,
+      iconPick: { cur: grp ? (grp.icon || 'tag') : 'tag' },
+      onOk: (nm, _tx, ex) => {
+        if (!nm) return;
+        if (grp) { grp.name = nm; grp.icon = (ex && ex.icon) || grp.icon || 'tag'; }
+        else {
+          const id = 'g' + Date.now();
+          lib.groups.push({ id, name: nm, icon: (ex && ex.icon) || 'tag' });
+          curGroup = id;
+        }
+        save(); renderAll();
+      },
+      onDanger: () => {
+        if (!grp) return;
+        // 删分组（内置默认组也可删）：组内提示词并入「其他」（没有则并入第一组），不误删内容
+        lib.groups = lib.groups.filter((x) => x.id !== grp.id);
+        if (!lib.groups.length) lib.groups.push({ id: 'other', name: '其他', icon: 'other' });
+        const fb = (lib.groups.find((x) => x.id === 'other') || lib.groups[0]).id;
+        lib.prompts.forEach((p) => { if (p.group === grp.id) p.group = fb; });
+        if (curGroup === grp.id) curGroup = fb;
+        save(); renderAll();
+      },
+    });
+  }
+
+  function editPrompt(p) {
+    openDlg({
+      title: '编辑提示词',
+      name: p.name, text: p.text, showText: true, showDanger: true,
+      onOk: (nm, tx) => {
+        p.name = nm || p.name;
+        p.text = tx;
+        save(); renderList();
+      },
+      onDanger: () => {
+        trashPrompt(p.id);   // 同走回收站（0904）：设置里可整体恢复
+        save(); renderList();
+      },
+    });
+  }
+
+  // ---------- 搜索（120ms防抖）：正面/导入面敲字自动翻到列表面看结果 ----------
+  // 0910用户实报"搬运成功但搜不到"：导入完停在导入面（铁律17），此时搜索结果渲染进了藏着的列表面，看起来像没搜到
+  let queryTimer = null;
+  function applyQuery() {
+    if (query && (view === 'groups' || view === 'import')) {
+      if (flipping) { queryTimer = setTimeout(applyQuery, 150); return; }   // 翻面动画中 flipTo 会直接丢弃请求，等它落定再翻
+      flipTo('list'); return;   // flip内部会renderAll
+    }
+    renderGbar(); renderList();
+  }
+  $('searchInput').addEventListener('input', (e) => {
+    clearTimeout(queryTimer);
+    queryTimer = setTimeout(() => {
+      query = e.target.value.trim();
+      applyQuery();
+    }, 120);
+  });
+
+  // 返回：清搜索、翻回logo网格
+  $('btnBack').innerHTML = I_BACK;
+  $('btnBack').addEventListener('click', () => {
+    query = '';
+    $('searchInput').value = '';
+    flipTo('groups');
+  });
+
+
+  // ---------- 底部：删除选中 / 导入 / 保存当前（图标按钮，右下） ----------
+  const I_SAVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
+  const I_IMPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+  const I_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 8 12 3 17 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+  $('btnSave').innerHTML = I_SAVE;
+  $('btnImport').innerHTML = I_IMPORT;
+  $('btnExport').innerHTML = I_EXPORT;
+  $('btnDel').innerHTML = I_X;
+
+  function updateDelBtn() {
+    if (delArm) delDisarm();   // 换目标/重渲=撤销待确认的删除，防错删新选中的词条
+    $('btnDel').disabled = !selId || !lib.prompts.find((x) => x.id === selId);
+  }
+
+  // 软删除进回收站（0904用户裁定）：墓碑防工厂词条重启复活；设置卡「恢复系统提示词」整体找回
+  function trashPrompt(id) {
+    const p = lib.prompts.find((x) => x.id === id);
+    if (p) { lib.trash = lib.trash || []; lib.trash.push(Object.assign({}, p, { delTs: Date.now() })); }
+    lib.prompts = lib.prompts.filter((x) => x.id !== id);
+  }
+
+  // 删除=二段确认（0904用户裁定）：点删除→红色"确认删除?"→3秒内再点才真删
+  let delArm = null;
+  function delDisarm() {
+    clearTimeout(delArm); delArm = null;
+    $('btnDel').classList.remove('confirm');
+    $('btnDel').innerHTML = I_X;
+  }
+  $('btnDel').addEventListener('click', () => {
+    if (!selId) return;
+    if (!delArm) {
+      $('btnDel').classList.add('confirm');
+      $('btnDel').textContent = '确认删除?';
+      delArm = setTimeout(delDisarm, 3000);
+      return;
+    }
+    delDisarm();
+    trashPrompt(selId);
+    selId = null;
+    save(); renderList();
+  });
+
+  $('btnExport').addEventListener('click', async () => {
+    await window.orange.plibExport();
+  });
+
+  $('btnSave').addEventListener('click', async () => {
+    const cfg = await window.orange.getConfig();
+    const text = (cfg.gen && cfg.gen.prompt) || '';
+    if (!text.trim()) return;
+    openDlg({
+      title: '保存当前提示词 · 点logo选分组',
+      name: '', text, showText: true,
+      groupPick: { cur: curGroup },
+      onOk: (nm, tx, ex) => {
+        if (!tx.trim()) return;
+        const gid = (ex && ex.gid) || curGroup;
+        lib.prompts.push({
+          id: 'p' + Date.now(),
+          name: nm || tx.trim().slice(0, 12),
+          text: tx, group: gid,
+          fav: false,
+          ts: Date.now(),
+        });
+        curGroup = gid;   // 跳到保存目标分组，存进哪一眼看得见
+        save(); renderAll();
+      },
+    });
+  });
+
+  $('btnImport').addEventListener('click', async () => {
+    await window.orange.plibImport(curGroup);   // 结果经 plib-changed 广播回来刷新
+  });
+
+  // ---------- 批量导入面（0906）：文件夹/老插件 → 候选（勾选·改名·改组）→ 入库（复制语义）→ 可撤销 ----------
+  const imp = { items: [], forge: [], forgeOn: true, label: '', lastBatch: null, busy: false, source: '', picks: [] };
+  $('ibarIco').innerHTML = I_INBOX;
+  $('ibtnBack').innerHTML = I_BACK;
+  $('ibtnAll').innerHTML = I_CHECKALL;
+  $('ibtnDir').innerHTML = I_FOLDER + '<span>选择文件夹</span>';
+  $('ibtnPlugin').innerHTML = I_PLUG + '<span>搬运插件</span>';
+  $('ibtnRestore').innerHTML = I_RESTORE + '<span>恢复系统提示词</span>';
+  // 搬回键：库里存在"最近从插件搬来的一批"才现身（重启后也在）；点击=整批移出来福库，
+  // 库里原有词条/搬运时因重复没入库的对象都不带批次标记，天然不动；插件侧文件从未被碰过
+  async function syncCarryBack() {
+    try {
+      const st = await window.orange.plibCarryStatus();
+      const btn = $('ibtnCarry');
+      btn.style.display = st && st.batch ? '' : 'none';
+      if (st && st.batch) btn.textContent = '搬回 ' + st.count + ' 条';
+    } catch (e) {}
+  }
+  $('ibtnCarry').addEventListener('click', async () => {
+    const r = await window.orange.plibCarryBack();
+    $('ifootCnt').textContent = r && r.ok ? '已搬回：移除 ' + r.removed + ' 条（原有词条未动）' : '✗ ' + ((r && r.error) || '搬回失败');
+    imp.items.forEach((it) => { if (it.done) { it.done = false; it.on = true; } });
+    imp.lastBatch = null;
+    $('ibtnUndo').style.display = 'none';
+    syncCarryBack();
+    renderImport();
+  });
+  function openImport() {
+    imp.lastBatch = null;
+    $('ibtnUndo').style.display = 'none';
+    syncCarryBack();
+    flipTo('import');
+    renderImport();
+  }
+  $('ibtnBack').addEventListener('click', () => flipTo('groups'));
+  const importGroups = () => lib.groups.filter((g) => g.id !== 'forge');
+  function renderImport() {
+    const L = $('ilist');
+    L.innerHTML = '';
+    $('isrcLab').textContent = imp.label || '';
+    if (!imp.items.length && !imp.forge.length && !imp.picks.length) {
+      L.innerHTML = '<div id="iempty">选一个文件夹，或搬运魔改版插件里的提示词<br><span style="font-size:10px;opacity:0.75">按文件名自动分组，亮边的是没把握的，导入前可手改</span></div>';
+      $('ibarCnt').textContent = '';
+      $('ifootCnt').textContent = '';
+      $('ibtnGo').disabled = true;
+      return;
+    }
+    // 搬运插件选单（0908用户裁定）：本机来福系列插件全列出来，只有魔改版那行可点（.pick），其余灰掉不可点（.nopick）
+    if (imp.picks.length) {
+      imp.picks.forEach((p) => {
+        const row = document.createElement('div');
+        row.className = 'irow ' + (p.mod ? 'pick' : 'nopick');
+        row.dataset.id = p.id;
+        row.title = p.mod ? '点击扫描并搬运这个插件里的提示词' : '只有魔改版插件可以搬运';
+        if (p.mod) row.setAttribute('data-pass', '');
+        const meta = document.createElement('div');
+        meta.className = 'imeta';
+        meta.innerHTML = '<span class="iname" style="pointer-events:none"></span><span class="iprev"></span>';
+        meta.firstChild.textContent = p.label;
+        meta.lastChild.textContent = p.id + ' · PS ' + p.vers.join('/');
+        row.appendChild(meta);
+        if (!p.mod) { const b = document.createElement('span'); b.className = 'ibadge'; b.textContent = '不可搬运'; row.appendChild(b); }
+        L.appendChild(row);
+      });
+      $('ibarCnt').textContent = imp.picks.length + ' 个插件';
+      $('ifootCnt').textContent = '只有魔改版可搬运，其他只列名字';
+      $('ibtnGo').disabled = true;
+      return;
+    }
+    if (imp.forge.length) {
+      const fr = document.createElement('div');
+      fr.className = 'irow forge' + (imp.forgeOn ? '' : ' off');
+      fr.innerHTML = '<span class="ick' + (imp.forgeOn ? ' on' : '') + '" data-act="forge" data-pass></span>'
+        + '<div class="imeta"><span class="iname" style="pointer-events:none">Forge 预设 ' + imp.forge.length + ' 个</span>'
+        + '<span class="iprev">复制进你的 Forge 预设库并生成 F 词条（已有同名的跳过）</span></div>';
+      L.appendChild(fr);
+    }
+    const gsel = importGroups().map((g) => '<option value="' + g.id + '">' + (g.name || g.id) + '</option>').join('');
+    imp.items.forEach((it) => {
+      const row = document.createElement('div');
+      row.className = 'irow' + (it.on ? '' : ' off') + (it.done ? ' done' : '');
+      row.dataset.key = it.key;
+      const ck = document.createElement('span');
+      ck.className = 'ick' + (it.on ? ' on' : '');
+      ck.setAttribute('data-act', 'toggle'); ck.setAttribute('data-pass', '');
+      const meta = document.createElement('div');
+      meta.className = 'imeta';
+      const nm = document.createElement('input');
+      nm.className = 'iname'; nm.value = it.name; nm.setAttribute('data-nodrag', ''); nm.setAttribute('data-act', 'name');
+      nm.title = '词条名（可改）';
+      const pv = document.createElement('span');
+      pv.className = 'iprev'; pv.textContent = it.text.slice(0, 90).replace(/\s+/g, ' ');
+      pv.title = it.src + '\n\n' + it.text.slice(0, 600);
+      meta.append(nm, pv);
+      const sel = document.createElement('select');
+      sel.className = 'igrp' + (it.sure ? '' : ' unsure'); sel.innerHTML = gsel; sel.value = it.group;
+      sel.setAttribute('data-act', 'group'); sel.setAttribute('data-pass', '');
+      sel.title = it.sure ? '自动分组（按名字/类别命中）' : '自动分组没把握，请确认';
+      row.append(ck, meta, sel);
+      if (it.done) { const b = document.createElement('span'); b.className = 'ibadge'; b.textContent = '已导入'; row.appendChild(b); }
+      else if (it.dup) { const b = document.createElement('span'); b.className = 'ibadge dup'; b.textContent = '已存在'; b.title = '库里已有一模一样的内容，默认不勾'; row.appendChild(b); }
+      L.appendChild(row);
+    });
+    const n = imp.items.filter((it) => it.on && !it.done).length;
+    $('ibarCnt').textContent = imp.items.length + ' 条候选';
+    $('ifootCnt').textContent = '已勾选 ' + n + (imp.forge.length && imp.forgeOn ? ' · Forge预设 ' + imp.forge.length : '');
+    $('ibtnGo').disabled = imp.busy || (!n && !(imp.forge.length && imp.forgeOn));
+  }
+  // 容器级事件委托（止血规范：监听挂容器，data-act寻址，重渲不丢）
+  $('ilist').addEventListener('click', (e) => {
+    const pk = e.target.closest('.irow.pick');   // 搬运选单：点魔改版那行=扫它；灰行没有 .pick 天然不响应
+    if (pk) { scanPlugin(pk.dataset.id); return; }
+    const act = e.target.dataset && e.target.dataset.act;
+    if (act === 'forge') { imp.forgeOn = !imp.forgeOn; renderImport(); return; }
+    if (act !== 'toggle') return;
+    const row = e.target.closest('.irow'); const it = imp.items.find((x) => x.key === (row && row.dataset.key));
+    if (it && !it.done) { it.on = !it.on; renderImport(); }
+  });
+  $('ilist').addEventListener('change', (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    const row = e.target.closest('.irow'); const it = imp.items.find((x) => x.key === (row && row.dataset.key));
+    if (!it) return;
+    if (act === 'group') { it.group = e.target.value; it.sure = true; e.target.classList.remove('unsure'); }
+    if (act === 'name') it.name = e.target.value.trim() || it.name;
+  });
+  $('ibtnAll').addEventListener('click', () => {
+    const live = imp.items.filter((it) => !it.done);
+    const allOn = live.length && live.every((it) => it.on);
+    live.forEach((it) => { it.on = !allOn; });
+    renderImport();
+  });
+  function takeScan(r, label) {
+    if (!r || !r.ok) { if (r && !r.canceled) $('isrcLab').textContent = '✗ ' + (r.error || '扫描失败'); return; }
+    imp.picks = [];   // 扫描成功=离开插件选单
+    imp.items = (r.items || []).map((it) => Object.assign({}, it, { on: !it.dup, done: false }));
+    imp.forge = (r.forge || []).map((f) => f.file);
+    imp.forgeOn = imp.forge.length > 0;
+    imp.label = label + ' · ' + (r.files || 0) + ' 个文件' + (r.unknown ? '（' + r.unknown + ' 个不认识的格式已跳过）' : '')
+      + (r.sources ? ' · ' + [...new Set(r.sources.map((s) => s.id.replace(/^com\./, '')))].join(',') : '');   // 同一插件多层目录共存只报一次
+    imp.lastBatch = null;
+    $('ibtnUndo').style.display = 'none';
+    syncCarryBack();   // 扫描后也刷新搬回键（旧批次回退解析在主进程）
+    renderImport();
+  }
+  $('ibtnDir').addEventListener('click', async () => {
+    if (imp.busy) return;
+    const r = await window.orange.plibScanDir();
+    imp.source = 'dir';
+    takeScan(r, r && r.label ? '文件夹「' + r.label + '」' : '文件夹');
+  });
+  // 搬运插件（0908改）：先列本机来福系列插件，只有魔改版可点、其余灰掉只看名字；点了才扫（主进程同样只认魔改版）
+  $('ibtnPlugin').addEventListener('click', async () => {
+    if (imp.busy) return;
+    const r = await window.orange.plibListPlugins();
+    if (!r || !r.ok) { $('isrcLab').textContent = '✗ ' + ((r && r.error) || '没找到插件'); return; }
+    imp.items = []; imp.forge = []; imp.picks = r.list || [];
+    imp.label = '选择要搬运的插件（只有魔改版可搬）';
+    renderImport();
+  });
+  async function scanPlugin(id) {
+    if (imp.busy) return;
+    const r = await window.orange.plibScanPlugins(id);
+    imp.source = 'plugin';
+    takeScan(r, (r && r.label) || '来福魔改版');
+  }
+  // 恢复系统提示词（0904 用户裁定的功能，0910 从设置卡搬到这里）：回收站整体找回 + 工厂词条补种；结果经 plib-changed 广播刷新
+  $('ibtnRestore').addEventListener('click', async () => {
+    if (imp.busy) return;
+    const btn = $('ibtnRestore');
+    btn.disabled = true;
+    const r = await window.orange.plibRestoreTrash();
+    $('isrcLab').textContent = r && r.ok
+      ? '✓ 已恢复 ' + r.restored + ' 条（内置词条已重新装载）' + (r.skipped ? '，' + r.skipped + ' 条库里已有同样内容未重复放回' : '')
+      : '✗ 恢复失败';
+    btn.disabled = false;
+  });
+  $('ibtnGo').addEventListener('click', async () => {
+    if (imp.busy) return;
+    const picked = imp.items.filter((it) => it.on && !it.done);
+    imp.busy = true; renderImport();
+    $('ibtnGo').textContent = '导入中…';
+    let msg = '';
+    if (picked.length) {
+      const r = await window.orange.plibImportApply({ items: picked.map((it) => ({ name: it.name, text: it.text, group: it.group })), label: imp.label.split(' · ')[0], source: imp.source });
+      if (r && r.ok) {
+        imp.lastBatch = r.batch;
+        picked.forEach((it) => { it.done = true; });
+        msg = '✓ 新增 ' + r.added + ' 条' + (r.skipped ? '，跳过重复 ' + r.skipped : '');
+      } else msg = '✗ ' + ((r && r.error) || '导入失败');
+    }
+    if (imp.forge.length && imp.forgeOn) {
+      const fr = await window.orange.plibImportForgePresets(imp.forge);
+      if (fr && fr.ok) { msg += (msg ? ' · ' : '') + 'Forge预设 ' + fr.copied + ' 个'; imp.forge = []; imp.forgeOn = false; }
+    }
+    imp.busy = false;
+    $('ibtnGo').textContent = '开始导入';
+    renderImport();
+    $('ifootCnt').textContent = msg;
+    $('ibtnUndo').style.display = imp.lastBatch ? '' : 'none';
+    syncCarryBack();
+    // 外部写入后停在能看见结果的视图（铁律17）：留在导入面，行上打「已导入」徽标 + 边框亮一次
+    const lg = document.querySelector('.lg');
+    if (lg) { let ring = lg.querySelector(':scope > .glowring.once'); if (!ring) { ring = document.createElement('div'); ring.className = 'glowring once'; lg.appendChild(ring); } else { ring.classList.remove('once'); void ring.offsetWidth; ring.classList.add('once'); } }
+  });
+  $('ibtnUndo').addEventListener('click', async () => {
+    if (!imp.lastBatch) return;
+    const r = await window.orange.plibImportUndo(imp.lastBatch);
+    imp.items.forEach((it) => { if (it.done) { it.done = false; it.on = true; } });
+    imp.lastBatch = null;
+    $('ibtnUndo').style.display = 'none';
+    renderImport();
+    $('ifootCnt').textContent = r && r.ok ? '已撤销，移除 ' + r.removed + ' 条' : '撤销失败';
+  });
+
+  // ---------- 初始化 ----------
+  (async () => {
+    lib = await window.orange.plibGet();
+    if (!lib.groups.length) lib.groups.push({ id: 'other', name: '其他', icon: 'other' });
+    // 开卡落在第一个有词条的分组——全空组打头时点开一片空白，体感像坏了
+    const firstFull = lib.groups.find((g) => lib.prompts.some((p) => p.group === g.id));
+    curGroup = (firstFull || lib.groups[0]).id;
+    renderAll();
+  })();
+  if (window.orange.onPlibChanged) {
+    window.orange.onPlibChanged((l) => {
+      lib = l;
+      // 兜底（0907"搬回后卡上还显示旧词条"）：当前分组被整批清空/删没了就退回分组面，
+      // 避免停在一个已经不存在内容的列表视图里让用户以为没删掉
+      if (view === 'list' && !query && !lib.prompts.some((p) => p.group === curGroup)) {
+        if (!flipping) flipTo('groups');
+        else renderAll();
+      } else renderAll();
+    });
+  }
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

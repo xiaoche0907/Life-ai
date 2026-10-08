@@ -1,0 +1,59 @@
+{
+  "name": "life-ai",
+  "productName": "Life-ai测试版",
+  "version": "6.0.7",
+  "description": "来福 Life-ai Photoshop AI 桌面助手测试版",
+  "author": "oranG / Life UI customization",
+  "main": "src/index.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "check": "node scripts/check-source.cjs",
+    "build": "electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "ag-psd": "31.0.2",
+    "koffi": "3.2.1",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.lifeai.test",
+    "productName": "Life-ai测试版",
+    "executableName": "Life-ai",
+    "asar": true,
+    "asarUnpack": ["src/factory_quick_presets/**", "src/factory_forge_presets/**"],
+    "files": ["src/**", "package.json"],
+    "extraResources": [
+      { "from": "ps-bridge", "to": "ps-bridge" },
+      { "from": "sounds", "to": "sounds" },
+      { "from": "bridge-machine-install.ps1", "to": "bridge-machine-install.ps1" }
+    ],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "compression": "maximum",
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.ico",
+      "artifactName": "Life-ai测试版-安装包.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "shortcutName": "Life-ai测试版",
+      "uninstallDisplayName": "Life-ai测试版",
+      "runAfterFinish": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": ["zh_CN", "en_US"],
+      "language": "2052"
+    }
+  }
+}

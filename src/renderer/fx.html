@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  #curName { font-size: 12px; color: var(--accent-text); font-weight: 700; }
+
+  #body { flex: 1; overflow-y: auto; padding: 2px 14px 4px; display: flex; flex-direction: column; gap: 8px; }
+  #body::-webkit-scrollbar { width: 0; }
+
+  /* ---------- 无限转盘走马灯（老插件同款交互） ---------- */
+  #carousel {
+    position: relative; overflow: hidden; flex: none;
+    padding: 10px 0 12px;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 23%, #000 77%, transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0%, #000 23%, #000 77%, transparent 100%);
+  }
+  #track { display: flex; gap: 10px; transition: transform 0.28s cubic-bezier(0.22,1,0.36,1); will-change: transform; }
+  .fx-el {
+    flex: 0 0 88px; width: 88px; height: 72px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+    cursor: pointer; opacity: 0.5;
+    background: var(--inset-bg);
+    border: 1px solid var(--inset-border);
+    border-radius: 12px; color: var(--text);
+    transition: transform 0.2s, opacity 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.2s;
+  }
+  .fx-el svg { width: 28px; height: 28px; }
+  .fx-el:hover { opacity: 0.85; }
+  .fx-el.focus {
+    opacity: 1; border-color: var(--accent-text); color: var(--accent-text);
+    transform: scale(1.1);
+    box-shadow: 0 0 18px -2px var(--accent);
+    z-index: 1;
+  }
+  .fx-el .nm { font-size: 11.5px; font-weight: 600; }
+
+  .hint2 { font-size: 9.5px; color: var(--text-dim); text-align: center; }
+
+  /* ---------- 参数区 ---------- */
+  .sec { font-size: 11px; font-weight: 700; color: #fff; margin: 4px 0 2px; }
+  .prow { margin: 2px 0 6px; }
+  .phead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; }
+  .phead label { font-size: 11px; color: var(--text); font-weight: 600; }
+  .phead .pnum { font-size: 11px; color: var(--accent-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; height: 18px; accent-color: var(--accent); cursor: pointer; }
+
+  /* 颜色色盘 */
+  .crow { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .crow input[type="color"] {
+    width: 44px; height: 28px; padding: 0; flex: none;
+    border: 1px solid var(--inset-border); border-radius: 8px;
+    background: transparent; cursor: pointer;
+  }
+  .crow .chex { flex: 1; font-size: 11px; color: var(--accent-text); font-weight: 700; letter-spacing: 0.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .crow .cfollow {
+    flex: none; font-size: 10px; color: var(--text-dim);
+    border: 1px solid var(--inset-border); border-radius: 7px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .crow .cfollow:hover { border-color: var(--accent-border); color: var(--text); }
+</style>
+</head>
+<body data-arm-id="fx">
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title" title="滚轮或点击切换特效 · 调参后开始跑图（有选区=对选区施加特效）"><span id="ico"></span>特效</span>
+    <div class="sp"></div>
+    <span id="curName"></span>
+  </div>
+  <div id="body">
+    <div id="carousel" title="滚轮或点击切换特效"><div id="track"></div></div>
+    <div id="params"></div>
+  </div>
+</div>
+
+<script src="fx-prompts.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.fx;
+
+  // ---------- 六种元素特效（logo跟随主题色，老插件原版图标） ----------
+  const IC_WATER = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.6 C12 2.6 5 10.5 5 15 a7 7 0 0 0 14 0 C19 10.5 12 2.6 12 2.6 Z"/></svg>';
+  const IC_FIRE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 C13 6.5 16.5 8 15.8 12.5 C15.4 15 13.9 16.5 13.9 16.5 C14.2 14.5 13 13 12 12.5 C12 15 10.5 16 9.6 17.5 A4.4 4.4 0 0 0 9 20 a4.5 4.5 0 0 0 9 0 C18 15.5 14.5 13 15 9 C13.5 10.5 12.8 9 12.9 7 C11 8.5 10.4 5.5 12 2.5 Z"/></svg>';
+  const IC_THUNDER = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 2 L4 13.5 h5.5 L8.5 22 L20 9.5 h-5.5 z"/></svg>';
+  const IC_WIND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 8 h9.5 a2.5 2.5 0 1 0 -2.4 -3.2"/><path d="M3 12 h14 a2.5 2.5 0 1 1 -2.4 3.2"/><path d="M3 16 h7.5"/></svg>';
+  const IC_SMOKE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 20 C7.5 17.5 10 16.5 10 13.5 C10 10.5 7.5 9.5 7.5 6.5"/><path d="M13 20 C13 16.5 15.5 15.5 15.5 12 C15.5 9 13.5 8 13.5 5"/><path d="M4.5 20 C4.5 18.3 6 17.5 6 15.5"/></svg>';
+  const IC_MAGIC = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2.6 l1.5 3.9 L17.5 8 l-4 1.5 L12 13.4 l-1.5-3.9 L6.5 8 l4-1.5 z"/><circle cx="17.6" cy="15.2" r="1.3"/><circle cx="6.6" cy="14.4" r="1"/><circle cx="13.6" cy="18.4" r="0.9"/></svg>';
+  const EFFECTS = [
+    { id: 'water',   name: '水',   icon: IC_WATER },
+    { id: 'fire',    name: '火',   icon: IC_FIRE },
+    { id: 'thunder', name: '雷',   icon: IC_THUNDER },
+    { id: 'wind',    name: '风',   icon: IC_WIND },
+    { id: 'smoke',   name: '烟',   icon: IC_SMOKE },
+    { id: 'magic',   name: '粒子', icon: IC_MAGIC },
+  ];
+  const N = EFFECTS.length;
+
+  let current = EFFECTS[0].id;
+  let vpos = N;          // 转盘中心slot（铺3份，中间份起步）
+  let promptText = '';   // 当前特效的工作提示词（滑块/色盘实时改写它）
+
+  // ---------- @param 正则识别（老插件同一约定） ----------
+  function parseParams(text) {
+    const out = [], re = /@param:([^"]+)"\s*:\s*([\d.]+)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      if (/_(?:desc|label|note|range)$/.test(m[1])) continue;
+      out.push({ name: m[1], value: parseFloat(m[2]) });
+    }
+    return out;
+  }
+  const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function labelOf(name, text) {
+    const m = new RegExp('@param:' + esc(name) + '_label"\\s*:\\s*"([^"]+)"').exec(text);
+    return m ? m[1] : name.replace(/_/g, ' ');
+  }
+  function rangeOf(name, text) {
+    const m = new RegExp('@param:' + esc(name) + '_range"\\s*:\\s*"([^"]+)"').exec(text);
+    if (m) {
+      const a = m[1].split(',').map(Number);
+      if (a.length >= 3 && !isNaN(a[0])) return { min: a[0], max: a[1], step: a[2] };
+    }
+    return { min: 0, max: 1, step: 0.05 };
+  }
+  function replaceParam(text, name, val) {
+    return text.replace(new RegExp('(@param:' + esc(name) + '"\\s*:\\s*)[\\d.]+'), '$1' + val);
+  }
+
+  // ---------- 颜色填空字段（键以「颜色」结尾）→ 色盘 ----------
+  function colorField(text) {
+    const m = /"([^"]*颜色)"\s*:\s*"([^"]*)"/.exec(text);
+    return m ? { key: m[1], value: m[2] } : null;
+  }
+  const extractHex = (s) => { const m = /#[0-9A-Fa-f]{6}/.exec(String(s || '')); return m ? m[0] : null; };
+  const isHex = (s) => /^#[0-9A-Fa-f]{6}$/.test(String(s || '').trim());
+  function replaceColorField(text, key, val) {
+    return text.replace(new RegExp('("' + esc(key) + '"\\s*:\\s*")[^"]*(")'), '$1' + val + '$2');
+  }
+
+  // ---------- 无限转盘 ----------
+  function buildTrack() {
+    const track = $('track');
+    track.innerHTML = '';
+    for (let s = 0; s < N * 3; s++) {
+      const f = EFFECTS[s % N];
+      const el = document.createElement('div');
+      el.className = 'fx-el';
+      el.dataset.fx = f.id;
+      el.dataset.slot = s;
+      el.innerHTML = f.icon + '<span class="nm">' + f.name + '</span>';
+      el.addEventListener('click', () => {
+        vpos = s;
+        layout(true);
+        selectEffect(f.id);
+      });
+      track.appendChild(el);
+    }
+    $('carousel').addEventListener('wheel', (e) => {
+      e.preventDefault();
+      normalize();
+      vpos += (e.deltaY > 0 ? 1 : -1);
+      layout(true);
+      selectEffect(EFFECTS[((vpos % N) + N) % N].id);
+    }, { passive: false });
+  }
+  function normalize() {
+    const norm = N + (((vpos - N) % N) + N) % N;
+    if (norm !== vpos) { vpos = norm; layout(false); }
+  }
+  function layout(animate) {
+    const car = $('carousel'), track = $('track');
+    const first = track.querySelector('.fx-el');
+    if (!first) return;
+    const step = (first.offsetWidth || 88) + 10;
+    const tx = (car.clientWidth / 2) - (vpos * step + (first.offsetWidth || 88) / 2);
+    if (!animate) {
+      track.style.transition = 'none';
+      track.style.transform = 'translateX(' + tx + 'px)';
+      void track.offsetWidth;
+      track.style.transition = '';
+    } else {
+      track.style.transform = 'translateX(' + tx + 'px)';
+    }
+    track.querySelectorAll('.fx-el').forEach((el) => {
+      el.classList.toggle('focus', Number(el.dataset.slot) === vpos);
+    });
+  }
+
+  function selectEffect(id) {
+    current = id;
+    window.orange.setConfig({ gen: { fxCurrent: id } });
+    $('curName').textContent = EFFECTS.find((f) => f.id === id).name;
+    promptText = (window._effectPrompts || {})[id] || '';
+    renderParams();
+  }
+
+  // ---------- 参数渲染：@param 滑块 + 颜色色盘 ----------
+  function renderParams() {
+    const wrap = $('params');
+    const text = promptText;
+    const params = parseParams(text);
+    const cf = colorField(text);
+    let html = '';
+    if (!text.trim()) {
+      wrap.innerHTML = '<div class="hint2">⚠ 该特效暂无内置提示词</div>';
+      return;
+    }
+    if (cf) {
+      const hex = extractHex(cf.value) || '#E8A23C';
+      const follow = !isHex(cf.value);
+      html += '<div class="sec">' + cf.key + '</div>'
+        + '<div class="crow">'
+        + '<input type="color" id="fxColor" value="' + hex + '" title="点击取色">'
+        + '<span class="chex" id="fxColorHex">' + (follow ? '跟随底图' : cf.value) + '</span>'
+        + '<span class="cfollow" id="fxColorFollow" title="不指定颜色，从底图提取">跟随底图</span>'
+        + '</div>';
+    }
+    if (params.length) {
+      html += '<div class="sec">可调参数</div>' + params.map((p) => {
+        const rg = rangeOf(p.name, text), lb = labelOf(p.name, text);
+        return '<div class="prow">'
+          + '<div class="phead"><label>' + lb + '</label><span class="pnum" id="pn_' + p.name + '">' + p.value + '</span></div>'
+          + '<input type="range" class="pslider" data-pname="' + p.name + '" min="' + rg.min + '" max="' + rg.max + '" step="' + rg.step + '" value="' + p.value + '">'
+          + '</div>';
+      }).join('');
+    } else if (!cf) {
+      html += '<div class="hint2">该特效无可调参数，直接开始跑图</div>';
+    }
+    wrap.innerHTML = html;
+
+    if (cf) {
+      $('fxColor').addEventListener('input', () => {
+        const hx = $('fxColor').value;
+        promptText = replaceColorField(promptText, cf.key, hx);
+        $('fxColorHex').textContent = hx;
+      });
+      $('fxColorFollow').addEventListener('click', () => {
+        promptText = replaceColorField(promptText, cf.key, '跟随底图');
+        $('fxColorHex').textContent = '跟随底图';
+      });
+    }
+    wrap.querySelectorAll('.pslider').forEach((s) => {
+      const step = Number(s.step) || 0.05;
+      s.addEventListener('input', () => {
+        $('pn_' + s.dataset.pname).textContent = s.value;
+        promptText = replaceParam(promptText, s.dataset.pname, s.value);
+      });
+      s.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        s.value = Math.min(Number(s.max), Math.max(Number(s.min), Number(s.value) + (e.deltaY < 0 ? step : -step)));
+        s.dispatchEvent(new Event('input'));
+      });
+    });
+  }
+
+  // ---------- 生成负载：总控▶生成时向本卡收取（当前特效的工作提示词） ----------
+  window.__getGenPayload = async () => {
+    if (!promptText.trim()) return null;
+    const cfg = await window.orange.getConfig();
+    const g = cfg.gen || {};
+    return {
+      prompt: promptText, ratio: g.ratio || 'Auto', size: g.size || 'Auto',
+      antiMode: g.antiMode || 0, chartOn: !!g.chartOn, refs: g.refs || [],
+    };
+  };
+
+  // ---------- 初始化 ----------
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    const saved = cfg.gen && cfg.gen.fxCurrent;
+    if (saved && EFFECTS.find((f) => f.id === saved)) current = saved;
+    buildTrack();
+    vpos = N + EFFECTS.findIndex((f) => f.id === current);
+    selectEffect(current);
+    requestAnimationFrame(() => layout(false));
+  })();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+{
+  "id": "023-obs-contrast",
+  "label": "高对比观察组",
+  "group": "观察",
+  "icon": "qp-obs-contrast",
+  "desc": "强 S 曲线打组置顶。找色斑、过渡不匀、修痕。",
+  "params": {},
+  "names": [
+    "观察组·高对比"
+  ],
+  "steps": [
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer"
+        }
+      ],
+      "using": {
+        "_obj": "adjustmentLayer",
+        "name": "高对比",
+        "type": {
+          "_obj": "curves",
+          "presetKind": {
+            "_enum": "presetKindType",
+            "_value": "presetKindDefault"
+          }
+        }
+      }
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "curves",
+        "presetKind": {
+          "_enum": "presetKindType",
+          "_value": "presetKindCustom"
+        },
+        "adjustment": [
+          {
+            "_obj": "curvesAdjustment",
+            "channel": {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "composite"
+            },
+            "curve": [
+              {
+                "_obj": "point",
+                "horizontal": 0,
+                "vertical": 0
+              },
+              {
+                "_obj": "point",
+                "horizontal": 60,
+                "vertical": 30
+              },
+              {
+                "_obj": "point",
+                "horizontal": 195,
+                "vertical": 225
+              },
+              {
+                "_obj": "point",
+                "horizontal": 255,
+                "vertical": 255
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layerSection"
+        }
+      ],
+      "from": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "targetEnum"
+      },
+      "using": {
+        "_obj": "layerSection",
+        "name": "观察组·高对比·{{n}}"
+      },
+      "name": "观察组·高对比·{{n}}"
+    }
+  ],
+  "after": [
+    {
+      "_obj": "move",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "front"
+      },
+      "_note": "移到最顶（已在顶时 PS 报\"不可用\"但结果已达成）"
+    }
+  ]
+}

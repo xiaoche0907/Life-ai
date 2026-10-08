@@ -1,0 +1,44 @@
+{
+  "id": "014-neutral-gray",
+  "label": "中性灰",
+  "group": "皮肤",
+  "icon": "qp-gray",
+  "desc": "50% 灰填充层，柔光。用加深减淡工具或黑白画笔做光影。",
+  "params": {},
+  "names": [
+    "中性灰"
+  ],
+  "steps": [
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layer"
+        }
+      ],
+      "using": {
+        "_obj": "layer",
+        "name": "中性灰·{{n}}",
+        "mode": {
+          "_enum": "blendMode",
+          "_value": "softLight"
+        }
+      }
+    },
+    {
+      "_obj": "fill",
+      "using": {
+        "_enum": "fillContents",
+        "_value": "gray"
+      },
+      "opacity": {
+        "_unit": "percentUnit",
+        "_value": 100
+      },
+      "mode": {
+        "_enum": "blendMode",
+        "_value": "normal"
+      }
+    }
+  ]
+}

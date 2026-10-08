@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+    flex: 0 1 auto; min-height: 30px; overflow: hidden;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+  .hbtn svg { width: 13px; height: 13px; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); flex: none; }
+  #dot.on { background: var(--ok); }
+
+  /* 固定区：预设行+爱心chips——正常尺寸不被滚走，极矮时可收缩让位给▶ */
+  /* flex-shrink必须为0：允许压缩+overflow hidden=chips被裁半截；空间不够让#body滚动让位 */
+  #top { flex: 0 0 auto; padding: 2px 14px 8px; display: flex; flex-direction: column; gap: 8px; }
+  #body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 14px 8px; display: flex; flex-direction: column; gap: 8px; }
+  #body::-webkit-scrollbar { width: 0; }
+
+  /* 预设行：爱心 + 下拉 + 保存/文件夹/刷新 */
+  #presetRow { display: flex; align-items: center; gap: 6px; }
+  #btnStar { flex: none; }
+  #btnStar svg { fill: none; }
+  #btnStar.on { color: var(--accent-text); }
+  #btnStar.on svg { fill: var(--accent-text); }
+  #presetTrig {
+    flex: 1; min-width: 0; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--inset-border); border-radius: 10px;
+    background: var(--inset-bg); cursor: pointer;
+    font-size: 12px; color: var(--text);
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    padding: 0 8px;
+  }
+  #presetTrig:hover { border-color: var(--accent-border); }
+
+  /* 收藏chips：住在▶左边的小型快捷键（横排自动换行,多了自己滚） */
+  #favChips {
+    display: none;
+    flex: 1; min-width: 0;
+    flex-wrap: wrap; gap: 3px; align-content: center;
+    max-height: 44px; overflow-y: auto;
+  }
+  #favChips.on { display: flex; }
+  #favChips::-webkit-scrollbar { width: 0; }
+  .chip {
+    display: flex; align-items: center; gap: 3px;
+    padding: 3px 6px; border-radius: 7px;
+    background: rgba(26, 28, 38, 0.96);   /* 实底——半透明底在透窗上和身后内容糊成一团 */
+    border: 1px solid var(--accent-border);
+    font-size: 9px; color: #fff; cursor: pointer;
+    overflow: hidden; white-space: nowrap;
+    max-width: 110px;
+  }
+  .chip:hover { background: var(--accent-soft); color: var(--accent-text); }
+  .chip .h { flex: none; color: var(--accent-text); font-size: 9px; }
+  .chip .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  /* 预设下拉列表：实底不透明（半透明底和身后内容糊成一团没法读）+ 铺满整卡高度 */
+  #presetList {
+    display: none; position: absolute; z-index: 40;
+    left: 14px; right: 14px; top: 84px; bottom: 10px;
+    overflow-y: auto;
+    background: rgba(24, 26, 34, 0.98);
+    border: 1px solid var(--accent-border); border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  }
+  #presetList.on { display: block; }
+  .fp-item { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 11.5px; color: var(--text); }
+  .fp-item:hover { background: var(--btn-bg-hover); }
+  .fp-item .star { flex: none; cursor: pointer; color: var(--text-dim); }
+  .fp-item .star.on { color: var(--accent-text); }
+  .fp-item .lb { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .fp-item .tag { flex: none; font-size: 8.5px; padding: 1px 5px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-text); }
+
+  /* 提示词/参数 */
+  .sec { font-size: 10.5px; font-weight: 700; color: #fff; margin-top: 2px; }
+  textarea {
+    width: 100%; min-height: 34px; max-height: 160px; resize: vertical;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 10.5px; line-height: 1.45; padding: 6px 8px;
+    outline: none; user-select: text;
+  }
+  textarea:focus { border-color: var(--accent-border); }
+  .grid2 { display: flex; gap: 5px; }
+  .grid2 > div { flex: 1; min-width: 0; }
+  .grid2 label { display: block; font-size: 9px; color: var(--text-dim); margin-bottom: 2px; }
+  select, input[type="number"], input[type="text"].inp {
+    width: 100%; height: 26px;
+    border: 1px solid var(--inset-border); border-radius: 8px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 10.5px; padding: 0 6px; outline: none;
+  }
+  select:focus, input:focus { border-color: var(--accent-border); }
+  select option { background: #222; }
+
+  /* 底部：生成——flex:none+margin-top:auto=永不收缩、永远贴底 */
+  #foot { flex: none; margin-top: auto; display: flex; align-items: center; gap: 9px; padding: 6px 14px 14px; }
+  /* 生图进度=外轮廓光：主题色描边沿圆角框顺时针生长，drop-shadow发光 */
+  #ringSvg {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 8; display: none;
+  }
+  #ringSvg.on { display: block; }
+  #ringRect {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 6px var(--accent));
+    transition: stroke-dasharray 0.35s linear;
+  }
+  #btnRun {
+    margin-left: auto;
+    width: 52px; height: 52px; border-radius: 16px; flex: none;
+    background: var(--btn-bg); border: 1px solid var(--glass-border);
+    color: var(--accent-text);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  #btnRun:hover { background: var(--accent-soft); }
+  #btnRun:active { transform: scale(0.97); }
+  #btnRun svg { width: 20px; height: 20px; }
+  #btnRun.off { border-color: var(--err); color: #fff; }
+  #btnRun.busy { color: var(--err); }
+
+  /* 高度紧凑分档（只对边缘拉矮生效；角部等比缩放是整体zoom不触发media）：
+     依次让位 参数区滚动→chips藏→参数区藏→头部藏——预设胶囊(可点可滚轮切)和▶保到最后 */
+  @media (max-height: 300px) {
+    /* 矮卡不再整行藏收藏chips（藏了=点爱心"没反应"），压成单行自滚且保底不被压半截 */
+    #favChips.on { max-height: 46px; min-height: 30px; }
+    #foot { padding: 4px 12px 10px; }
+    #btnRun { width: 40px; height: 40px; border-radius: 12px; }
+    #btnRun svg { width: 16px; height: 16px; }
+  }
+  @media (max-height: 190px) {
+    #body { display: none; }
+    #head { padding: 8px 14px 2px; }
+    #top { padding: 0 14px 4px; }
+    /* 这个高度下拉没地方展开——打开时直接全卡覆盖，列表自己滚动 */
+    #presetList { top: 4px; bottom: 4px; left: 8px; right: 8px; max-height: none; }
+  }
+  @media (max-height: 150px) {
+    /* 迷你模式：预设胶囊+▶同排；移动=按住空白(全卡拖拽)，边缘手柄照常调大小 */
+    #head { display: none; }
+    #top { position: absolute; left: 12px; right: 62px; bottom: 13px; height: 34px; padding: 0; min-height: 0; z-index: 5; }
+    #presetRow { height: 100%; }
+    #presetTrig { height: 100%; }
+    #btnStar, #presetRow .hbtn { display: none; }
+    #favChips.on { display: none; }   /* 迷你条模式才藏chips */
+  }
+  @media (max-height: 115px) {
+    #foot { padding: 2px 10px 8px; }
+    #btnRun { width: 34px; height: 34px; }
+    #btnRun svg { width: 14px; height: 14px; }
+    #top { left: 10px; right: 54px; bottom: 10px; height: 28px; }
+  }
+
+  /* 设置弹层（右上角⚙：Forge地址） */
+  #dlg { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.45); border-radius: 22px; align-items: center; justify-content: center; z-index: 50; }
+  #dlg.on { display: flex; }
+  #dlgBox { width: 84%; background: rgba(24, 26, 34, 0.98); border: 1px solid var(--accent-border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 9px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55); }
+  #dlgBox .t { font-size: 12px; font-weight: 700; color: #fff; }
+  #dlgBox input { width: 100%; height: 30px; border: 1px solid var(--inset-border); border-radius: 9px; background: var(--inset-bg); color: var(--text); font-size: 11.5px; padding: 0 10px; outline: none; user-select: text; }
+  #dlgBox .btns { display: flex; gap: 8px; justify-content: flex-end; }
+  #dlgBox .b { padding: 6px 16px; border-radius: 9px; border: none; background: var(--btn-bg); color: var(--text); font-size: 11.5px; cursor: pointer; }
+  #dlgBox .b.acc { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
+
+  /* 保存预设弹层 */
+  #saveDlg { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.45); border-radius: 22px; align-items: center; justify-content: center; z-index: 50; }
+  #saveDlg.on { display: flex; }
+</style>
+</head>
+<body data-arm-id="forge">
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>Forge</span>
+    <span id="dot" title="连接状态"></span>
+    <div class="sp"></div>
+    <div class="hbtn" id="btnSettings" title="设置 Forge 地址"></div>
+  </div>
+  <div id="top">
+    <div id="presetRow">
+      <div class="hbtn" id="btnStar" title="收藏/取消收藏当前预设"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
+      <div id="presetTrig" title="点击切换预设 · 滚轮循环">选择预设…</div>
+      <div class="hbtn" id="btnSavePreset" title="保存当前参数为预设"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></div>
+      <div class="hbtn" id="btnFolder" title="打开预设目录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+      <div class="hbtn" id="btnRefresh" title="刷新预设列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></div>
+    </div>
+  </div>
+  <div id="presetList"></div><!-- 绝对定位基准是#card；不能放#body里——紧凑档#body会隐藏,列表要活着 -->
+  <div id="body">
+
+    <div class="sec">正向提示词</div>
+    <textarea id="pos" placeholder="正向提示词…"></textarea>
+    <div class="sec">反向提示词</div>
+    <textarea id="neg" placeholder="反向提示词…"></textarea>
+
+    <div class="grid2">
+      <div style="flex:2"><label>模型</label><select id="sdModel"><option value="">-- 未连接 --</option></select></div>
+    </div>
+    <div class="grid2">
+      <div><label>采样器</label><select id="sampler"></select></div>
+      <div><label>调度器</label><select id="scheduler"><option value="">Automatic</option><option>uniform</option><option>karras</option><option>exponential</option><option>sgm_uniform</option></select></div>
+    </div>
+    <div class="grid2">
+      <div><label>步数</label><input type="number" id="steps" value="20" min="1" max="150" /></div>
+      <div><label>CFG</label><input type="number" id="cfg" value="7" min="1" max="30" step="0.5" /></div>
+      <div><label>重绘幅度</label><input type="number" id="denoise" value="0.35" min="0" max="1" step="0.05" /></div>
+      <div><label>数量</label><input type="number" id="batch" value="1" min="1" max="8" /></div>
+    </div>
+    <div class="grid2">
+      <div><label>分辨率(长边)</label><input type="number" id="reso" value="768" min="64" max="4096" step="64" /></div>
+      <div><label>种子</label><input type="number" id="seed" value="-1" min="-1" /></div>
+    </div>
+    <div class="grid2">
+      <div style="flex:2"><label>LoRA</label><select id="lora"><option value="">无</option></select></div>
+      <div style="flex:0.6"><label>权重</label><input type="number" id="loraW" value="1" min="-3" max="3" step="0.1" /></div>
+    </div>
+    <div class="grid2">
+      <div><label>CN 预处理器</label><select id="cnPre"><option value="none">None</option></select></div>
+      <div><label>CN 模型</label><select id="cnModel"><option value="None">None</option></select></div>
+      <div style="flex:0.5"><label>CN 强度</label><input type="number" id="cnW" value="1" min="0" max="2" step="0.1" /></div>
+    </div>
+  </div>
+  <div id="foot">
+    <div id="favChips"></div>
+    <button id="btnRun" title="生成（需先框选）"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg></button>
+  </div>
+  <svg id="ringSvg"><rect id="ringRect" pathLength="100" /></svg>
+
+  <div id="dlg">
+    <div id="dlgBox">
+      <div class="t">Forge 地址</div>
+      <input id="urlIn" placeholder="http://127.0.0.1:7860" />
+      <div class="btns">
+        <button class="b" id="dlgCancel">取消</button>
+        <button class="b acc" id="dlgOk">保存并连接</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="saveDlg">
+    <div id="dlgBox">
+      <div class="t">保存 Forge 预设</div>
+      <input id="saveName" placeholder="预设名称…" style="width:100%;height:30px;border:1px solid var(--inset-border);border-radius:9px;background:var(--inset-bg);color:var(--text);font-size:11.5px;padding:0 10px;outline:none;user-select:text;" />
+      <div class="btns">
+        <button class="b" id="saveCancel">取消</button>
+        <button class="b acc" id="saveOk">确认</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.forge || window.ORANGE_ICONS.fx;
+  $('btnSettings').innerHTML = window.ORANGE_ICONS.settings;
+
+  let forgeUrl = '';
+  let connected = false;
+  let running = false;
+  let presets = [];
+  let curName = '';
+  let starred = [];
+
+  const selOpt = (sel, val) => {
+    if (!sel || !val) return false;
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === val || sel.options[i].text === val) { sel.selectedIndex = i; return true; }
+    }
+    const key = String(val).split('.')[0];
+    for (let j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value.indexOf(key) !== -1 || sel.options[j].text.indexOf(key) !== -1) { sel.selectedIndex = j; return true; }
+    }
+    return false;
+  };
+  // 匹配不到不丢值：未连接/服务器缺文件时注入⚠占位项保住预设里的值；连接后fillSelect重建列表、restoreSaved重配
+  const selOptKeep = (sel, val) => {
+    if (selOpt(sel, val)) return true;
+    const o = document.createElement('option');
+    o.value = val; o.textContent = val + ' ⚠';
+    sel.appendChild(o); sel.selectedIndex = sel.options.length - 1;
+    return false;
+  };
+
+  // ---------- 连接与资源 ----------
+  function setDot(on) { connected = on; $('dot').classList.toggle('on', on); $('btnRun').classList.toggle('off', !on); }
+  async function connect() {
+    if (!forgeUrl) { $('dlg').classList.add('on'); return; }
+    const r = await window.orange.forgeTest(forgeUrl);
+    setDot(!!r.ok);
+    if (r.ok) {
+      const res = await window.orange.forgeResources(forgeUrl);
+      fillSelect($('sdModel'), res.models.map((m) => [m.value, m.name]), '-- 模型 (' + res.models.length + ') --');
+      fillSelect($('sampler'), res.samplers.map((s) => [s, s]));
+      fillSelect($('lora'), res.loras.map((l) => [l, l]), '无');
+      fillSelect($('cnPre'), res.cnModules.map((m) => [m, m]), 'None', 'none');
+      fillSelect($('cnModel'), res.cnModels.map((m) => [m, m]), 'None', 'None');
+      restoreSaved();
+    }
+  }
+  function fillSelect(sel, pairs, headText, headVal) {
+    sel.innerHTML = '';
+    if (headText) { const o = document.createElement('option'); o.value = headVal || ''; o.textContent = headText; sel.appendChild(o); }
+    pairs.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
+  }
+
+  // ---------- 设置弹层（右上角⚙） ----------
+  $('btnSettings').addEventListener('click', () => { $('urlIn').value = forgeUrl || 'http://127.0.0.1:7860'; $('dlg').classList.add('on'); $('urlIn').focus(); });
+  $('dlgCancel').addEventListener('click', () => $('dlg').classList.remove('on'));
+  $('dlgOk').addEventListener('click', async () => {
+    forgeUrl = $('urlIn').value.trim().replace(/\/+$/, '');
+    await window.orange.setConfig({ forge: { url: forgeUrl } });
+    $('dlg').classList.remove('on');
+    connect();
+  });
+
+  // ---------- 预设 ----------
+  function findPreset(n) { return presets.find((p) => p.name === n); }
+  function applyPreset(name) {
+    const fp = findPreset(name);
+    if (!fp || !fp.data) return;
+    const p = fp.data;
+    $('pos').value = p.positivePrompt || '';
+    $('neg').value = p.negativePrompt || '';
+    $('steps').value = p.step || '20';
+    $('denoise').value = p.redrawAmount || '0.35';
+    $('batch').value = p.imageCount || '1';
+    $('reso').value = parseInt(p.resolution) || 768;
+    if (p.model) selOptKeep($('sdModel'), p.model);
+    if (p.selectedName) selOpt($('sampler'), p.selectedName);
+    if (p.selectedScheduler) selOpt($('scheduler'), p.selectedScheduler === 'automatic' ? '' : p.selectedScheduler);
+    if (p.lora) selOptKeep($('lora'), p.lora); else $('lora').selectedIndex = 0;
+    $('loraW').value = p.loraWeight || '1';
+    if (p.selectedControlNetModule) selOpt($('cnPre'), (p.selectedControlNetModule === 'None' || !p.selectedControlNetModule) ? 'none' : p.selectedControlNetModule);
+    if (p.controlNetModel && p.controlNetModel !== 'None') selOpt($('cnModel'), p.controlNetModel); else $('cnModel').selectedIndex = 0;
+    if (p.controlNetWeight) $('cnW').value = p.controlNetWeight;
+    curName = name;
+    $('presetTrig').textContent = fp.displayName || name;
+    updateStar();
+    saveFields();
+  }
+  function cyclePreset(dir) {
+    if (!presets.length) return;
+    let idx = presets.findIndex((p) => p.name === curName);
+    idx = (idx === -1) ? (dir > 0 ? 0 : presets.length - 1) : ((idx + dir + presets.length) % presets.length);
+    applyPreset(presets[idx].name);
+  }
+  $('presetTrig').addEventListener('click', () => {
+    $('presetList').classList.toggle('on');
+    renderList();
+  });
+  $('presetTrig').addEventListener('wheel', (e) => { e.preventDefault(); cyclePreset(e.deltaY > 0 ? 1 : -1); });
+
+  function renderList() {
+    const list = $('presetList');
+    list.innerHTML = '';
+    presets.forEach((fp) => {
+      const it = document.createElement('div');
+      it.className = 'fp-item';
+      const st = document.createElement('span');
+      st.className = 'star' + (starred.includes(fp.name) ? ' on' : '');
+      st.textContent = starred.includes(fp.name) ? '★' : '☆';
+      st.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleStar(fp.name);
+        renderList();
+      });
+      const lb = document.createElement('span');
+      lb.className = 'lb';
+      lb.textContent = fp.displayName || fp.name;
+      it.append(st, lb);
+      if (fp._isFactory) { const tg = document.createElement('span'); tg.className = 'tag'; tg.textContent = '内置'; it.appendChild(tg); }
+      it.addEventListener('click', () => { applyPreset(fp.name); $('presetList').classList.remove('on'); });
+      list.appendChild(it);
+    });
+  }
+
+  // 收藏
+  function saveStarred() { window.orange.setConfig({ gen: { forgeStarred: JSON.stringify(starred) } }); }
+  function toggleStar(name) {
+    const i = starred.indexOf(name);
+    if (i >= 0) starred.splice(i, 1); else starred.push(name);
+    saveStarred(); updateStar(); renderChips();
+  }
+  function updateStar() { $('btnStar').classList.toggle('on', !!curName && starred.includes(curName)); }
+  $('btnStar').addEventListener('click', () => { if (curName) toggleStar(curName); });
+
+  // 收藏chips：点击=应用预设+立即跑图（老插件一键跑图交互）
+  function renderChips() {
+    const box = $('favChips');
+    box.innerHTML = '';
+    let any = false;
+    starred.forEach((name) => {
+      const fp = findPreset(name);
+      if (!fp) return;
+      any = true;
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.title = (fp.displayName || name) + '（点击一键跑图）';
+      const h = document.createElement('span');
+      h.className = 'h'; h.textContent = '♥';
+      h.title = '取消收藏';
+      h.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(name); });
+      const t = document.createElement('span');
+      t.className = 't'; t.textContent = fp.displayName || name;
+      chip.append(h, t);
+      chip.addEventListener('click', () => { applyPreset(name); runGenerate(); });
+      box.appendChild(chip);
+    });
+    box.classList.toggle('on', any);
+  }
+
+  // 保存预设
+  $('btnSavePreset').addEventListener('click', () => { $('saveName').value = ''; $('saveDlg').classList.add('on'); $('saveName').focus(); });
+  $('saveCancel').addEventListener('click', () => $('saveDlg').classList.remove('on'));
+  $('saveOk').addEventListener('click', async () => {
+    const name = $('saveName').value.trim();
+    if (!name) return;
+    $('saveDlg').classList.remove('on');
+    const preset = {
+      id: 'uf_' + Date.now(), name, displayName: name, category: 'other', _isFactory: false,
+      data: {
+        model: $('sdModel').value, lora: $('lora').value, loraWeight: $('loraW').value,
+        redrawAmount: $('denoise').value, imageCount: $('batch').value, resolution: $('reso').value,
+        positivePrompt: $('pos').value, negativePrompt: $('neg').value,
+        selectedControlNetModule: $('cnPre').value, controlNetModel: $('cnModel').value, controlNetWeight: $('cnW').value,
+        step: $('steps').value, selectedName: $('sampler').value, selectedScheduler: $('scheduler').value || 'automatic',
+      },
+    };
+    const r = await window.orange.forgePresetSave(preset);
+    if (r.ok) { presets = r.presets; renderList(); renderChips(); }
+  });
+  $('btnFolder').addEventListener('click', () => window.orange.forgeOpenFolder());
+  $('btnRefresh').addEventListener('click', async () => { presets = await window.orange.forgePresets(); renderList(); renderChips(); });
+
+  // ---------- 字段持久化 ----------
+  let saveTimer = null;
+  function saveFields() {
+    // 同步更新内存快照——否则"离线选预设→连接后restoreSaved"会退回启动时的旧值,丢掉刚应用的模型/LoRA
+    savedFields = {
+      pos: $('pos').value, neg: $('neg').value, steps: $('steps').value, cfg: $('cfg').value,
+      denoise: $('denoise').value, batch: $('batch').value, reso: $('reso').value, seed: $('seed').value,
+      model: $('sdModel').value, sampler: $('sampler').value, scheduler: $('scheduler').value,
+      lora: $('lora').value, loraW: $('loraW').value,
+      cnPre: $('cnPre').value, cnModel: $('cnModel').value, cnW: $('cnW').value,
+      curName,
+    };
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      window.orange.setConfig({ gen: { forgeFields: JSON.stringify(savedFields) } });
+    }, 400);
+  }
+  let savedFields = null;
+  function restoreSaved() {
+    if (!savedFields) return;
+    const f = savedFields;
+    if (f.model) selOptKeep($('sdModel'), f.model);
+    if (f.sampler) selOpt($('sampler'), f.sampler);
+    if (f.lora) selOptKeep($('lora'), f.lora);
+    if (f.cnPre) selOpt($('cnPre'), f.cnPre);
+    if (f.cnModel) selOpt($('cnModel'), f.cnModel);
+  }
+  document.getElementById('body').addEventListener('change', saveFields);
+
+  // ---------- 数字框滚轮调值 ----------
+  document.querySelectorAll('input[type="number"]').forEach((inp) => {
+    inp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const step = parseFloat(inp.step) || 1;
+      let v = (parseFloat(inp.value) || 0) + (e.deltaY < 0 ? step : -step);
+      const dec = (String(step).split('.')[1] || '').length;
+      v = parseFloat(v.toFixed(dec));
+      if (inp.min !== '' && v < parseFloat(inp.min)) v = parseFloat(inp.min);
+      if (inp.max !== '' && v > parseFloat(inp.max)) v = parseFloat(inp.max);
+      inp.value = v;
+      saveFields();
+    });
+  });
+
+  // ---------- 外轮廓进度光：pathLength=100，dasharray=进度长度，rect路径天然顺时针 ----------
+  const card = document.getElementById('card');
+  function sizeRing() {
+    const w = card.clientWidth, h = card.clientHeight;
+    const r = $('ringRect');
+    r.setAttribute('x', 1.5); r.setAttribute('y', 1.5);
+    r.setAttribute('width', Math.max(0, w - 3)); r.setAttribute('height', Math.max(0, h - 3));
+    r.setAttribute('rx', 21);
+  }
+  new ResizeObserver(sizeRing).observe(card);
+  function setRingProg(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    $('ringRect').style.strokeDasharray = pct + ' ' + (100 - pct);
+  }
+  function ringShow(on) {
+    if (on) { sizeRing(); setRingProg(0); }
+    $('ringSvg').classList.toggle('on', on);
+  }
+  // 完成脉冲：复用主题发光环
+  function flashDone() {
+    const lg = document.querySelector('.lg');
+    let ring = lg.querySelector(':scope > .doneglow');
+    if (!ring) {
+      ring = document.createElement('div');
+      ring.className = 'glowring doneglow';
+      lg.appendChild(ring);
+    }
+    ring.classList.remove('once');
+    void ring.offsetWidth;
+    ring.classList.add('once');
+  }
+  // 生图提示音（跟随AI生图卡的音量/开关设置）
+  function playChime() {
+    window.orange.getConfig().then((c) => {
+      const g = c.gen || {};
+      if (g.soundOn === false) return;
+      const vol = (Number(g.soundVol) >= 0 ? Number(g.soundVol) : 60) / 100 * 0.5;
+      if (!vol) return;
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        [[660, 0], [880, 0.16]].forEach(([f, t]) => {
+          const o = ac.createOscillator(), gn = ac.createGain();
+          o.type = 'sine'; o.frequency.value = f;
+          o.connect(gn); gn.connect(ac.destination);
+          const st = ac.currentTime + t;
+          gn.gain.setValueAtTime(0, st);
+          gn.gain.linearRampToValueAtTime(vol, st + 0.02);
+          gn.gain.exponentialRampToValueAtTime(0.001, st + 0.35);
+          o.start(st); o.stop(st + 0.4);
+        });
+        setTimeout(() => { try { ac.close(); } catch {} }, 900);
+      } catch {}
+    });
+  }
+
+  // ---------- 生成/中断 ----------
+  function setRunning(on) {
+    running = on;
+    $('btnRun').classList.toggle('busy', on);
+    $('btnRun').innerHTML = on
+      ? '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>';
+    ringShow(on);
+  }
+  // docId：批处理逐图跑时由主进程传入目标文档（点击/单发时是MouseEvent或undefined=当前文档）
+  async function runGenerate(docId) {
+    const did = Number.isFinite(docId) ? docId : null;
+    if (running) { window.orange.forgeInterrupt(forgeUrl); return; }
+    if (!connected) { connect(); return; }
+    const lora = $('lora').value;
+    let prompt = $('pos').value;
+    if (lora) prompt += ' <lora:' + lora + ':' + (parseFloat($('loraW').value) || 1) + '>';
+    const cnModel = $('cnModel').value;
+    setRunning(true);
+    const r = await window.orange.forgeImg2Img({
+      url: forgeUrl, docId: did, prompt, negPrompt: $('neg').value,
+      steps: parseInt($('steps').value) || 20, cfg: parseFloat($('cfg').value) || 7,
+      denoise: parseFloat($('denoise').value) || 0.35, resolution: $('reso').value,
+      sampler: $('sampler').value || 'Euler a', scheduler: $('scheduler').value,
+      model: $('sdModel').value, batchSize: parseInt($('batch').value) || 1,
+      seed: parseInt($('seed').value),
+      cnEnabled: !!(cnModel && cnModel.toLowerCase() !== 'none'),
+      cnModule: $('cnPre').value, cnModel, cnWeight: parseFloat($('cnW').value) || 1,
+      // 批处理已采集好的选区/截图（主进程采集一次后由 __batchCtx 传进来），主进程据此跳过重复采集
+      psCtx: (docId !== undefined && docId !== null && window.__batchCtx) ? window.__batchCtx : undefined,
+    });
+    if (r && r.ok) {
+      setRingProg(100);   // 补满轮廓
+      setTimeout(() => {
+        setRunning(false);
+        flashDone();      // 完成脉冲
+        playChime();      // 提示音
+      }, 380);
+    } else {
+      setRunning(false);
+    }
+    return r;   // 批处理逐图统计成败用
+  }
+  // 卡上播放键：批处理开关打开时跑遍PS里每张图（先在对应图层框好选区），否则只跑当前这张
+  $('btnRun').addEventListener('click', async (ev) => {
+    // batchFire 缺失=preload 是旧版（改了 preload 没重启软件）——必须说出来，
+    // 静默退化单张会让用户以为"批处理坏了"却毫无线索（0918 实证）
+    if (!window.orange.batchFire) {
+      window.orange.ologWrite && window.orange.ologWrite('批处理入口不可用：软件是旧进程（改了 preload 未重启）。请重启来福后再试', 'err');
+      runGenerate(ev);
+      return;
+    }
+    const b = await window.orange.batchFire('forge');
+    if (b && b.batch) return;   // 已交给主进程逐图跑
+    runGenerate(ev);            // 单张：ev 会被 Number.isFinite 挡掉 → 跑当前文档
+  });
+  window.__fireForge = runGenerate;   // 总控生成气泡武装forge时调用
+
+  // 0913用户裁定：滚轮滑动Forge面板 = 武装Forge（调参即武装）
+  const cardEl = document.getElementById('card');
+  cardEl.addEventListener('wheel', (e) => {
+    if (!e.isTrusted) return;
+    if (window.orange.armModule) window.orange.armModule('forge');
+  }, { passive: true });
+
+  // 0913用户裁定：点击提示词textarea = 武装Forge
+  const posEl = document.getElementById('pos'), negEl = document.getElementById('neg');
+  const armOnClick = (e) => { if (e.isTrusted && window.orange.armModule) window.orange.armModule('forge'); };
+  posEl.addEventListener('click', armOnClick);
+  negEl.addEventListener('click', armOnClick);
+
+  window.orange.onForgeProgress((p) => {
+    if (!running || p.done) return;
+    setRingProg((p.progress || 0) * 100);
+  });
+
+  // ---------- 提示词库「F」词条入口（主进程直达注入） ----------
+  function flashPos() {
+    $('pos').style.borderColor = 'var(--accent-text)';
+    setTimeout(() => { $('pos').style.borderColor = ''; }, 600);
+  }
+  // 只填正向提示词（后备路径）
+  window.__setForgePos = (text) => {
+    $('pos').value = text;
+    saveFields();
+    flashPos();
+  };
+  // 整预设应用：模型/采样器/步数/重绘/正反向词/CN全套（返回'notready'=预设列表还没加载完）
+  window.__applyForgePreset = (name) => {
+    if (!presets.length) return 'notready';
+    if (!findPreset(name)) return false;
+    applyPreset(name);
+    flashPos();
+    return true;
+  };
+
+  // ---------- 初始化 ----------
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    forgeUrl = (cfg.forge && cfg.forge.url) || '';
+    try { starred = JSON.parse((cfg.gen && cfg.gen.forgeStarred) || '[]'); } catch { starred = []; }
+    try { savedFields = JSON.parse((cfg.gen && cfg.gen.forgeFields) || 'null'); } catch { savedFields = null; }
+    if (savedFields) {
+      $('pos').value = savedFields.pos || '';
+      $('neg').value = savedFields.neg || '';
+      $('steps').value = savedFields.steps || '20';
+      $('cfg').value = savedFields.cfg || '7';
+      $('denoise').value = savedFields.denoise || '0.35';
+      $('batch').value = savedFields.batch || '1';
+      $('reso').value = savedFields.reso || '768';
+      $('seed').value = savedFields.seed || '-1';
+      $('loraW').value = savedFields.loraW || '1';
+      $('cnW').value = savedFields.cnW || '1';
+      if (savedFields.curName) { curName = savedFields.curName; }
+    }
+    presets = await window.orange.forgePresets();
+    if (curName) {
+      const fp = findPreset(curName);
+      if (fp) $('presetTrig').textContent = fp.displayName || curName;
+    }
+    updateStar();
+    renderChips();
+    restoreSaved();   // 未连接也先把上次的模型/LoRA显示出来(⚠占位)；连接后fillSelect+restoreSaved会重配成服务器真名
+    if (forgeUrl) connect();
+  })();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

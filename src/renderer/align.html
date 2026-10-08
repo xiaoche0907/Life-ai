@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  /* 标题栏平时隐藏（0908第24轮：与抗截断/校色同款留白）；堆牌被压时露出作为切牌条 */
+  #head {
+    display: none; align-items: center; gap: 8px;
+    padding: 0; height: 38px;
+    cursor: grab;
+  }
+  body.deckbehind #head { display: flex; }
+  #head:active { cursor: grabbing; }
+  #head .sp { flex: 1; }
+
+  /* 对齐按钮铺满内容区（flex:1）。留白/logo 屏幕像素下限公式与生成卡同款（0909：右键拖拽要有地方抓；见 gen.html 注释） */
+  #card { --pad: max(10px, calc(8px * var(--zi, 1))); --logo: max(34px, calc(26px * var(--zi, 1))); }
+  #body { flex: 1; min-height: 0; display: flex; padding: var(--pad); }
+  .bubble {
+    flex: 1; min-width: 0; min-height: 0;
+    border-radius: 18px;
+    background: var(--btn-bg); border: 1px solid var(--glass-border);
+    color: var(--accent-text);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s, transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .bubble:hover { background: var(--accent-soft); }
+  .bubble:active { transform: scale(0.97); }
+  .bubble .ico { display: flex; width: var(--logo); height: var(--logo); color: var(--accent-text); }
+  .bubble .ico svg { width: var(--logo) !important; height: var(--logo) !important; }
+  .bubble.busy { opacity: 0.4; pointer-events: none; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head"><div class="sp"></div></div>
+  <div id="body">
+    <div class="bubble" id="btnGo" data-pass title="一键对齐：选中返图图层→按一下：变形对齐到其下方参考图层">
+      <span class="ico" id="bico"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('bico').innerHTML = window.ORANGE_ICONS.align;
+
+  let running = false;
+
+  $('btnGo').addEventListener('click', async () => {
+    if (running) return;
+    running = true;
+    $('btnGo').classList.add('busy');
+    // 结果全走生图日志（主进程通道自带开始/成功/失败人话播报），卡上只给完成脉冲
+    const r = await window.orange.alignLayers();
+    running = false;
+    $('btnGo').classList.remove('busy');
+    if (r.ok) {
+      const lg = document.querySelector('.lg');
+      const ring = document.createElement('div');
+      ring.className = 'glowring once';
+      lg.appendChild(ring);
+      setTimeout(() => ring.remove(), 950);
+    }
+  });
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

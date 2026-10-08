@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  /* 标题栏平时隐藏（0908第23轮用户裁定：去标题、按钮上提）；堆牌被压时露出作为切牌条 */
+  #head {
+    display: none; align-items: center; gap: 8px;
+    padding: 0 14px; height: 38px;
+    cursor: grab;
+  }
+  body.deckbehind #head { display: flex; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+
+  /* 留白/瓷砖间距的屏幕像素下限公式与生成卡同款（0909：右键拖拽要有地方抓；见 gen.html 注释） */
+  #card { --pad: max(10px, calc(8px * var(--zi, 1))); }
+  #body { flex: 1; min-height: 0; overflow: hidden; padding: var(--pad); display: flex; flex-direction: column; gap: 10px; }
+
+  /* 三个方形工具气泡——与抗截断卡同构（0908第23轮用户裁定：按钮要大、要跟卡一起等比缩放、位置上提）：
+     瓷砖三等分撑满整个卡身，单位全是普通 px → 卡缩放/拉伸时按钮同步放大缩小；
+     图标/标签用容器单位(cqmin)随瓷砖自身尺寸走 */
+  #grid3 {
+    flex: 1; min-height: 0;
+    container-type: size;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1fr;
+    justify-items: center; align-items: center;
+    gap: var(--pad);
+  }
+  .bubble {
+    /* 正方形，边长=三等分列宽与整行高取小：任何窗口形状都是最大正方形，不留空档也不溢出（两道缝=2×--pad） */
+    width: min((100cqw - 2 * var(--pad)) / 3, 100cqh); height: min((100cqw - 2 * var(--pad)) / 3, 100cqh);
+    container-type: size;
+    border-radius: 22%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 5%;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), background 0.2s;
+  }
+  .bubble:hover { background: var(--lg-tile-hover); transform: translateY(-3px); }
+  .bubble:active { transform: scale(0.94); }
+  .bubble .ico { display: flex; color: var(--accent-text); }
+  /* 0908用户裁定：去掉所有文字标注只留 logo 按钮——图标放大到瓷砖 58%（原 46% 是给下方标签留位的） */
+  .bubble .ico svg { width: 58cqmin; height: 58cqmin; }
+  .bubble.on {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent-border);
+  }
+  .bubble.on .badge {
+    position: absolute; top: 4px; right: 4px;
+    font-size: 7px; padding: 0 4px; border-radius: 6px;
+    background: var(--accent-soft); color: var(--accent-text);
+    border: 1px solid var(--accent-border);
+  }
+  .bubble.busy { opacity: 0.4; pointer-events: none; }
+
+  /* LUT进度 */
+  #lutPg { display: none; flex-direction: column; gap: 5px; }
+  #lutPg.show { display: flex; }
+  #lutTxt { font-size: 10.5px; color: var(--text-dim); text-align: center; }
+  #lutTrack { height: 4px; border-radius: 2px; background: var(--btn-bg); overflow: hidden; }
+  #lutBar { height: 100%; width: 0%; border-radius: 2px; background: var(--accent); transition: width 0.25s; }
+
+  #status { font-size: 11px; color: var(--text-dim); text-align: center; min-height: 15px; line-height: 1.5; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block; width: 11px; height: 11px;
+    border: 2px solid var(--btn-bg-hover);
+    border-top-color: var(--accent-text); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: -2px; margin-right: 5px;
+  }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>校色</span>
+    <div class="sp"></div>
+  </div>
+
+  <div id="body">
+    <div id="grid3">
+      <div class="bubble lg-tile" id="btnLight" title="轻校准：框选对比区域(可Shift加选多块)→读取选中层与其下方基准层→生成 色阶+曲线 双层校正。选中图层=出图，正下方=原图基准。">
+        <div class="ico" id="icoLight"></div>
+      </div>
+      <div class="bubble lg-tile" id="chartToggle" title="色卡校准（开关）：开启后每次跑图自动 贴校准色卡→附加保护提示词→回图后测量色卡偏差→生成校正→遮卡。全自动无感校色。">
+        <div class="ico" id="icoChart"></div>
+      </div>
+      <div class="bubble lg-tile" id="btnLut" title="LUT精修：免框选一键全图配对（有选区则只采选区）→逐像素拟合3D LUT全力对齐下层→烘焙纯LUT校色层。最强精修，耗时较长。">
+        <div class="ico" id="icoLut"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.colorcal;
+  $('icoLight').innerHTML = window.ORANGE_ICONS['cc-light'];
+  $('icoChart').innerHTML = window.ORANGE_ICONS['cc-chart'];
+  $('icoLut').innerHTML = window.ORANGE_ICONS['cc-lut'];
+
+  // 所有进程与结果统一显示在「生图日志」卡，这里只管触发和忙碌态
+  $('btnLight').addEventListener('click', async () => {
+    $('btnLight').classList.add('busy');
+    await window.orange.psExec('colorCalibrate', {}, 60000);
+    $('btnLight').classList.remove('busy');
+  });
+
+  let chartOn = false;
+  function syncChart() {
+    $('chartToggle').classList.toggle('on', chartOn);
+    $('chartToggle').classList.toggle('blink', chartOn);   // 开启期间持续闪烁提醒
+  }
+  $('chartToggle').addEventListener('click', () => {
+    chartOn = !chartOn;
+    syncChart();
+    window.orange.setConfig({ gen: { chartOn } });
+  });
+
+  $('btnLut').addEventListener('click', async () => {
+    $('btnLut').classList.add('busy');
+    await window.orange.psExec('lutCalibrate', {}, 600000);
+    $('btnLut').classList.remove('busy');
+  });
+
+  // ---------- 初始化 ----------
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    chartOn = !!cfg.gen.chartOn;
+    syncChart();
+  })();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

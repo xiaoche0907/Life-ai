@@ -1,0 +1,801 @@
+/* 来福 · Liquid Glass 主题 —— 参考Apple iOS 26液态玻璃设计语言
+   配方：半透明基底 + 凸面边缘(inset高光/阴影) + fresnel亮环 + 镜面高光条 + 深度投影
+   注意：窗口根容器禁用backdrop-filter(透明窗口上会画出方形合成框)；
+        面板内部元素(气泡等)可以用真backdrop-filter模糊面板基底 */
+
+:root {
+  /* ---- 深色液态玻璃 ---- */
+  --text: #f2f2f5;
+  --text-dim: rgba(255,255,255,0.55);
+  --inset-bg: rgba(0,0,0,0.28);
+  --inset-border: rgba(255,255,255,0.14);
+  --btn-bg: rgba(255,255,255,0.10);
+  --btn-bg-hover: rgba(255,255,255,0.22);
+  --chip-bg: rgba(255,255,255,0.10);
+  --chip-text: rgba(255,255,255,0.75);
+  /* 主题色单变量驱动：改--accent一处，衍生色全部自动跟随（设置卡片运行时覆写） */
+  --accent: #19b5bc;
+  --accent-text: color-mix(in srgb, var(--accent) 72%, #ffffff);
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-border: color-mix(in srgb, var(--accent) 75%, transparent);
+  --ok: #30d158;
+  --err: #ff6b60;
+  --option-bg: #26262b;
+  /* 镜面参数（设置卡片可调） */
+  --mirror-blur: 36px;
+  --mirror-tint: 0.32;
+
+  /* 玻璃基底：更黑的深色玻璃；上亮下暗用纵向渐变实现
+     （不用负扩散inset阴影——那会在四个圆角堆出弧形深色印记） */
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0) 16%, rgba(0,0,0,0) 68%, rgba(0,0,0,0.20) 100%),
+    radial-gradient(130% 90% at 18% 0%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 42%, rgba(255,255,255,0) 68%),
+    linear-gradient(165deg, rgba(20,20,26,var(--mirror-tint)) 0%, rgba(8,8,12,var(--mirror-tint)) 100%);
+  /* 无外投影——投影画在窗口透明边距里会形成一圈半糊黑晕，参考iOS也不用投影 */
+  --lg-convex: inset 0 1px 1px rgba(255,255,255,0.28);
+  /* fresnel边缘亮环：对角高光——左上一段最亮 + 右下一段次亮，其余近乎熄灭，宽幅渐隐 */
+  --lg-ring: conic-gradient(from 0deg,
+    rgba(255,255,255,0.26) 0deg,
+    rgba(255,255,255,0.05) 55deg,
+    rgba(255,255,255,0.38) 135deg,
+    rgba(255,255,255,0.05) 215deg,
+    rgba(255,255,255,0.58) 315deg,
+    rgba(255,255,255,0.26) 360deg);
+  --lg-tile-bg: rgba(255,255,255,0.11);
+  --lg-tile-hover: rgba(255,255,255,0.19);
+}
+
+body.light {
+  /* ---- 白色液态玻璃 ---- */
+  --text: #1d1d1f;
+  --text-dim: rgba(0,0,0,0.45);
+  --inset-bg: rgba(255,255,255,0.55);
+  --inset-border: rgba(0,0,0,0.10);
+  --btn-bg: rgba(0,0,0,0.06);
+  --btn-bg-hover: rgba(0,0,0,0.12);
+  --chip-bg: rgba(0,0,0,0.06);
+  --chip-text: rgba(0,0,0,0.6);
+  --accent: #ff9500;
+  --accent-text: #e07800;
+  --accent-soft: rgba(255,149,0,0.15);
+  --accent-border: rgba(255,149,0,0.7);
+  --ok: #28a745;
+  --err: #d63031;
+  --option-bg: #ffffff;
+
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 18%, rgba(0,0,0,0) 70%, rgba(120,120,140,0.10) 100%),
+    radial-gradient(130% 90% at 18% 0%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.10) 42%, rgba(255,255,255,0) 68%),
+    linear-gradient(165deg, rgba(252,252,255,0.26) 0%, rgba(240,240,248,0.30) 100%);
+  --lg-convex: inset 0 1px 1px rgba(255,255,255,0.9);
+  --lg-ring: conic-gradient(from 0deg,
+    rgba(255,255,255,0.65) 0deg,
+    rgba(190,190,205,0.18) 55deg,
+    rgba(255,255,255,0.80) 135deg,
+    rgba(190,190,205,0.18) 215deg,
+    rgba(255,255,255,1) 315deg,
+    rgba(255,255,255,0.65) 360deg);
+  --lg-tile-bg: rgba(255,255,255,0.45);
+  --lg-tile-hover: rgba(255,255,255,0.70);
+}
+
+/* ============ 底板风格：html[data-style]驱动（预设主题=颜色+材质整套换装） ============ */
+/* frost 磨砂哑光：近不透明乳浊毛面（透明窗禁backdrop-filter——会画黑框，用乳浊底模拟磨砂） */
+html[data-style="frost"] {
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 22%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.10) 100%),
+    linear-gradient(170deg, rgb(64 67 80 / calc(0.55 + var(--mirror-tint, 0.32))) 0%, rgb(46 48 60 / calc(0.60 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(255,255,255,0.12);
+  --lg-ring: conic-gradient(from 0deg,
+    rgba(255,255,255,0.22) 0deg, rgba(255,255,255,0.10) 120deg,
+    rgba(255,255,255,0.20) 240deg, rgba(255,255,255,0.22) 360deg);
+  --inset-bg: rgba(255,255,255,0.055);
+  --lg-tile-bg: rgba(255,255,255,0.085);
+}
+
+/* gradient 幻彩渐变：主题色驱动的斜向渐变底（换主题色=整套渐变自动跟色） */
+html[data-style="gradient"] {
+  --lg-base:
+    linear-gradient(155deg,
+      color-mix(in srgb, var(--accent) 34%, rgb(18 15 28 / calc(0.55 + var(--mirror-tint, 0.32)))) 0%,
+      rgb(22 19 32 / calc(0.55 + var(--mirror-tint, 0.32))) 48%,
+      color-mix(in srgb, var(--accent) 16%, rgb(13 11 22 / calc(0.60 + var(--mirror-tint, 0.32)))) 100%);
+  --lg-convex: inset 0 1px 1px rgba(255,255,255,0.22);
+  --lg-ring: conic-gradient(from 0deg,
+    color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.3)) 0deg,
+    rgba(255,255,255,0.08) 130deg,
+    color-mix(in srgb, var(--accent) 40%, rgba(255,255,255,0.2)) 250deg,
+    color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.3)) 360deg);
+}
+
+/* sharp 硬边极简：直角轮廓+扁平底+均匀细描边（内部控件同步压角） */
+html[data-style="sharp"] {
+  --lg-base: linear-gradient(180deg, rgb(17 18 22 / calc(0.50 + var(--mirror-tint, 0.32))) 0%, rgb(10 11 14 / calc(0.58 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: none;
+  --lg-ring: conic-gradient(rgba(255,255,255,0.30) 0 360deg);
+}
+html[data-style="sharp"] .lg { border-radius: 4px !important; }
+html[data-style="sharp"] .lg-tile,
+html[data-style="sharp"] .bubble { border-radius: 5px !important; }
+html[data-style="sharp"] button,
+html[data-style="sharp"] input,
+html[data-style="sharp"] textarea,
+html[data-style="sharp"] select,
+html[data-style="sharp"] .pill,
+html[data-style="sharp"] .hbtn { border-radius: 3px !important; }
+
+/* neon 赛博霓虹：深空底+青品双色霓虹描边环（纯静态——透明窗禁滤镜禁常驻动画的铁律） */
+html[data-style="neon"] {
+  --lg-base:
+    radial-gradient(120% 90% at 12% 0%, rgba(0,229,255,0.10) 0%, rgba(0,0,0,0) 42%),
+    radial-gradient(130% 100% at 100% 100%, rgba(255,45,180,0.09) 0%, rgba(0,0,0,0) 48%),
+    linear-gradient(160deg, rgb(13 16 32 / calc(0.60 + var(--mirror-tint, 0.32))) 0%, rgb(5 7 14 / calc(0.66 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(120,240,255,0.18);
+  --lg-ring: conic-gradient(from 210deg,
+    rgba(0,229,255,0.85) 0deg, rgba(140,80,255,0.55) 100deg,
+    rgba(255,45,180,0.75) 190deg, rgba(0,229,255,0.35) 280deg,
+    rgba(0,229,255,0.85) 360deg);
+  --inset-bg: rgba(0,229,255,0.05);
+  --lg-tile-bg: rgba(120,200,255,0.07);
+}
+
+/* pssync 跟随PS：玻璃底色自适应PS界面四档明暗（--ps-base由主进程经桥接件读取随ui-vars下发；
+   浅色档压中灰保白字可读；近不透明=最贴近PS面板观感） */
+html[data-style="pssync"] {
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 24%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.10) 100%),
+    linear-gradient(172deg,
+      color-mix(in srgb, var(--ps-base, #2e3036) 94%, white) 0%,
+      color-mix(in srgb, var(--ps-base, #2e3036) 86%, black) 100%);
+  --lg-convex: inset 0 1px 0 rgba(255,255,255,0.10);
+  --lg-ring: conic-gradient(rgba(255,255,255,0.22) 0 360deg);
+  --inset-bg: rgba(255,255,255,0.06);
+  --lg-tile-bg: rgba(255,255,255,0.08);
+}
+
+/* ============ 动态光效主题：只用安全动画通道（背景位移/透明度/描边角度）——
+   透明窗铁律：无backdrop-filter(黑框坑1)、无3D双层合成(闪烁坑38)；节奏全部放慢省GPU ============ */
+
+/* goldflow 鎏金流光：暗夜鎏金底，每7秒一道金色流光斜扫过卡面 */
+html[data-style="goldflow"] {
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.16) 100%),
+    linear-gradient(160deg, rgb(30 26 18 / calc(0.58 + var(--mirror-tint, 0.32))) 0%, rgb(12 10 6 / calc(0.64 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(255,220,140,0.16);
+  --lg-ring: conic-gradient(from 0deg,
+    rgba(255,214,90,0.50) 0deg, rgba(255,255,255,0.06) 120deg,
+    rgba(255,190,60,0.35) 240deg, rgba(255,214,90,0.50) 360deg);
+  --inset-bg: rgba(255,214,90,0.05);
+  --lg-tile-bg: rgba(255,214,90,0.07);
+}
+html[data-style="goldflow"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 0;
+  background: linear-gradient(105deg, rgba(0,0,0,0) 42%, rgba(255,216,120,0.13) 50%, rgba(0,0,0,0) 58%) no-repeat;
+  background-size: 280% 100%;
+  animation: goldSweep 7s ease-in-out infinite;
+}
+@keyframes goldSweep {
+  0%   { background-position: 200% 0; }
+  40%  { background-position: -100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* aurora 极光漫游：深海底，青绿/紫罗兰两团极光缓慢漂移呼吸（13秒往返） */
+html[data-style="aurora"] {
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.16) 100%),
+    linear-gradient(165deg, rgb(8 16 24 / calc(0.60 + var(--mirror-tint, 0.32))) 0%, rgb(5 8 16 / calc(0.66 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(120,255,220,0.14);
+  --lg-ring: conic-gradient(from 0deg,
+    rgba(90,240,200,0.45) 0deg, rgba(255,255,255,0.06) 110deg,
+    rgba(140,120,255,0.40) 230deg, rgba(90,240,200,0.45) 360deg);
+  --inset-bg: rgba(90,240,200,0.05);
+  --lg-tile-bg: rgba(90,240,200,0.065);
+}
+html[data-style="aurora"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(60% 45% at 20% 15%, rgba(80,240,200,0.15) 0%, rgba(0,0,0,0) 70%) no-repeat,
+    radial-gradient(55% 50% at 85% 80%, rgba(140,110,255,0.13) 0%, rgba(0,0,0,0) 70%) no-repeat;
+  background-size: 190% 190%, 190% 190%;
+  animation: auroraDrift 5s ease-in-out infinite alternate;
+}
+@keyframes auroraDrift {
+  0%   { background-position: 0% 0%, 100% 100%; opacity: 0.7; }
+  50%  { opacity: 1; }
+  100% { background-position: 90% 60%, 10% 20%; opacity: 0.85; }
+}
+
+/* orbit 星环流转：主题色亮环沿卡缘匀速流转（只重绘1px描边，动效里最省的一款） */
+@property --orbitA { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+/* 描边流转公用关键帧（0907补：此前从未定义——orbit/neonflow/yidao的流转一直静止） */
+@keyframes orbitSpin { from { --orbitA: 0deg; } to { --orbitA: 360deg; } }
+html[data-style="orbit"] {
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.16) 100%),
+    linear-gradient(165deg, rgb(16 17 26 / calc(0.58 + var(--mirror-tint, 0.32))) 0%, rgb(8 9 15 / calc(0.64 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(180,190,255,0.14);
+  --lg-ring: conic-gradient(from var(--orbitA, 0deg),
+    color-mix(in srgb, var(--accent) 45%, white) 0deg,
+    color-mix(in srgb, var(--accent) 80%, white) 24deg,
+    rgba(255,255,255,0.10) 80deg,
+    color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.15)) 160deg,
+    rgba(255,255,255,0.10) 250deg,
+    color-mix(in srgb, var(--accent) 75%, white) 330deg,
+    color-mix(in srgb, var(--accent) 45%, white) 360deg);
+  --inset-bg: rgba(150,160,255,0.05);
+  --lg-tile-bg: rgba(150,160,255,0.07);
+}
+/* 环流转直接钉在伪元素本体（渐变+动画同点，跨层变量链不逐帧刷新——实测教训） */
+html[data-style="orbit"] .lg::before {
+  padding: 2px;
+  background: conic-gradient(from var(--orbitA, 0deg),
+    color-mix(in srgb, var(--accent) 45%, white) 0deg,
+    color-mix(in srgb, var(--accent) 80%, white) 24deg,
+    rgba(255, 255, 255, 0.10) 80deg,
+    color-mix(in srgb, var(--accent) 55%, rgba(255, 255, 255, 0.15)) 160deg,
+    rgba(255, 255, 255, 0.10) 250deg,
+    color-mix(in srgb, var(--accent) 75%, white) 330deg,
+    color-mix(in srgb, var(--accent) 45%, white) 360deg);
+  animation: orbitSpin 5s linear infinite;
+}
+
+/* ============ 文化主题：花纹纹理=内联SVG瓦片（零外部资源），动效=背景位移安全通道 ============ */
+
+/* yidao 一刀999：贪玩蓝月致敬——土豪金+战火红+金光狂扫+火苗乱跳+描边狂转。
+   用户钦点"一定要很丑很炸眼睛"，这是设计目标不是事故 */
+html[data-style="yidao"] {
+  --lg-base:
+    radial-gradient(130% 70% at 50% 108%, rgba(255, 80, 0, 0.30) 0%, rgba(120, 10, 0, 0.12) 45%, rgba(0, 0, 0, 0) 70%),
+    radial-gradient(90% 50% at 50% -8%, rgba(255, 200, 40, 0.16) 0%, rgba(0, 0, 0, 0) 55%),
+    linear-gradient(170deg, rgb(48 20 8 / calc(0.62 + var(--mirror-tint, 0.32))) 0%, rgb(20 6 4 / calc(0.68 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(255, 215, 0, 0.35);
+  --lg-ring: conic-gradient(from var(--orbitA, 0deg),
+    #ffd700 0deg, #ff3300 40deg, #ffd700 80deg, #fff2a0 100deg,
+    #ff6600 160deg, #ffd700 220deg, #ff3300 280deg, #fff2a0 320deg, #ffd700 360deg);
+  --inset-bg: rgba(255, 180, 40, 0.08);
+  --lg-tile-bg: rgba(255, 180, 40, 0.10);
+}
+/* 描边狂转直接钉伪元素（跨层变量链不逐帧刷新——实测教训） */
+html[data-style="yidao"] .lg::before {
+  padding: 2.5px;
+  background: conic-gradient(from var(--orbitA, 0deg),
+    #ffd700 0deg, #ff3300 40deg, #ffd700 80deg, #fff2a0 100deg,
+    #ff6600 160deg, #ffd700 220deg, #ff3300 280deg, #fff2a0 320deg, #ffd700 360deg);
+  animation: orbitSpin 3s linear infinite;
+}
+html[data-style="yidao"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 0;
+  background:
+    linear-gradient(100deg, rgba(0, 0, 0, 0) 40%, rgba(255, 230, 120, 0.28) 50%, rgba(0, 0, 0, 0) 60%) no-repeat,
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='132' height='44' viewBox='0 0 132 44'><defs><linearGradient id='tg' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23fff8c0'/><stop offset='0.55' stop-color='%23ffd700'/><stop offset='1' stop-color='%23c8860a'/></linearGradient></defs><g transform='rotate(-6 66 22)'><text x='8' y='35' font-family='Arial Black,Impact,sans-serif' font-size='34' font-style='italic' font-weight='900' stroke='%237a1200' stroke-width='6' stroke-linejoin='round' fill='none'>999</text><text x='8' y='35' font-family='Arial Black,Impact,sans-serif' font-size='34' font-style='italic' font-weight='900' stroke='%23fff2a0' stroke-width='1.6' fill='url(%23tg)'>999</text></g></svg>") no-repeat,
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><defs><linearGradient id='cg' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23fff2a0'/><stop offset='0.5' stop-color='%23ffd700'/><stop offset='1' stop-color='%23b8860b'/></linearGradient></defs><g stroke='url(%23cg)' fill='none' stroke-linecap='round' stroke-linejoin='round'><path d='M22 6 H72 V56' stroke-width='3'/><path d='M28 12 H66 V50' stroke-width='1.3' opacity='0.85'/><path d='M22 6 q-10 0 -11 10 q0 6 5.5 6 q4 0 4 -3.6 q0 -2.8 -2.8 -2.8' stroke-width='2.2'/><path d='M72 56 q0 10 -10 11 q-6 0 -6 -5.5 q0 -4 3.6 -4 q2.8 0 2.8 2.8' stroke-width='2.2'/><path d='M60 6 l4 6 M66 6 l3 4.5' stroke-width='1.4' opacity='0.8'/><path d='M72 44 l6 -4 M72 38 l4.5 -3' stroke-width='1.4' opacity='0.8'/></g><path d='M66 8 l5 -5 l5 5 l-5 5 z' fill='%23e2372f' stroke='url(%23cg)' stroke-width='1.6'/><circle cx='11' cy='16' r='1.6' fill='%23ffd700'/><circle cx='62' cy='67' r='1.6' fill='%23ffd700'/></svg>") no-repeat,
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'><defs><linearGradient id='bm' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ffffff'/><stop offset='0.45' stop-color='%23cfd8e6'/><stop offset='1' stop-color='%237d8aa0'/></linearGradient><linearGradient id='gg' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23fff2a0'/><stop offset='0.5' stop-color='%23ffd700'/><stop offset='1' stop-color='%23b8860b'/></linearGradient><radialGradient id='gl'><stop offset='0' stop-color='rgba(255,200,60,0.45)'/><stop offset='1' stop-color='rgba(255,200,60,0)'/></radialGradient></defs><ellipse cx='42' cy='46' rx='40' ry='40' fill='url(%23gl)'/><path d='M14 4 C10 26 22 46 44 58 L52 46 C34 36 22 20 20 5 Z' fill='url(%23bm)' stroke='%23e8eef8' stroke-width='1'/><path d='M15 8 C13 26 24 44 43 55' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' opacity='0.9'/><path d='M21 10 C20 24 28 38 40 47' fill='none' stroke='%238fa0b8' stroke-width='1.2' stroke-linecap='round' opacity='0.85'/><path d='M23 11 l4 -3 l0.6 5 z' fill='url(%23gg)'/><path d='M28 19 l4 -3 l0.6 5 z' fill='url(%23gg)'/><path d='M34 27 l4 -3 l0.6 5 z' fill='url(%23gg)'/><path d='M40 34 l4 -3 l0.6 5 z' fill='url(%23gg)'/><path d='M42 62 L58 44' stroke='url(%23gg)' stroke-width='5' stroke-linecap='round' fill='none'/><path d='M42 62 q-4 1 -5 5 M58 44 q1 -4 5 -5' stroke='url(%23gg)' stroke-width='2.4' stroke-linecap='round' fill='none'/><circle cx='50' cy='53' r='2.6' fill='%23e2372f' stroke='url(%23gg)' stroke-width='1.2'/><path d='M48 60 L62 74' stroke='%236b3a1e' stroke-width='5.4' stroke-linecap='round'/><path d='M50.5 60.5 l3.2 -3.2 M54 64 l3.2 -3.2 M57.5 67.5 l3.2 -3.2' stroke='%23d9a05a' stroke-width='1.4' stroke-linecap='round'/><circle cx='67' cy='79' r='5' fill='none' stroke='url(%23gg)' stroke-width='2.6'/><circle cx='67' cy='79' r='1.8' fill='%23ffd700'/><path d='M64 82 q-3 8 -9 11' stroke='%23e2372f' stroke-width='2' stroke-linecap='round' fill='none'/><path d='M66 84 q-1 9 -6 12' stroke='%23c22a24' stroke-width='1.6' stroke-linecap='round' fill='none'/></svg>") no-repeat,
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='30' viewBox='0 0 56 30'><defs><linearGradient id='f' x1='0' y1='1' x2='0' y2='0'><stop offset='0' stop-color='%23ff3300'/><stop offset='0.55' stop-color='%23ff8800'/><stop offset='1' stop-color='%23ffd700'/></linearGradient><linearGradient id='fc' x1='0' y1='1' x2='0' y2='0'><stop offset='0' stop-color='%23ff8800'/><stop offset='1' stop-color='%23fff2a0'/></linearGradient></defs><path d='M0 30 Q3 18 7 22 Q9 8 14 16 Q16 4 20 14 Q24 6 26 18 Q30 12 32 22 Q36 10 40 18 Q44 6 47 16 Q51 10 53 22 Q55 16 56 30 Z' fill='url(%23f)' opacity='0.85'/><path d='M6 30 Q10 22 13 24 Q16 14 20 20 Q24 12 27 22 Q32 16 35 24 Q40 14 44 22 Q48 18 50 30 Z' fill='url(%23fc)' opacity='0.7'/></svg>") repeat-x,
+    radial-gradient(60% 36% at 22% 104%, rgba(255, 90, 0, 0.35) 0%, rgba(0, 0, 0, 0) 70%) no-repeat,
+    radial-gradient(55% 32% at 78% 106%, rgba(255, 160, 0, 0.30) 0%, rgba(0, 0, 0, 0) 70%) no-repeat;
+  background-size: 240% 100%, 132px 44px, 80px 80px, 96px 96px, 56px 30px, 100% 100%, 100% 100%;
+  background-position: 220% 0, left 8px top 6px, right 3px top 3px, right 10px bottom 12px, left 0 bottom 0, 0 0, 0 0;
+  animation: yidaoSweep 2.2s linear infinite, yidaoFire 0.85s ease-in-out infinite alternate;
+}
+@keyframes yidaoSweep {
+  0%   { background-position: 220% 0, left 8px top 6px, right 3px top 3px, right 10px bottom 12px, left 0 bottom 0, 0 0, 0 0; }
+  60%  { background-position: -120% 0, left 8px top 6px, right 3px top 3px, right 10px bottom 12px, left 0 bottom 0, 0 0, 0 0; }
+  100% { background-position: -120% 0, left 8px top 6px, right 3px top 3px, right 10px bottom 12px, left 0 bottom 0, 0 0, 0 0; }
+}
+@keyframes yidaoFire {
+  0%   { opacity: 0.65; }
+  35%  { opacity: 1; }
+  60%  { opacity: 0.8; }
+  100% { opacity: 0.95; }
+}
+
+/* neonflow 霓虹光流转：青→紫→品三色霓虹描边环缓缓流转 + 霓虹微光对角漫移 */
+html[data-style="neonflow"] {
+  --lg-base:
+    radial-gradient(110% 80% at 10% 0%, rgba(0, 229, 255, 0.07) 0%, rgba(0, 0, 0, 0) 45%),
+    radial-gradient(120% 90% at 100% 100%, rgba(255, 45, 180, 0.06) 0%, rgba(0, 0, 0, 0) 50%),
+    linear-gradient(160deg, rgb(11 14 28 / calc(0.60 + var(--mirror-tint, 0.32))) 0%, rgb(5 6 13 / calc(0.66 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(120, 240, 255, 0.15);
+  /* RGB全光谱跑马灯：七色首尾相接沿框流动旋转（75%亮度） */
+  --lg-ring: conic-gradient(from var(--orbitA, 0deg),
+    rgba(255, 0, 76, 0.75) 0deg, rgba(255, 149, 0, 0.75) 55deg, rgba(245, 233, 0, 0.75) 105deg, rgba(0, 224, 90, 0.75) 160deg,
+    rgba(0, 229, 255, 0.75) 215deg, rgba(61, 91, 255, 0.75) 265deg, rgba(200, 0, 255, 0.75) 315deg, rgba(255, 0, 76, 0.75) 360deg);
+  --inset-bg: rgba(0, 229, 255, 0.05);
+  --lg-tile-bg: rgba(120, 200, 255, 0.07);
+}
+/* 流转动画直接钉在伪元素本体：渐变+角度动画同点——跨层变量链(html→--lg-ring→伪元素)不逐帧刷新 */
+html[data-style="neonflow"] .lg::before {
+  padding: 2px;
+  background: conic-gradient(from var(--orbitA, 0deg),
+    rgba(255, 0, 76, 0.75) 0deg, rgba(255, 149, 0, 0.75) 55deg, rgba(245, 233, 0, 0.75) 105deg, rgba(0, 224, 90, 0.75) 160deg,
+    rgba(0, 229, 255, 0.75) 215deg, rgba(61, 91, 255, 0.75) 265deg, rgba(200, 0, 255, 0.75) 315deg, rgba(255, 0, 76, 0.75) 360deg);
+  animation: orbitSpin 2s linear infinite;
+}
+html[data-style="neonflow"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(55% 42% at 18% 20%, rgba(0, 229, 255, 0.10) 0%, rgba(0, 0, 0, 0) 70%) no-repeat,
+    radial-gradient(50% 45% at 84% 82%, rgba(255, 45, 180, 0.09) 0%, rgba(0, 0, 0, 0) 70%) no-repeat;
+  background-size: 180% 180%, 180% 180%;
+  animation: neonDrift 9s ease-in-out infinite alternate;
+}
+@keyframes neonDrift {
+  from { background-position: 0% 0%, 100% 100%; }
+  to   { background-position: 80% 55%, 15% 30%; }
+}
+
+/* speed 极速流光：斜向光轨高速飞掠，青/品双层反向对冲（SVG无缝瓦片保证循环丝滑） */
+html[data-style="speed"] {
+  --lg-base:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 0%, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.16) 100%),
+    linear-gradient(165deg, rgb(9 14 17 / calc(0.60 + var(--mirror-tint, 0.32))) 0%, rgb(5 7 10 / calc(0.66 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(55, 230, 200, 0.16);
+  --lg-ring: conic-gradient(from 0deg,
+    rgba(55, 230, 200, 0.55) 0deg, rgba(255, 255, 255, 0.06) 100deg,
+    rgba(255, 95, 162, 0.40) 200deg, rgba(55, 230, 200, 0.30) 290deg, rgba(55, 230, 200, 0.55) 360deg);
+  --inset-bg: rgba(55, 230, 200, 0.05);
+  --lg-tile-bg: rgba(55, 230, 200, 0.07);
+}
+html[data-style="speed"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 0;
+  background:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'><g stroke='rgba(55,230,200,0.13)' stroke-width='2' stroke-linecap='round'><line x1='-30' y1='150' x2='90' y2='30'/><line x1='30' y1='90' x2='150' y2='-30'/><line x1='-50' y1='90' x2='70' y2='-30'/></g></svg>") repeat,
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'><g stroke='rgba(255,95,162,0.08)' stroke-width='1.4' stroke-linecap='round'><line x1='0' y1='-30' x2='120' y2='90'/><line x1='60' y1='30' x2='180' y2='150'/></g></svg>") repeat;
+  background-size: 120px 120px, 120px 120px;
+  animation: speedRace 1.7s linear infinite;
+}
+@keyframes speedRace {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 120px -120px, -120px -120px; }
+}
+
+/* pulse 霓虹脉冲：声呐环从卡心扩散消散，霓虹粉呼吸 */
+html[data-style="pulse"] {
+  --lg-base:
+    radial-gradient(70% 55% at 50% 50%, rgba(255, 95, 162, 0.07) 0%, rgba(0, 0, 0, 0) 60%),
+    linear-gradient(165deg, rgb(24 12 26 / calc(0.60 + var(--mirror-tint, 0.32))) 0%, rgb(11 6 14 / calc(0.66 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 1px 0 rgba(255, 150, 195, 0.14);
+  --lg-ring: conic-gradient(from 0deg,
+    rgba(255, 95, 162, 0.50) 0deg, rgba(255, 255, 255, 0.06) 120deg,
+    rgba(190, 110, 255, 0.35) 240deg, rgba(255, 95, 162, 0.50) 360deg);
+  --inset-bg: rgba(255, 95, 162, 0.05);
+  --lg-tile-bg: rgba(255, 95, 162, 0.07);
+}
+html[data-style="pulse"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 0;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(0, 0, 0, 0) 36%, rgba(255, 95, 162, 0.34) 41%,
+    rgba(190, 110, 255, 0.18) 45%, rgba(0, 0, 0, 0) 50%) no-repeat;
+  background-position: center;
+  animation: pulseRing 2.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+@keyframes pulseRing {
+  0%   { background-size: 26% 26%; opacity: 0.95; }
+  70%  { background-size: 200% 200%; opacity: 0; }
+  100% { background-size: 200% 200%; opacity: 0; }
+}
+
+/* ============ 硬边动效双子 v2（0907重做，Fable 5.1）：底干净不铺纹理，气质全押在硬边描边的光上。
+   动效只走安全通道（伪元素描边的 conic 角度 / 透明度），与 sharp 同一硬边规范（直角+扁平底+压角控件） ============ */
+
+/* amber 琥珀断层：暖黑底，一段琥珀色电流沿直角边缘爬行——拐角处直角折过去（硬边的辨识度全在光线拐直角），
+   光段前端亮白芯、尾部渐熄。描边环本身留一线暗琥珀，光段经过时点亮 */
+html[data-style="amber"] {
+  --lg-base: linear-gradient(180deg, rgb(22 16 12 / calc(0.58 + var(--mirror-tint, 0.32))) 0%, rgb(12 9 7 / calc(0.66 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: none;
+  --lg-ring: conic-gradient(rgba(255,170,60,0.22) 0 360deg);
+  --inset-bg: rgba(255,170,60,0.05);
+  --lg-tile-bg: rgba(255,170,60,0.07);
+}
+html[data-style="amber"] .lg { border-radius: 3px !important; }
+html[data-style="amber"] .lg-tile,
+html[data-style="amber"] .bubble { border-radius: 3px !important; }
+html[data-style="amber"] button,
+html[data-style="amber"] input,
+html[data-style="amber"] textarea,
+html[data-style="amber"] select,
+html[data-style="amber"] .pill,
+html[data-style="amber"] .hbtn { border-radius: 2px !important; }
+/* 电流光段：conic 角度扫描直接钉在描边伪元素本体（跨层变量链不逐帧刷新——实测教训）；
+   矩形上等角速会让长边跑得快短边慢，这正是电流的手感，不做匀速修正 */
+html[data-style="amber"] .lg::before {
+  padding: 1.5px;
+  background: conic-gradient(from var(--orbitA, 0deg),
+    rgba(255,170,60,0.22) 0deg,
+    rgba(255,170,60,0.22) 300deg,
+    color-mix(in srgb, var(--accent) 60%, rgba(255,140,30,0.6)) 332deg,
+    color-mix(in srgb, var(--accent) 35%, white) 352deg,
+    #fff6dc 357deg,
+    rgba(255,170,60,0.22) 360deg);
+  animation: orbitSpin 4s linear infinite;
+}
+
+/* steel 冷钢刻线：钢灰黑底，边缘是双线刻痕（外1px亮/内1px暗=金属倒角），全冷零彩；
+   主题色只在两处出现：武装/发光环时的爆闪（原有机制），以及每12秒一次极轻的刻线亮一遍扫过（像手电掠过金属倒角） */
+html[data-style="steel"] {
+  --lg-base:
+    linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 78%, rgba(0,0,0,0.18) 100%),
+    linear-gradient(180deg, rgb(24 26 30 / calc(0.62 + var(--mirror-tint, 0.32))) 0%, rgb(13 14 17 / calc(0.70 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: inset 0 0 0 1px rgba(0,0,0,0.55), inset 0 0 0 2px rgba(255,255,255,0.055);
+  --lg-ring: conic-gradient(rgba(215,222,232,0.40) 0 360deg);
+  --inset-bg: rgba(255,255,255,0.045);
+  --lg-tile-bg: rgba(255,255,255,0.06);
+}
+html[data-style="steel"] .lg { border-radius: 0 !important; }
+html[data-style="steel"] .lg-tile,
+html[data-style="steel"] .bubble { border-radius: 2px !important; }
+html[data-style="steel"] button,
+html[data-style="steel"] input,
+html[data-style="steel"] textarea,
+html[data-style="steel"] select,
+html[data-style="steel"] .pill,
+html[data-style="steel"] .hbtn { border-radius: 0 !important; }
+/* 刻线掠光：静态倒角刻线走默认::before描边；掠光独立放在::after（同样的镂空环mask），
+   只画一段主题色光、其余透明，12秒周期里前1.6秒跑一圈随即透明度归零——真正"其余时间纯冷"
+   （一层conic的亮段永远在某处，停住=常亮在角上，做不到熄灭，实测教训） */
+html[data-style="steel"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--orbitA, 0deg),
+    rgba(0,0,0,0) 0deg,
+    rgba(0,0,0,0) 336deg,
+    color-mix(in srgb, var(--accent) 45%, transparent) 348deg,
+    color-mix(in srgb, var(--accent) 75%, white) 355deg,
+    #ffffff 358deg,
+    rgba(0,0,0,0) 360deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none; z-index: 3;
+  opacity: 0;
+  animation: steelSweep 12s linear infinite;
+}
+@keyframes steelSweep {
+  0%    { --orbitA: 0deg;   opacity: 1; }
+  12%   { --orbitA: 330deg; opacity: 1; }
+  13.3% { --orbitA: 360deg; opacity: 0; }
+  100%  { --orbitA: 360deg; opacity: 0; }
+}
+
+/* graphite 石墨极光：硬边壳（直角+扁平+压角控件）+ 极光漫游同款内部漂移动效，配色改黑灰——
+   近黑底上两团银灰雾（一冷白一暖灰）缓慢漂移呼吸，同一套auroraDrift关键帧（5秒往返）；
+   描边=均匀细灰线，零彩，主题色只留给武装/发光环 */
+html[data-style="graphite"] {
+  --lg-base:
+    linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.18) 100%),
+    linear-gradient(165deg, rgb(20 21 25 / calc(0.62 + var(--mirror-tint, 0.32))) 0%, rgb(9 10 13 / calc(0.70 + var(--mirror-tint, 0.32))) 100%);
+  --lg-convex: none;
+  --lg-ring: conic-gradient(rgba(190,196,208,0.34) 0 360deg);
+  --inset-bg: rgba(255,255,255,0.045);
+  --lg-tile-bg: rgba(255,255,255,0.065);
+}
+html[data-style="graphite"] .lg { border-radius: 3px !important; }
+html[data-style="graphite"] .lg-tile,
+html[data-style="graphite"] .bubble { border-radius: 3px !important; }
+html[data-style="graphite"] button,
+html[data-style="graphite"] input,
+html[data-style="graphite"] textarea,
+html[data-style="graphite"] select,
+html[data-style="graphite"] .pill,
+html[data-style="graphite"] .hbtn { border-radius: 2px !important; }
+html[data-style="graphite"] .lg::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(60% 45% at 20% 15%, rgba(220,226,236,0.16) 0%, rgba(0,0,0,0) 70%) no-repeat,
+    radial-gradient(55% 50% at 85% 80%, rgba(150,152,160,0.14) 0%, rgba(0,0,0,0) 70%) no-repeat;
+  background-size: 190% 190%, 190% 190%;
+  animation: auroraDrift 5s ease-in-out infinite alternate;
+}
+
+/* ============ 全局滚动条：细圆条玻璃风，去掉系统默认的粗滚块和箭头 ============ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.22);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ============ 悬浮字：白字+深色光晕，任何背景(包括透出来的PS白画布)都可读
+   （差值混合只能作用于网页内部内容，看不见窗口后面的PS，故弃用） ============ */
+.inv {
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 0 8px rgba(0,0,0,0.45);
+}
+
+/* ============ PS镜面层：面板底层铺PS实时画面，重模糊成iOS式毛玻璃 ============ */
+.bgMirror {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+.bgMirror video { position: absolute; display: none; }
+/* 参考iOS文件夹玻璃：大力度模糊+轻微提饱和，浅灰中性色罩 */
+.bgMirror .bgTint {
+  position: absolute; inset: 0;
+  background: rgba(30,30,36,var(--mirror-tint));
+  backdrop-filter: blur(var(--mirror-blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--mirror-blur)) saturate(1.25);
+}
+/* ============ 背景图片/视频层（设置→背景图片；glass.js挂在.lg首子）：玻璃底之上、内容之下，
+   圆角随卡裁切；不透明度由滑杆写在行内style ============ */
+.bgMedia {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+.bgMedia img, .bgMedia video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* 内容永远浮在镜面之上（缩放手柄和边缘条除外——它们要保持absolute贴边定位） */
+.lg > *:not(.bgMirror):not(.bgMedia):not(.lg-grip):not(.lg-edge):not(.glowring):not(.peeback) { position: relative; z-index: 1; }
+
+/* ============ 液态玻璃面板（窗口根容器用，无backdrop-filter） ============ */
+.lg {
+  position: relative;
+  background: var(--lg-base);
+  box-shadow: var(--lg-convex);
+  border: none;
+}
+/* fresnel亮环：窄描边，左上/右上/底边带高光 */
+.lg::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--lg-ring);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 3;
+}
+/* （水流置换滤镜已移除——在圆角处会采样出污渍状伪影，镜面重模糊已提供足够的玻璃边缘感） */
+
+/* ============ 液态玻璃气泡（面板内部元素，可用真模糊） ============ */
+.lg-tile {
+  position: relative;
+  background: var(--lg-tile-bg);
+  border: none;
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.40),
+    0 6px 16px rgba(0,0,0,0.22);
+}
+body.light .lg-tile {
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,1),
+    0 6px 16px rgba(0,0,0,0.10);
+}
+.lg-tile::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  padding: 0.6px;
+  background: var(--lg-ring);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ============ 主题色发光组件 ============ */
+/* 卡片边框发光环：叠在.lg里，once=单次脉冲 loop=持续呼吸 */
+.glowring {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+  box-shadow:
+    0 0 16px 2px var(--accent),
+    inset 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.glowring.once { animation: glowFade 0.9s ease-out 1; }
+.glowring.loop { animation: glowFade 1.3s ease-in-out infinite; }
+@keyframes glowFade { 0%, 100% { opacity: 0; } 35% { opacity: 1; } }
+
+/* 武装光环强化（0905用户裁定：原.loop渐隐一半时间全灭，动态特效下看不清）：
+   常亮打底0.45永不熄灭+呼吸到满亮；上装瞬间.armburst爆闪一次（glass.js翻转沿触发） */
+.glowring.armring {
+  animation: armPulse 1.3s ease-in-out infinite;
+  box-shadow:
+    0 0 18px 3px var(--accent),
+    inset 0 0 16px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+@keyframes armPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.armburst {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  pointer-events: none; z-index: 7;
+  border: 2.5px solid var(--accent);
+  animation: armBurst 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+@keyframes armBurst {
+  0% { opacity: 0; box-shadow: 0 0 0 0 transparent; }
+  18% {
+    opacity: 1;
+    box-shadow: 0 0 46px 14px var(--accent),
+      inset 0 0 30px color-mix(in srgb, var(--accent) 75%, transparent);
+  }
+  100% { opacity: 0; box-shadow: 0 0 10px 2px transparent; }
+}
+
+/* 红色警示爆闪环（批处理/抗截断/参考图共用，0903-04用户裁定）：这些功能开着会
+   影响生成结果或连跑扣费，必须一眼看见。实体红描边+常亮打底+1.1s脉冲强光；
+   红色固定#ff3b30不随主题。挂法：.lg下追加 <div class="glowring warnring"> */
+.warnring {
+  border: calc(2px * var(--zi, 1)) solid #ff3b30;
+  animation: warnRing 1.1s ease-in-out infinite;
+}
+@keyframes warnRing {
+  0%, 100% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px 1px rgba(255, 59, 48, 0.85),
+      inset 0 0 8px rgba(255, 59, 48, 0.35);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 30px 8px rgba(255, 59, 48, 0.95),
+      inset 0 0 22px rgba(255, 59, 48, 0.6);
+  }
+}
+
+/* 按钮/小元素持续闪烁 */
+.blink { animation: btnBlink 1.1s ease-in-out infinite; }
+/* 单次闪烁（点击反馈） */
+.blink1 { animation: btnBlink 0.7s ease-in-out 1; }
+@keyframes btnBlink {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 10px 2px var(--accent); }
+}
+
+/* ============ 全局标题区收敛：所有卡片左上角logo与文字统一缩小 ============ */
+.lg #head .title { font-size: 11px; letter-spacing: 0.5px; }
+.lg #head .title svg { width: 13px; height: 13px; }
+
+/* ============ 盲人修图模式：极简界面（设置里切换，glass.js挂body.blindmode；控制台整卡豁免） ============ */
+/* 卡牌标题只留logo去文字（font-size:0收掉文本节点，svg有显式尺寸不受影响） */
+body.blindmode .lg #head .title { font-size: 0; letter-spacing: 0; }
+/* 卡内功能气泡的文字标签隐去、logo保留（抗截断/校色式三格气泡；控制台不挂blindmode类天然豁免） */
+body.blindmode .bubble .lab { display: none; }
+/* 自绘悬停说明浮层（data-tip驱动的#tip，mouseenter用行内style开启，必须!important压制） */
+body.blindmode #tip { display: none !important; }
+
+/* ============ 两态模型：未锁定=手柄随时可用；锁定=手柄隐藏（glass.js挂body.lockedon） ============ */
+body.lockedon .lg-grip, body.lockedon .lg-edge { display: none; }
+
+/* 卡片本地关闭钮：悬停标题栏才现身的弱化× */
+.lg-close { opacity: 0; transition: opacity 0.15s, background 0.2s; font-size: 14px; }
+#head:hover .lg-close { opacity: 0.85; }
+.lg-close:hover { background: rgba(255, 80, 80, 0.28); color: #ff9a9a; }
+
+/* ============ 缩放手柄（0908用户第三次反馈"识别太小、悬停选不中"）============
+   挂body+fixed定位。热区从窗口最外沿向里延伸：四边 22px、角落 40px——比之前的 12/26 大近一倍。
+   窗口外沿 0-12px 是透明边距(.lg 在 inset:12px 内)，12-22px 已进入 .lg 的圆角/描边带，
+   而各卡 #body 至少有 14px 内边距，控件离 .lg 边 ≥14px，所以 22px 热区只压到玻璃边缘不压到控件。
+   角落 40px 同理只盖住 .lg 的圆角空白。z-index 999 压在一切卡内内容之上。 */
+.lg-grip {
+  position: fixed;
+  right: 0; bottom: 0;
+  width: 40px; height: 40px;
+  cursor: nwse-resize;
+  z-index: 999;
+}
+/* 右下角悬停时给一个看得见的角标，让人知道"这里能等比缩放" */
+.lg-grip::after {
+  content: '';
+  position: absolute; right: 14px; bottom: 14px;
+  width: 12px; height: 12px;
+  border-right: 2.5px solid rgba(255,255,255,0);
+  border-bottom: 2.5px solid rgba(255,255,255,0);
+  border-radius: 0 0 3px 0;
+  transition: border-color 0.15s;
+}
+.lg-grip:hover::after { border-color: color-mix(in srgb, var(--accent) 75%, rgba(255,255,255,0.5)); }
+
+/* 四边自由拉伸：角部=等比缩放，四边=自由拉伸，两种能力并存。
+   上下边整条（拆左右两角分段会连卡片中间的上下边都没手柄=只能横拉伸）。
+   边热区避开角落 40px，避免与 .lg-grip 抢。 */
+.lg-edge { position: fixed; z-index: 999; }
+.lg-edge-r { right: 0; top: 40px; bottom: 40px; width: 22px; cursor: ew-resize; }
+.lg-edge-l { left: 0; top: 40px; bottom: 40px; width: 22px; cursor: ew-resize; }
+.lg-edge-b { bottom: 0; left: 40px; right: 40px; height: 22px; cursor: ns-resize; }
+.lg-edge-t { top: 0; left: 40px; right: 40px; height: 22px; cursor: ns-resize; }
+.lg-edge::after {
+  content: '';
+  position: absolute;
+  background: rgba(255,255,255,0);
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+/* 悬停指示线贴在玻璃描边上（外沿 12px 透明区之内的那 1-2px），不是画在窗口最边上 */
+.lg-edge-r::after { right: 11px; top: 0; bottom: 0; width: 4px; }
+.lg-edge-l::after { left: 11px; top: 0; bottom: 0; width: 4px; }
+.lg-edge-b::after { bottom: 11px; left: 0; right: 0; height: 4px; }
+.lg-edge-t::after { top: 11px; left: 0; right: 0; height: 4px; }
+.lg-edge:hover::after { background: color-mix(in srgb, var(--accent) 65%, rgba(255,255,255,0.4)); }
+
+/* ============ 玻璃球（悬浮球）：跟随主题（0906用户裁定）——底板材质=卡牌同款var(--lg-base)
+   （不透明度滑杆/预设主题材质全部自动跟随），上面罩一层主题色斜向薄纱，外圈主题色微光 ============ */
+.lg-orb {
+  position: relative;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--accent) 34%, transparent) 0%, color-mix(in srgb, var(--accent) 6%, transparent) 72%),
+    var(--lg-base);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.22),
+    inset 0 -10px 16px -8px rgba(0,0,0,0.45),
+    0 3px 8px rgba(0,0,0,0.30),   /* 球窗口边距12px，投影同样不能超出 */
+    0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.lg-orb::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  padding: 0.7px;
+  background: var(--lg-ring);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ============ 滑块手柄放大（0907#4 用户反馈"滑块的按钮要大一些"） ============
+   所有卡片 range 滑块的圆钮统一放大到好抓的尺寸，--zi 补偿=缩放卡片时手柄视觉尺寸恒定。
+   默认系统 thumb 只有 ~12px，高频拖动小滑块极易脱手；这组覆盖进各类卡片（param-controls/params/autofix词条）。 */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: calc(20px * var(--zi, 1));
+  height: calc(20px * var(--zi, 1));
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+  margin-top: calc(-6px * var(--zi, 1));   /* thumb比轨道高，负margin让圆心贴合轨道中线 */
+}
+input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.12); }
+input[type="range"]::-webkit-slider-runnable-track {
+  height: calc(8px * var(--zi, 1));
+  border-radius: calc(4px * var(--zi, 1));
+  background: rgba(255, 255, 255, 0.16);
+}
+input[type="range"] { cursor: pointer; }
+
+/* 只在预览副本中生效。后续 UI 调整可以写在这里，保存后自动刷新。 */
+
+/* 来福 Life 品牌。保留原有 DOM、事件、窗口尺寸与进度转场。 */
+:root { --accent-rgb: 25, 181, 188; }
+.life-mark {
+  display: block; width: 20px; height: 20px; object-fit: contain;
+  flex-shrink: 0; pointer-events: none; user-select: none;
+}
+#ball:has(.life-mark) { background: transparent; box-shadow: none; }
+#ball:has(.life-mark)::before { display: none; }
+#ballIco:has(.life-mark), #ballIco .life-mark { width: 72px; height: 72px; }
+#ballIco .life-mark { position: relative; z-index: 1; }
+.bmenu-item .life-mark { width: 16px; height: 16px; }

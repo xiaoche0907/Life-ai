@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+
+  #list {
+    flex: 1; overflow-y: auto;
+    padding: 0 14px 14px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+
+  /* ---------- 一批 = 一个气泡组 ---------- */
+  .gitem {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 8px; border-radius: 16px;
+    background: var(--inset-bg);
+    border: 1px solid var(--inset-border);
+  }
+  .gin {
+    width: 68px; height: 68px; border-radius: 11px;
+    object-fit: cover; flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .gin:hover { transform: scale(1.06); }
+  .ginph {
+    width: 68px; height: 68px; border-radius: 11px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text-dim); font-size: 12px;
+  }
+  .gmid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  /* 提示词字号锚定控制台（0908用户反馈"比控制台小"）：根因=进度卡出厂 zoom 0.755 而控制台 1.0，字随卡 zoom 缩了 25%。
+     这里用 --zi 反向补偿：渲染尺寸 = 11px × 文字滑杆(--fz) × (1/zoom) × zoom = 11px×滑杆，与控制台标签(11px)同大，
+     且照常跟随设置里的文字大小。calc 写法不走 glass.js 的 px 自动改写，所以 --fz 要手动乘上。 */
+  .gpr {
+    font-size: calc(11px * var(--fz, 1) * var(--zi, 1)); line-height: 1.4; color: var(--text); opacity: 0.85;
+    max-height: 2.8em; overflow: hidden;
+    cursor: pointer;
+  }
+  .gpr:hover { color: var(--accent-text); opacity: 1; }
+  .gpr.open { max-height: none; white-space: pre-wrap; }
+  .gouts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .gout {
+    width: 62px; height: 62px; border-radius: 10px;
+    object-fit: cover; cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .gout:hover { transform: scale(1.08); }
+  .gout.dim { opacity: 0.32; }   /* 已贴回：变暗但可无限次重贴 */
+  .goutph {
+    width: 62px; height: 62px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text-dim); font-size: 13px;
+  }
+  /* 0908用户裁定：失败/截断没能返图的占位=红色✕（不再用⚠警示号） */
+  .goutph.fail { color: var(--err); font-size: 26px; font-weight: 300; line-height: 1; }
+  .gx {
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text-dim);
+    font-size: 10px; cursor: pointer;
+  }
+  .gx:hover { color: var(--err); }
+  /* 提前贴回（0916）：来福 logo 小圆钮，这批里有生成好还没贴的图才出现 */
+  /* 左列：输入图 + 提前贴回钮（0916 用户截图红框位置=缩略图正下方） */
+  .gleft { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+  .gearly {
+    width: 68px; height: 22px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text-dim); cursor: pointer;
+  }
+  .gearly svg { width: 14px; height: 14px; }
+  .gearly:hover { color: var(--accent-text); background: var(--accent-soft); }
+  .gearly.wait { opacity: 0.35; cursor: default; pointer-events: none; }   /* 这批还没一张好的：先灰着占位 */
+  .gearly.busy { opacity: 0.4; pointer-events: none; }
+  #empty { text-align: center; color: var(--text-dim); font-size: 11px; padding: 26px 0; letter-spacing: 1px; }
+
+  /* ---------- 悬停大图预览：出现在鼠标所在的另一半（不挡光标所在行），尽量铺满卡面 ---------- */
+  #bigPrev {
+    display: none;
+    position: absolute;
+    left: 8px; right: 8px;
+    max-height: 72%;
+    margin: 0 auto;
+    object-fit: contain;
+    border-radius: 14px;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.6);
+    z-index: 30;
+    pointer-events: none;
+    background: rgba(0,0,0,0.55);
+  }
+  #bigPrev.attop { top: 42px; bottom: auto; }
+  #bigPrev.atbottom { bottom: 8px; top: auto; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin18 {
+    width: 16px; height: 16px;
+    border: 2.5px solid var(--btn-bg-hover);
+    border-top-color: var(--accent-text); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>生图进度</span>
+    <div class="sp"></div>
+  </div>
+  <div id="list"></div>
+  <img id="bigPrev" />
+  <div class="glowring" id="glow"></div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.progress;
+
+  // 悬停大图预览：光标在卡片上半→大图贴底部；下半→大图贴顶部（永远躲开鼠标所在行）
+  // 小图用 256px 缩略图（data-full 记原图路径），只有悬停大图才读原图——原图当小图源=渲染进程囤整张解码位图（0908）
+  const bigPrev = $('bigPrev');
+  const fileUrl = (p) => 'file:///' + String(p).replace(/\\/g, '/');
+  function hoverPreview(img) {
+    img.addEventListener('mouseenter', (e) => {
+      const half = e.clientY < document.documentElement.clientHeight / 2;
+      bigPrev.classList.toggle('atbottom', half);
+      bigPrev.classList.toggle('attop', !half);
+      bigPrev.src = img.dataset.full || img.src;
+      bigPrev.style.display = 'block';
+    });
+    img.addEventListener('mouseleave', () => { bigPrev.style.display = 'none'; bigPrev.removeAttribute('src'); });
+  }
+
+  let gtasks = [];
+  // 每有一张图从"生成中"变为完成 → 边框发光一次
+  const prevStatus = new Map();
+  function pulseGlow() {
+    const g = $('glow');
+    g.classList.remove('once');
+    void g.offsetWidth;
+    g.classList.add('once');
+  }
+  function checkNewDone(tasks, silent) {
+    let hit = false;
+    tasks.forEach((t) => {
+      const prev = prevStatus.get(t.id);
+      if (!silent && prev === 'running' && (t.status === 'done' || t.status === 'placed')) hit = true;
+      if (!silent && prev === undefined && t.status === 'running') hit = true;   // 新任务加入也闪一下
+      prevStatus.set(t.id, t.status);
+    });
+    // 首次加载也要闪：本卡通常是"开始跑图"时自动弹出来的，弹出瞬间就该高亮一次
+    if (silent && tasks.some((t) => t.status === 'running')) hit = true;
+    if (hit) pulseGlow();
+    // 有任务在跑=边框持续呼吸闪烁（一眼看出"正在生成"）
+    $('glow').classList.toggle('loop', tasks.some((t) => t.status === 'running'));
+  }
+
+  // 按批次分组：一批一个气泡
+  function groupBatches(tasks) {
+    const map = new Map();
+    tasks.forEach((t) => {
+      const k = t.batchId || t.id;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(t);
+    });
+    return [...map.values()];
+  }
+
+  function renderTasks() {
+    const list = $('list');
+    list.innerHTML = '';
+    bigPrev.style.display = 'none';
+    if (!gtasks.length) {
+      list.innerHTML = '<div id="empty">生成任务会出现在这里</div>';
+      return;
+    }
+    groupBatches(gtasks).forEach((batch) => {
+      const first = batch[0];
+      const it = document.createElement('div');
+      it.className = 'gitem';
+
+      // 左：选区输入图——点击在PS里复原这个选区；悬停看大图。下面挂提前贴回钮
+      const left = document.createElement('div');
+      left.className = 'gleft';
+      if (first.inputFile) {
+        const i = document.createElement('img');
+        i.className = 'gin';
+        i.loading = 'lazy';   // 持久化后记录会攒到几百条：只解可视区的缩略图（0913）
+        i.src = fileUrl(first.inputThumb || first.inputFile);
+        i.dataset.full = fileUrl(first.inputFile);
+        i.title = '点击：在PS里复原这次生成的选区';
+        i.addEventListener('click', () => {
+          window.orange.restoreSelection({ docId: first.docId, selection: first.selection });
+        });
+        hoverPreview(i);
+        left.appendChild(i);
+      } else {
+        const d = document.createElement('div');
+        d.className = 'ginph';
+        d.textContent = '文';
+        d.title = '纯文生图（无选区输入）';
+        left.appendChild(d);
+      }
+      // 提前贴回（0916）：这批一开跑就在缩略图下面占位（没一张好的先灰着），有好图就亮。
+      // 点它=好的那几张现在就打组贴回PS（同自动回传一条链），这批还在跑的完成后不再自动贴，留在这里等手点
+      //（用户场景：跑4张第4张卡住，不想干等）。跑完自动贴回后全批已贴，钮就收掉。
+      const ready = batch.filter((t) => t.status === 'done' && t.file && !t.noPlace).length;
+      const running = batch.filter((t) => t.status === 'running').length;
+      if (ready || running) {
+        const ep = document.createElement('div');
+        ep.className = 'gearly' + (ready ? '' : ' wait');
+        ep.setAttribute('data-pass', '');   // 锁定穿透模式放行（铁律16）
+        ep.innerHTML = window.ORANGE_ICONS.orange;
+        ep.title = ready
+          ? '提前贴回：把已生成好的 ' + ready + ' 张现在就打组贴回PS' + (running ? '；还在跑的 ' + running + ' 张完成后不再自动贴回，留在这里等你手点' : '')
+          : '提前贴回：这批还没有生成好的图，有一张好了就能点';
+        ep.addEventListener('click', async () => {
+          if (ep.classList.contains('busy') || ep.classList.contains('wait')) return;
+          ep.classList.add('busy');
+          try { window.orange.glassLog('[progress] 提前贴回 ' + (first.batchId || first.id) + ' ready=' + ready + ' running=' + running); } catch (_) {}
+          try { await window.orange.earlyPlace(first.batchId || first.id); } catch (_) {}   // 成败都由主进程写进生图日志
+          ep.classList.remove('busy');
+        });
+        left.appendChild(ep);
+      }
+      it.appendChild(left);
+
+      // 中：提示词 + 结果图排
+      const mid = document.createElement('div');
+      mid.className = 'gmid';
+
+      const pr = document.createElement('div');
+      pr.className = 'gpr';
+      pr.textContent = (first.tag ? first.tag + ' ' : '') + (first.prompt || '');
+      pr.title = (first.prompt || '') + '\n\n——点击填入提示词卡片（全文在这个悬停提示里看）';
+      pr.addEventListener('click', () => {
+        try { window.orange.glassLog('[progress] 点击贴回提示词 len=' + (first.prompt || '').length); } catch (_) {}
+        // 0916 用户裁定：点击只贴到提示词卡，不在这里展开——展开几千字的提示词把进度卡撑长，翻记录翻不动
+        // 0919 用户实报：打开别的图时点这里，提示词填不进去。根因=提示词卡的"正在输入"门禁误判（窗口失焦后 activeElement 仍指向 textarea）。
+        // 修法：写 config（走正常 gen-vars 广播，会被门禁拦）的同时发专用"强制填入"信号（提示词卡无条件覆盖）
+        window.orange.setConfig({ gen: { prompt: first.prompt || '' } });
+        if (window.orange.sendPromptForceFill) window.orange.sendPromptForceFill(first.prompt || '');
+        window.orange.showCard('prompt-box');   // 确保提示词卡可见并浮起（贴到藏着的卡=看着像没贴上）
+        pr.style.color = 'var(--ok)';
+        setTimeout(() => { pr.style.color = ''; }, 600);
+      });
+      mid.appendChild(pr);
+
+      const outs = document.createElement('div');
+      outs.className = 'gouts';
+      batch.forEach((t) => {
+        if (t.file) {
+          const o = document.createElement('img');
+          o.className = 'gout' + (t.status === 'placed' ? ' dim' : '');
+          o.loading = 'lazy';
+          o.src = fileUrl(t.thumb || t.file);
+          o.dataset.full = fileUrl(t.file);
+          o.dataset.tid = t.id;
+          o.title = t.status === 'placed' ? '已贴入 · 点击再次贴回原选区 · 右键看大图' : '点击贴入原选区 · 右键看大图';
+          o.addEventListener('click', async () => {
+            window.orange.taskAction(t.id, 'placed');
+            const r = await window.orange.placeInPS(t.file, { docId: t.docId, selection: t.selection, antiMode: t.antiMode || 0 });
+            if (!r.ok) window.orange.taskAction(t.id, 'restore');
+          });
+          // 右键=整屏看图层（0913）：压暗模糊整屏+大图居中，滚轮切图/点图贴回/点空白关闭。
+          // .gitem 在 glass.js 的 NODRAG 名单里，右键不会触发"摘走"；悬停大图先收掉（看图层盖住后 mouseleave 不一定来）
+          o.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            bigPrev.style.display = 'none'; bigPrev.removeAttribute('src');
+            try { window.orange.glassLog('[progress] 右键看大图 ' + t.id); } catch (_) {}
+            window.orange.viewerOpen(t.id);
+          });
+          hoverPreview(o);
+          outs.appendChild(o);
+        } else {
+          const d = document.createElement('div');
+          d.className = 'goutph';
+          if (t.status === 'running') d.innerHTML = '<div class="spin18"></div>';
+          else { d.classList.add('fail'); d.textContent = '✕'; d.title = t.error || '生成失败'; }
+          outs.appendChild(d);
+        }
+      });
+      mid.appendChild(outs);
+      it.appendChild(mid);
+
+      // 尾：整批移除
+      const x = document.createElement('div');
+      x.className = 'gx';
+      x.textContent = '✕';
+      x.title = '移除这一批（还在跑的：完成后不再自动贴回PS）';
+      x.addEventListener('click', () => window.orange.taskAction(first.id, 'remove-batch'));
+      it.appendChild(x);
+
+      list.appendChild(it);
+    });
+    // 渲染完自动滚回顶部，确保新进度可见
+    list.scrollTop = 0;
+  }
+  window.orange.onGenTasks((t) => { checkNewDone(t, false); gtasks = t; renderTasks(); });
+  window.orange.getGenTasks().then((t) => { checkNewDone(t, true); gtasks = t; renderTasks(); });
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

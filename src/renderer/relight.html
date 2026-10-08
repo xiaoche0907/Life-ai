@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+    flex: 0 1 auto; min-height: 30px; overflow: hidden;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  #stepTag { font-size: 9.5px; color: var(--text-dim); white-space: nowrap; }
+
+  /* 响应式：wrap撑满卡片，控件区锚定底部跟随拉伸 */
+  #wrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 14px; display: flex; flex-direction: column; gap: 9px; }
+  #wrap::-webkit-scrollbar { width: 0; }
+
+  /* 预览台：始终1:1正方形；边长由 fitSquares() 按剩余高度算出（0910：能放下的最大正方形，按钮行永远可见且不留空档） */
+  #stage {
+    position: relative; flex: 0 0 auto;
+    width: 100%; margin: auto auto 0; aspect-ratio: 1 / 1;
+    border-radius: 12px; overflow: hidden;
+    background: var(--inset-bg); border: 1px solid var(--inset-border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #cv { max-width: 100%; max-height: 100%; display: block; }
+  #stageHint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.8; pointer-events: none; }
+
+  /* 光盘+右列：固定区域，不滚动；margin-bottom:auto 与方台的 margin-top:auto 配对=整块垂直居中；
+     整组水平居中（宽卡时不再缩在左下角，与居中的方台对齐），右列宽度封顶=6 个按钮的自然宽度 */
+  #padRow { display: flex; gap: 12px; align-items: center; justify-content: center; flex: none; margin-top: 0; margin-bottom: auto; }
+  #pad {
+    width: 112px; height: 112px; border-radius: 50%; flex: none;
+    background: radial-gradient(circle at 38% 34%, var(--btn-bg-hover), var(--inset-bg) 72%);
+    border: 1px solid var(--inset-border);
+    position: relative; cursor: crosshair;
+    touch-action: none;
+  }
+  #pad::before, #pad::after {
+    content: ''; position: absolute; background: var(--inset-border); pointer-events: none;
+  }
+  #pad::before { left: 50%; top: 8%; bottom: 8%; width: 1px; }
+  #pad::after { top: 50%; left: 8%; right: 8%; height: 1px; }
+  #puck {
+    position: absolute; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 10px var(--accent);
+    transform: translate(-50%, -50%); pointer-events: none;
+    left: 50%; top: 50%;
+  }
+  /* 轨道摆灯gizmo（机位选择器式）：图片立板+球坐标轨道环+发光灯球 */
+  /* 方台在上、控件行在下，整体在剩余高度里垂直居中（首尾 auto 边距=滚动安全的居中法；方台宽度受限时不再一头堆空档） */
+  #gzwrap { position: relative; flex: none; display: none; width: 100%; margin: auto auto 0; }
+  #gizmo { width: 100%; aspect-ratio: 1 / 1; display: block; border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); cursor: grab; touch-action: none; }
+  #gzhint { position: absolute; left: 8px; top: 6px; font-size: 8.5px; color: var(--text-dim); pointer-events: none; }
+  #gzread { position: absolute; left: 0; right: 0; bottom: 5px; text-align: center; pointer-events: none; }
+  #gzread .big { font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+  #gzread .sm { font-size: 8.5px; color: var(--text-dim); }
+
+  #padCol { flex: 0 1 auto; width: 100%; max-width: 424px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  /* 按钮一横排、固定高度、单个封顶 64px（0910）：原来 3 列网格+强制 1:1，卡片一宽就变成 200px 大方块两行放不下 */
+  #controlRow { display: flex; gap: 8px; width: 100%; justify-content: center; }
+  #controlRow > * { flex: 1 1 0; min-width: 0; width: auto; max-width: 64px; height: 48px; }
+  #actionRow { display: flex; gap: 8px; }
+  #swCustom {
+    width: 52px; height: 52px;
+    border: 1px solid var(--accent);
+    padding: 0;
+    background: rgba(0,0,0,0.3);
+    border-radius: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all .2s;
+  }
+  #swCustom:hover {
+    background: rgba(0,0,0,0.4);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb, 25,181,188), 0.3);
+  }
+  #swCustom::-webkit-color-swatch-wrapper { padding: 8px; }
+  #swCustom::-webkit-color-swatch { border: none; border-radius: 6px; }
+  .mbtn {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    cursor: pointer;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s;
+  }
+  .mbtn svg {
+    width: 24px; height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+  }
+  .mbtn:hover {
+    background: rgba(0,0,0,0.4);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb, 25,181,188), 0.3);
+  }
+  .mbtn.on {
+    background: rgba(var(--accent-rgb, 25,181,188), 0.15);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb, 25,181,188), 0.5);
+  }
+
+  /* 模式分页：🎚实时打光(数学·免费实时) / ✨AI打光(轨道摆灯·一次一算·能照后方) */
+  #modeTabs { flex: none; display: flex; gap: 6px; padding: 0 14px 6px; }
+  .mtab { flex: 1; text-align: center; font-size: 11px; padding: 6px 0; border-radius: 9px; background: var(--btn-bg); border: 1px solid var(--inset-border); color: var(--text-dim); cursor: pointer; }
+  .mtab.on { color: var(--accent-text); border-color: var(--accent-border); background: var(--accent-soft); }
+  .mode-ai #stage { display: none; }
+  .mode-ai #pad { display: none; }
+  .mode-ai #gzwrap { display: block; }
+  .mode-ai .mathonly { display: none !important; }
+  #btnAi { display: none; }
+  .mode-ai #btnAi { display: flex; }
+  #btnUpload { display: none; }
+  .mode-ai #btnUpload { display: flex; }
+  /* AI模式没有光盘：按钮略放大，右列封顶随之放宽 */
+  .mode-ai #padCol { max-width: 460px; }
+  .mode-ai #controlRow > * { max-width: 70px; height: 54px; }
+  /* 循环切换胶囊：免抢焦点窗口里原生下拉打不开，点击/滚轮循环是全app通用交互 */
+  .gp2 {
+    display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px;
+    border-radius: 8px; background: var(--inset-bg); border: 1px solid var(--inset-border);
+    cursor: pointer; user-select: none; min-width: 0;
+  }
+  .gp2:hover { border-color: var(--accent-border); }
+  .gp2 span { font-size: 9px; color: var(--text-dim); flex: none; }
+  .gp2 b { font-size: 10px; color: var(--text); font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; flex: 1; text-align: right; }
+  /* 多张候选条：AI一次生成多张灯光层,点缩略图切换 */
+  #aiVars { display: none; gap: 5px; flex-wrap: wrap; flex: none; }
+  .mode-ai #aiVars.has { display: flex; }
+  #aiVars img { height: 46px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; }
+  #aiVars img.on { border-color: var(--accent-text); }
+
+  /* 状态行+底部：固定不滚动 */
+  #msg { flex: none; font-size: 9.5px; color: var(--text-dim); padding: 0 14px 12px; min-height: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #msg.err { color: var(--err); }
+  .fbig {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    border: 1px solid var(--accent);
+    background: rgba(0,0,0,0.3);
+    color: var(--accent);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s;
+    flex: none;
+  }
+  .fbig svg {
+    width: 24px; height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+  }
+  .fbig:hover {
+    background: rgba(0,0,0,0.4);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb, 25,181,188), 0.3);
+  }
+  .fbig.acc {
+    background: rgba(var(--accent-rgb, 25,181,188), 0.1);
+  }
+  .fbig.acc:hover {
+    background: rgba(var(--accent-rgb, 25,181,188), 0.15);
+    box-shadow: 0 0 25px rgba(var(--accent-rgb, 25,181,188), 0.4);
+  }
+  .fbig:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .fbig:disabled:hover {
+    background: rgba(0,0,0,0.3);
+    box-shadow: none;
+  }
+  .fbig.busy { opacity: 0.6; }
+</style>
+</head>
+<body data-arm-id="relight">
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>打光</span>
+    <div class="sp"></div>
+    <span id="stepTag"></span>
+  </div>
+
+  <div id="modeTabs" data-nodrag data-pass data-arm>
+    <div class="mtab on" data-mode="math">实时打光</div>
+    <div class="mtab" data-mode="ai">AI打光</div>
+  </div>
+
+  <div id="wrap">
+    <div id="stage" data-nodrag>
+      <canvas id="cv"></canvas>
+    </div>
+
+    <div id="gzwrap" data-nodrag title="左键拖=灯绕主体走 · 中键拖=灯离主体远近 · 右键拖=转动观察视角 · 滚轮=拉近推远镜头">
+      <canvas id="gizmo"></canvas>
+      <div id="gzread"></div>
+    </div>
+
+    <div id="aiVars" data-nodrag data-pass style="display: none !important;"></div>
+
+    <div id="padRow">
+      <div id="pad" data-nodrag data-pass data-arm title="拖动=灯的位置（中心=正上方，拖到边缘=画外侧逆光）· 滚轮=照射大小"><div id="puck"></div></div>
+      <div id="padCol">
+        <div id="controlRow" data-nodrag data-pass data-arm>
+          <input type="color" id="swCustom" value="#ffd2a0" title="点击选光色" />
+          <div class="mbtn" id="btnSubject" title="点亮=光只落在人物身上（置入时PS自动识别主体打蒙版，预览不显示）">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="mbtn mathonly" id="btnYflip" title="上下方向反了就点它">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M19 12l-7 7-7-7"/>
+            </svg>
+          </div>
+          <div class="mbtn" id="btnReset" title="恢复默认参数">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+            </svg>
+          </div>
+          <button class="fbig acc mathonly" id="btnGo" data-pass title="识别PS选区，生成法线和深度图">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          </button>
+          <div class="mbtn" id="btnUpload" data-pass title="识别PS当前选区并载入贴板（AI打光也会自动识别，这个按钮用于手动换选区）">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </div>
+          <button class="fbig acc" id="btnAi" data-pass title="把当前灯位坐标/光色/功率写进提示词，AI直出灰底灯光层——能照亮后方（逆光轮廓/发丝光/透光/背景光晕），一次一算">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          </button>
+          <button class="fbig acc" id="btnBake" data-pass disabled title="将灯光层置入PS">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="msg"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  // 全局错误兜底：任何运行时错误红字显示+落glass日志，绝不无声失灵
+  window.onerror = (m2, src, ln) => {
+    try {
+      const el = document.getElementById('msg');
+      if (el) { el.textContent = '内部错误: ' + m2 + ' @' + ln; el.classList.add('err'); }
+      if (window.orange && window.orange.glassLog) window.orange.glassLog('[relight] 运行时错误: ' + m2 + ' @' + ln);
+    } catch {}
+  };
+  $('ico').innerHTML = (window.ORANGE_ICONS && window.ORANGE_ICONS.relight) || '';
+
+  // ============================================================
+  // 法线图AOV提示词（自研）：AI只输出几何朝向数据图，打光交给本地数学
+  // ============================================================
+  const NORMAL_PROMPT = `{
+  "scene_type": "CGI Camera-Space Normal Map AOV·相机空间法线图通道(几何朝向数据图·非艺术图)",
+
+  "system_role": "你是CGI管线TD，输出VFX标准的相机空间法线AOV。输入图只提供三维几何信息，你输出同一画面的逐像素表面朝向编码图。这不是打光图、不是艺术创作，是几何数据可视化。",
+
+  "⚠️编码规范_SUPREME": {
+    "颜色=方向": "每个像素的RGB编码该点表面法线向量(相机空间)：R=法线X分量(128=零,255=正右,0=正左)；G=法线Y分量(128=零,255=正上,0=正下)；B=法线Z分量(128-255,255=正对相机)。",
+    "典型外观": "整体紫蓝基调：正对相机的面≈淡紫(128,128,255)；朝右的面偏红粉；朝左偏青蓝；朝上偏黄绿；朝下偏蓝紫——标准游戏/影视法线贴图的经典配色。",
+    "背景处理": "无明确几何的背景=平面正对相机=纯色(128,128,255)填充。"
+  },
+
+  "⚠️几何对位_SUPREME": {
+    "规则": "输出与输入逐像素对齐：同构图、同画幅比例、同镜头，主体轮廓、五官位置、发际边缘、衣褶走向分毫不差。禁止重新取景、放大缩小、平移、改姿态、改画幅。",
+    "为什么": "用户将逐像素读取此图做数学光照计算，一个像素的错位都会让光照贴到错误的表面上。"
+  },
+
+  "⚠️纯几何无外观_SUPREME": "输出只含朝向信息：无固有色/无纹理/无明暗/无阴影/无高光/无AO/无光照痕迹/无描边/无文字。原图的明暗与颜色只用于推断几何，绝不带入输出。深色头发和浅色皮肤若朝向相同，输出颜色完全相同。",
+
+  "细节层级": "大形体朝向为主(脸颊/鼻梁/下颌/颈肩/躯干/四肢/衣物大褶皱)，中等细节保留(明显衣褶/发束大走向/五官起伏)，微观细节平滑忽略(毛孔/单根发丝/织物编织纹理)——表面连续光滑、渐变过渡、无噪点。",
+
+  "execution_order": [
+    "1.解析输入图三维几何(深度/朝向/遮挡)",
+    "2.每个表面点计算相机空间单位法线向量",
+    "3.按编码规范转换为RGB",
+    "4.背景填充(128,128,255)",
+    "5.对照输入验证轮廓逐像素对齐",
+    "6.执行validation四检，全过才输出"
+  ],
+
+  "validation_protocol": {
+    "1_对齐检": "把输出叠回原图：轮廓/五官/边缘完全重合吗？有错位=重做。",
+    "2_纯度检": "能看出原图的任何固有色/纹理/明暗吗？能=混入外观信息，重做。",
+    "3_编码检": "朝右的面偏红、朝上偏绿、正对相机偏蓝紫吗？背景是纯(128,128,255)吗？",
+    "4_光滑检": "表面渐变连续、无噪点、无色块断裂吗？"
+  },
+
+  "negative_prompts": [
+    "无固有色/纹理/明暗/阴影/高光/AO",
+    "无重新构图/缩放/平移/姿态改变/画幅改变",
+    "无描边/线稿/文字/水印",
+    "无艺术化/风格化处理",
+    "无噪点/色块断裂/硬边条带",
+    "不是深度图、不是艺术插画，是法线数据图"
+  ]
+}`;
+
+  // ============================================================
+  // 深度图AOV提示词（自研）：距离数据图——三维灯位与遮挡投影的地基
+  // ============================================================
+  const DEPTH_PROMPT = `{
+  "scene_type": "CGI Depth Map AOV·相机空间深度图通道(距离数据图·非艺术图)",
+
+  "system_role": "你是CGI管线TD，输出VFX标准的单目深度AOV。输入图只提供三维空间信息，你输出同一画面的逐像素相机距离编码图。这不是黑白照片、不是艺术创作，是距离数据可视化。",
+
+  "⚠️编码规范_SUPREME": {
+    "亮度=距离": "纯灰度图：越靠近相机越白、越远越黑。最近的表面≈纯白(245-255)，最远的背景≈深黑(0-25)，中间按真实空间关系连续渐变。",
+    "典型外观": "标准MiDaS/ZoeDepth风格深度图：人像=人比背景亮，鼻尖最亮、耳朵侧脸稍暗、背景按远近分层变黑。",
+    "层次要求": "同一物体表面深度连续渐变；前后物体交界处允许清晰的深度跳变(近主体边缘 vs 远背景)。"
+  },
+
+  "⚠️几何对位_SUPREME": {
+    "规则": "输出与输入逐像素对齐：同构图、同画幅比例、同镜头，主体轮廓、五官位置、发际边缘分毫不差。禁止重新取景、放大缩小、平移、改姿态、改画幅。",
+    "为什么": "用户将逐像素读取此图重建三维空间做灯光计算，错位=空间重建全错。"
+  },
+
+  "⚠️纯距离无外观_SUPREME": "输出只含距离信息：无固有色/无纹理/无明暗光影/无阴影/无描边/无文字。黑衣服和白皮肤若在同一距离=输出同一亮度。原图的颜色明暗只用于推断空间，绝不带入输出。",
+
+  "execution_order": [
+    "1.解析输入图三维空间(前后关系/距离层次)",
+    "2.每个表面点计算到相机的距离",
+    "3.按近白远黑映射为灰度",
+    "4.对照输入验证轮廓逐像素对齐",
+    "5.执行validation四检，全过才输出"
+  ],
+
+  "validation_protocol": {
+    "1_对齐检": "把输出叠回原图：轮廓/五官/边缘完全重合吗？有错位=重做。",
+    "2_纯度检": "能看出原图的固有色/纹理/受光明暗吗？能=混入外观信息，重做。",
+    "3_单调检": "近的比远的亮吗？鼻尖比耳朵亮、主体比背景亮吗？方向反了=重做。",
+    "4_光滑检": "同一表面渐变连续无噪点、前后交界深度跳变清晰吗？"
+  },
+
+  "negative_prompts": [
+    "无固有色/纹理/明暗光影/阴影/高光",
+    "无重新构图/缩放/平移/姿态改变/画幅改变",
+    "无描边/线稿/文字/水印",
+    "无艺术化/风格化/黑白摄影质感",
+    "无噪点/色块断裂/硬边条带",
+    "不是法线图、不是黑白照片，是深度数据图"
+  ]
+}`;
+
+  // ============================================================
+  // 状态
+  // ============================================================
+  const ZS = 0.7;   // 深度幅度：场景纵深相对画面长边的比例
+  const DEF = { px: -0.42, py: -0.42, intensity: 1.0, size: 1.0, shape: 0, sat: 1.0, height: 1.0, lightz: 0.15, occl: 0, detail: 0.35, ambient: 0.15, wrap: 0.3, shadow: 0.3, spec: 0, shine: 24, opacity: 100, blend: 'overlay', maskMode: 'all', color: [1, 0.824, 0.627], yflip: false, zflip: false };
+  const st = {
+    capB64: null,
+    pctx: null,
+    origImg: null, normImg: null, depthImg: null,
+    pw: 0, ph: 0,
+    origD: null, normD: null, depthD: null, lightD: null, outD: null,
+    hpP: null, zP: null,
+    view: 'result',
+    p: Object.assign({}, DEF, { color: DEF.color.slice() }),
+    dirty: false,
+    rev: 0,          // 灯参数版本号：一动就+1
+    aiLight: null,   // AI生成的灯光层 {dataUrl, D(预览ImageData), rev}——rev不匹配=已失效
+  };
+  // 灯参数变动→AI灯光层作废（预览与置入自动退回数学层；混合模式/不透明度不算）
+  const dirtyAi = () => { st.rev++; };
+  // AI打光页状态：独立球坐标灯位，完全无夹取——可360°绕到主体身后
+  st.aiMode = false;
+  st.ai = { az: -0.7, el: 0.45, dist: 1.3 };
+
+  const msg = (t) => { const m = $('msg'); m.textContent = t || ''; m.classList.remove('err'); };
+  const err = (t) => { const m = $('msg'); m.textContent = t || ''; m.classList.add('err'); };
+  const step = (t) => { $('stepTag').textContent = t; };
+
+  function loadImg(dataUrl) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => {
+        if (dataUrl.startsWith('data:image/png')) {
+          const j = new Image();
+          j.onload = () => res(j);
+          j.onerror = () => rej(new Error('图片解码失败'));
+          j.src = dataUrl.replace('data:image/png', 'data:image/jpeg');
+        } else rej(new Error('图片解码失败'));
+      };
+      img.src = dataUrl;
+    });
+  }
+
+  // ============================================================
+  // 高频细节 & 深度解码
+  // ============================================================
+  function boxBlur(src, w, h, r) {
+    const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
+    const win = r * 2 + 1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      let acc = 0;
+      for (let x = -r; x <= r; x++) acc += src[row + Math.min(w - 1, Math.max(0, x))];
+      for (let x = 0; x < w; x++) {
+        tmp[row + x] = acc / win;
+        acc += src[row + Math.min(w - 1, x + r + 1)] - src[row + Math.max(0, x - r)];
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
+      for (let y = 0; y < h; y++) {
+        out[y * w + x] = acc / win;
+        acc += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+      }
+    }
+    return out;
+  }
+  function makeHighpass(d, w, h) {
+    const n = w * h;
+    const luma = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const o = i * 4; luma[i] = d[o] * 0.299 + d[o + 1] * 0.587 + d[o + 2] * 0.114; }
+    const r = Math.max(2, Math.round(Math.min(w, h) * 0.02));
+    const blur = boxBlur(boxBlur(luma, w, h, r), w, h, r);
+    const hp = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const v = (luma[i] - blur[i]) / 255;
+      hp[i] = v < -0.5 ? -0.5 : v > 0.5 ? 0.5 : v;
+    }
+    return hp;
+  }
+  function makeZ(d, w, h, flip) {
+    // 默认白=近：z=0贴镜头,z=1最深；深反按钮翻转
+    const n = w * h;
+    const z = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      const lum = (d[o] * 0.299 + d[o + 1] * 0.587 + d[o + 2] * 0.114) / 255;
+      z[i] = flip ? lum : 1 - lum;
+    }
+    return z;
+  }
+
+  // ============================================================
+  // 预览数据准备（长边≤480）
+  // ============================================================
+  function grabData(img, w, h) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, w, h);
+    return g.getImageData(0, 0, w, h);
+  }
+  function prep() {
+    if (!st.origImg) return;
+    const W = st.origImg.naturalWidth, H = st.origImg.naturalHeight;
+    const sc = Math.min(1, 480 / Math.max(W, H));
+    st.pw = Math.max(2, Math.round(W * sc));
+    st.ph = Math.max(2, Math.round(H * sc));
+    st.origD = grabData(st.origImg, st.pw, st.ph);
+    st.hpP = makeHighpass(st.origD.data, st.pw, st.ph);
+    st.normD = st.normImg ? grabData(st.normImg, st.pw, st.ph) : null;
+    st.depthD = st.depthImg ? grabData(st.depthImg, st.pw, st.ph) : null;
+    st.zP = st.depthD ? makeZ(st.depthD.data, st.pw, st.ph, st.p.zflip) : null;
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d');
+    st.lightD = g.createImageData(st.pw, st.ph);
+    st.outD = g.createImageData(st.pw, st.ph);
+    $('cv').width = st.pw; $('cv').height = st.ph;
+    const hint = $('stageHint');
+    if (hint) hint.style.display = 'none';
+  }
+
+  // ============================================================
+  // 数学打光核心
+  // 平面模式：点光源悬在画面前方(灯高)；深度模式：三维灯位(光盘XY+灯深Z)+可选遮挡投影
+  // 形状=光池聚拢(自带聚光衰减+边缘变硬)；饱和度=光色浓淡(以最大通道为轴缩放色度)
+  // 灰基线128灯光层：阴影深度=0时逐像素≥128绝不压暗（AOV家训）
+  // ============================================================
+  const clamp255 = (v) => v < 0 ? 0 : v > 255 ? 255 : v;
+  function effColor() {
+    const [r, g, b] = st.p.color;
+    const mx = Math.max(r, g, b) || 1;
+    const s = st.p.sat;
+    return [
+      Math.max(0, mx + (r - mx) * s),
+      Math.max(0, mx + (g - mx) * s),
+      Math.max(0, mx + (b - mx) * s),
+    ];
+  }
+  function computeLight(nd, hp, zArr, out, w, h) {
+    const p = st.p;
+    const m = Math.max(w, h);
+    const aw = w / m, ah = h / m;
+    const lim = Math.max(aw, ah);
+    const lx = 0.5 * aw + p.px * 0.75 * lim;
+    const lyS = 0.5 * ah + p.py * 0.75 * lim;
+    const useZ = !!zArr;
+    const hgt = p.height;
+    const lz = useZ ? p.lightz * ZS : 0;
+    // 照射大小=光池半径(距离按size缩放)；形状=光池边缘收硬(泛光↔聚光)
+    const fk = 16;
+    const s2v = p.size * p.size;
+    const poolPow = 1 + p.shape * 5;
+    const attenN = useZ ? 1 + fk * 0.1225 / s2v : 1 + fk * hgt * hgt / s2v;
+    const occl = useZ ? p.occl : 0;
+    const OCC_STEPS = 14, OCC_BIAS = 0.05 * ZS;
+    const [cr, cg, cb] = effColor();
+    const yf = p.yflip ? -1 : 1;
+    const det = p.detail * 3;
+    const useSpec = p.spec > 0;
+    let i = 0;
+    for (let iy = 0; iy < h; iy++) {
+      const sy = (iy + 0.5) / h * ah;
+      for (let ix = 0; ix < w; ix++, i++) {
+        const o = i * 4;
+        const sx = (ix + 0.5) / w * aw;
+        const zs = useZ ? zArr[i] * ZS : 0;
+        const dx = lx - sx;
+        const dyN = sy - lyS;
+        const dzC = useZ ? (zs - lz) : hgt;
+        const dist2 = dx * dx + dyN * dyN + dzC * dzC;
+        const dist = Math.sqrt(dist2) || 1e-4;
+        const Lx = dx / dist, Ly = dyN / dist, Lz = dzC / dist;
+        let nx = nd[o] / 127.5 - 1, ny = (nd[o + 1] / 127.5 - 1) * yf, nz = nd[o + 2] / 127.5 - 1;
+        const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+        nx /= nl; ny /= nl; nz /= nl;
+        let d = nx * Lx + ny * Ly + nz * Lz;
+        d = d + p.wrap; d = d > 0 ? d / (1 + p.wrap) : 0;
+        let atten = attenN / (1 + fk * dist2 / s2v);
+        // 光池整形：≤1的部分做指数(边缘收硬),>1的近灯溢出保留
+        if (poolPow > 1) {
+          atten = atten >= 1 ? atten : Math.pow(atten, poolPow);
+        }
+        let sp = 0;
+        if (useSpec) {
+          const hx = Lx, hy = Ly, hz = Lz + 1;
+          const hl = Math.sqrt(hx * hx + hy * hy + hz * hz);
+          const ndh = (nx * hx + ny * hy + nz * hz) / hl;
+          if (ndh > 0) sp = Math.pow(ndh, p.shine) * p.spec * atten;
+        }
+        let shadow = 0;
+        if (occl > 0 && d > 0) {
+          let blk = 0;
+          for (let s2 = 1; s2 <= OCC_STEPS; s2++) {
+            const t = s2 / (OCC_STEPS + 1);
+            const xi = Math.round((sx + dx * t) / aw * w - 0.5);
+            const yi2 = Math.round((sy + (lyS - sy) * t) / ah * h - 0.5);
+            if (xi < 0 || yi2 < 0 || xi >= w || yi2 >= h) continue;
+            const rayZ = zs + (lz - zs) * t;
+            if (zArr[yi2 * w + xi] * ZS < rayZ - OCC_BIAS) blk++;
+          }
+          shadow = Math.min(1, blk / 3) * occl;
+        }
+        const e = p.ambient + (1 - p.ambient) * d * atten * (1 - shadow);
+        sp *= (1 - shadow);
+        let df = 1 + det * hp[i];
+        if (df < 0) df = 0;
+        const lift = (e + sp) * p.intensity * df;
+        const dark = (1 - e) * p.shadow * p.intensity;
+        out[o]     = clamp255(128 + 127 * (lift * cr - dark));
+        out[o + 1] = clamp255(128 + 127 * (lift * cg - dark));
+        out[o + 2] = clamp255(128 + 127 * (lift * cb - dark));
+        out[o + 3] = 255;
+      }
+    }
+  }
+  function softlight(a, b) {
+    if (b <= 0.5) return a - (1 - 2 * b) * a * (1 - a);
+    const d = a <= 0.25 ? ((16 * a - 12) * a + 4) * a : Math.sqrt(a);
+    return a + (2 * b - 1) * (d - a);
+  }
+  function blendPix(a, b, mode) {
+    if (mode === 'overlay') return a < 0.5 ? 2 * a * b : 1 - 2 * (1 - a) * (1 - b);
+    if (mode === 'linearLight') { const v = a + 2 * b - 1; return v < 0 ? 0 : v > 1 ? 1 : v; }
+    return softlight(a, b);
+  }
+
+  function render() {
+    if (!st.origD) return;
+    const g = $('cv').getContext('2d');
+    const aiOk = st.aiMode && st.aiLight && st.aiLight.rev === st.rev;
+    if (!aiOk && !st.normD) { g.putImageData(st.origD, 0, 0); return; }
+    let ld;
+    if (aiOk) {
+      ld = st.aiLight.D.data;   // AI灯光层：预览即效果
+    } else {
+      computeLight(st.normD.data, st.hpP, st.zP, st.lightD.data, st.pw, st.ph);
+      ld = st.lightD.data;
+    }
+    const od = st.origD.data, rd = st.outD.data;
+    const op = st.p.opacity / 100;
+    const mode = aiOk ? 'softLight' : st.p.blend;   // AI灯光层固定柔光（AOV家训口径）
+    const n = st.pw * st.ph;
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      for (let c = 0; c < 3; c++) {
+        const a = od[o + c] / 255, b = ld[o + c] / 255;
+        rd[o + c] = Math.round((a + (blendPix(a, b, mode) - a) * op) * 255);
+      }
+      rd[o + 3] = 255;
+    }
+    g.putImageData(st.outD, 0, 0);
+  }
+  function requestRender() {
+    if (st.dirty) return;
+    st.dirty = true;
+    requestAnimationFrame(() => { st.dirty = false; render(); if (st.aiMode) renderGizmo(); syncVars(); });
+  }
+
+  // ============================================================
+  // 轨道摆灯gizmo（机位选择器式）：图片立板立在网格地板上，灯球锁在以板为中心的
+  // 球坐标轨道上。左键拖=灯(方位/仰角) · 滚轮=灯距离 · 右键拖=旋转观察 · 中键拖=视角前后。
+  // 与光盘读写同一组灯位参数(px/py/lightz|height)，两边实时互通；打光数学零改动。
+  // ============================================================
+  const gv = { yaw: -0.6, pitch: 0.35, dist: 2.6 };
+  const gclamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  function gzDims() {
+    if (st.pw && st.ph) { const m = Math.max(st.pw, st.ph); return { aw: st.pw / m, ah: st.ph / m }; }
+    return { aw: 0.8, ah: 1 };
+  }
+  // AI灯=纯球坐标(az/el/dist)直接换算世界系坐标——无任何范围夹取，后方随便去
+  function aiLampG() {
+    const ce = Math.cos(st.ai.el);
+    return {
+      gx: st.ai.dist * ce * Math.sin(st.ai.az),
+      gy: st.ai.dist * Math.sin(st.ai.el),
+      gz: st.ai.dist * ce * Math.cos(st.ai.az),
+    };
+  }
+  function gzBasis() {
+    const cy = Math.cos(gv.yaw), sy = Math.sin(gv.yaw);
+    const cp = Math.cos(gv.pitch), sp = Math.sin(gv.pitch);
+    return {
+      fwd:   { x: -sy * cp, y: -sp, z: -cy * cp },
+      right: { x: cy, y: 0, z: -sy },
+      up:    { x: -sy * sp, y: cp, z: -cy * sp },
+    };
+  }
+  function gzProject(x, y, z, W, H) {
+    const b = gzBasis();
+    const vx = x * b.right.x + y * b.right.y + z * b.right.z;
+    const vy = x * b.up.x + y * b.up.y + z * b.up.z;
+    const vz = x * b.fwd.x + y * b.fwd.y + z * b.fwd.z + gv.dist;
+    if (vz < 0.15) return null;
+    const s = Math.min(W, H) * 1.15 / vz;
+    return { x: W / 2 + vx * s, y: H / 2 - vy * s, vz, s };
+  }
+  // 单元仿射贴图：三角对齐三个角，细分后透视误差可忽略
+  function texCell(g, img, sx, sy, sw, sh, p00, p10, p01) {
+    const a = (p10.x - p00.x) / sw, b = (p10.y - p00.y) / sw;
+    const c = (p01.x - p00.x) / sh, d = (p01.y - p00.y) / sh;
+    g.save();
+    g.setTransform(a, b, c, d, p00.x, p00.y);
+    g.drawImage(img, sx, sy, sw + 1.5, sh + 1.5, 0, 0, sw + 1.5, sh + 1.5);
+    g.restore();
+  }
+  function gzPath(g, fn, t0, t1, n, W, H) {
+    g.beginPath();
+    let started = false;
+    for (let i2 = 0; i2 <= n; i2++) {
+      const t = t0 + (t1 - t0) * i2 / n;
+      const c2 = fn(t);
+      const p2 = gzProject(c2[0], c2[1], c2[2], W, H);
+      if (!p2) { started = false; continue; }
+      if (!started) { g.moveTo(p2.x, p2.y); started = true; }
+      else g.lineTo(p2.x, p2.y);
+    }
+    g.stroke();
+  }
+  function gzLabel(azD, elD, dist) {
+    const a = Math.abs(azD);
+    const side = azD >= 0 ? '右' : '左';
+    const azT = a < 23 ? '正面光' : a < 68 ? side + '前侧光' : a < 113 ? side + '侧光' : a < 158 ? side + '后侧光' : '正逆光';
+    const elT = elD > 55 ? '顶光' : elD > 20 ? '高位' : elD > -20 ? '平光' : elD > -55 ? '低位' : '脚光';
+    const dT = dist < 0.55 ? '贴近' : dist < 1.0 ? '近距' : dist < 1.8 ? '中距' : '远距';
+    return azT + ' | ' + elT + ' | ' + dT;
+  }
+  function renderGizmo() {
+    const cvs = $('gizmo');
+    if (!cvs || !st.aiMode) return;
+    const W = cvs.width = cvs.clientWidth || 330;
+    const H = cvs.height = cvs.clientHeight || 200;
+    const g = cvs.getContext('2d');
+    g.clearRect(0, 0, W, H);
+    const { aw, ah } = gzDims();
+    const floorY = -ah / 2 - 0.03;
+    // 地板网格
+    g.strokeStyle = 'rgba(255,255,255,0.07)';
+    g.lineWidth = 1;
+    for (let i2 = -4; i2 <= 4; i2++) {
+      const t = i2 * 0.35;
+      gzPath(g, (u) => [t, floorY, -1.4 + u * 2.8], 0, 1, 8, W, H);
+      gzPath(g, (u) => [-1.4 + u * 2.8, floorY, t], 0, 1, 8, W, H);
+    }
+    // 图片立板（6×6仿射细分贴原图；没抓图时=半透明灰板+📷）
+    const corner = (u, v) => [-aw / 2 + u * aw, ah / 2 - v * ah, 0];
+    const q4 = [corner(0, 0), corner(1, 0), corner(1, 1), corner(0, 1)].map((c2) => gzProject(c2[0], c2[1], c2[2], W, H));
+    if (st.origImg) {
+      const N = 6;
+      const iw = st.origImg.naturalWidth, ih = st.origImg.naturalHeight;
+      for (let j = 0; j < N; j++) {
+        for (let i2 = 0; i2 < N; i2++) {
+          const p00 = gzProject(...corner(i2 / N, j / N), W, H);
+          const p10 = gzProject(...corner((i2 + 1) / N, j / N), W, H);
+          const p01 = gzProject(...corner(i2 / N, (j + 1) / N), W, H);
+          if (p00 && p10 && p01) texCell(g, st.origImg, i2 / N * iw, j / N * ih, iw / N, ih / N, p00, p10, p01);
+        }
+      }
+    } else if (q4.every(Boolean)) {
+      g.fillStyle = 'rgba(255,255,255,0.06)';
+      g.beginPath(); g.moveTo(q4[0].x, q4[0].y);
+      q4.slice(1).forEach((p2) => g.lineTo(p2.x, p2.y));
+      g.closePath(); g.fill();
+      const oc = gzProject(0, 0, 0, W, H);
+      if (oc) {
+        g.font = gclamp(oc.s * 0.12, 12, 26) + 'px sans-serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.globalAlpha = 0.5; g.fillText('📷', oc.x, oc.y); g.globalAlpha = 1;
+      }
+    }
+    if (q4.every(Boolean)) {
+      g.strokeStyle = 'rgba(255,255,255,0.25)';
+      g.beginPath(); g.moveTo(q4[0].x, q4[0].y);
+      q4.slice(1).forEach((p2) => g.lineTo(p2.x, p2.y));
+      g.closePath(); g.stroke();
+    }
+    // 球坐标读出（AI灯：直接取球坐标状态）
+    const L3 = aiLampG();
+    const dist = st.ai.dist;
+    const el = st.ai.el;
+    const az = st.ai.az;
+    // 方位环（过灯高度的水平圆）+ 仰角弧（当前方位面上的立弧）
+    g.strokeStyle = 'rgba(96,170,255,0.45)';
+    gzPath(g, (t) => { const rr = dist * Math.cos(el); return [rr * Math.sin(t), L3.gy, rr * Math.cos(t)]; }, 0, Math.PI * 2, 56, W, H);
+    g.strokeStyle = 'rgba(190,130,255,0.45)';
+    gzPath(g, (t) => [dist * Math.cos(t) * Math.sin(az), dist * Math.sin(t), dist * Math.cos(t) * Math.cos(az)], -1.45, 1.45, 40, W, H);
+    // 牵引线 + 发光灯球（球大小跟随照射大小）
+    const lp = gzProject(L3.gx, L3.gy, L3.gz, W, H);
+    const oc2 = gzProject(0, 0, 0, W, H);
+    const acc = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#19b5bc').trim();
+    if (lp && oc2) {
+      g.strokeStyle = acc; g.globalAlpha = 0.55;
+      g.beginPath(); g.moveTo(lp.x, lp.y); g.lineTo(oc2.x, oc2.y); g.stroke();
+      g.globalAlpha = 1;
+    }
+    if (lp) {
+      const r = Math.max(4, Math.min(16, lp.s * (0.03 + st.p.size * 0.015)));
+      g.shadowColor = acc; g.shadowBlur = 12;
+      g.fillStyle = acc;
+      g.beginPath(); g.arc(lp.x, lp.y, r, 0, 6.2832); g.fill();
+      g.shadowBlur = 0;
+      g.fillStyle = 'rgba(255,255,255,0.9)';
+      g.beginPath(); g.arc(lp.x, lp.y, r * 0.4, 0, 6.2832); g.fill();
+    }
+    // 读数与人话标签（方位角归一化到±180°）
+    const azD = ((Math.round(az * 180 / Math.PI) + 180) % 360 + 360) % 360 - 180, elD = Math.round(el * 180 / Math.PI);
+    $('gzread').innerHTML = '<div class="big">' + gzLabel(azD, elD, dist) + '</div>'
+      + '<div class="sm">方位 ' + azD + '° · 仰角 ' + elD + '° · 距离 ' + dist.toFixed(2) + '</div>';
+  }
+  // gizmo交互
+  const gizmo = $('gizmo');
+  let gzDrag = null;
+  gizmo.addEventListener('contextmenu', (e) => e.preventDefault());
+  gizmo.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    gizmo.setPointerCapture(e.pointerId);
+    gzDrag = { btn: e.button, sx: e.clientX, sy: e.clientY };
+  });
+  gizmo.addEventListener('pointermove', (e) => {
+    if (!gzDrag) return;
+    const dx = e.clientX - gzDrag.sx, dy = e.clientY - gzDrag.sy;
+    gzDrag.sx = e.clientX; gzDrag.sy = e.clientY;
+    if (gzDrag.btn === 2) {          // 右键拖=旋转观察
+      gv.yaw += dx * 0.01;
+      gv.pitch = gclamp(gv.pitch + dy * 0.008, -1.2, 1.2);
+      renderGizmo();
+    } else if (gzDrag.btn === 1) {   // 中键拖=灯到中心点的距离（轨道半径）
+      st.ai.dist = gclamp(st.ai.dist * (1 + dy * 0.006), 0.25, 3);
+      dirtyAi();
+      requestRender();
+    } else {                         // 左键拖=灯沿轨道走——数值雅可比换算，任意视角下灯球都精确跟手
+      const W = gizmo.width || 330, H = gizmo.height || 200;
+      const pl = (a2, e2) => {
+        const ce2 = Math.cos(e2);
+        return gzProject(st.ai.dist * ce2 * Math.sin(a2), st.ai.dist * Math.sin(e2), st.ai.dist * ce2 * Math.cos(a2), W, H);
+      };
+      const EPS = 0.01;
+      const p0 = pl(st.ai.az, st.ai.el), pa = pl(st.ai.az + EPS, st.ai.el), pe = pl(st.ai.az, st.ai.el + EPS);
+      let dAz = dx * 0.012, dEl = -dy * 0.01;   // 兜底：投影失败时退回线性映射
+      if (p0 && pa && pe) {
+        const a11 = (pa.x - p0.x) / EPS, a21 = (pa.y - p0.y) / EPS;
+        const a12 = (pe.x - p0.x) / EPS, a22 = (pe.y - p0.y) / EPS;
+        const det = a11 * a22 - a12 * a21;
+        if (Math.abs(det) > 1e-3) {
+          dAz = (a22 * dx - a12 * dy) / det;
+          dEl = (-a21 * dx + a11 * dy) / det;
+        }
+      }
+      st.ai.az += gclamp(dAz, -0.25, 0.25);
+      st.ai.el = gclamp(st.ai.el + gclamp(dEl, -0.25, 0.25), -1.45, 1.45);
+      dirtyAi();
+      requestRender();
+    }
+  });
+  const gzEnd = () => { gzDrag = null; };
+  gizmo.addEventListener('pointerup', gzEnd);
+  gizmo.addEventListener('pointercancel', gzEnd);
+  gizmo.addEventListener('wheel', (e) => {   // 滚轮=镜头拉近推远（只动观察视角，灯位不变→不dirtyAi）
+    e.preventDefault();
+    gv.dist = gclamp(gv.dist * (e.deltaY > 0 ? 1.07 : 0.93), 1.2, 6);
+    renderGizmo();
+  });
+  // 模式分页：🎚实时打光 ↔ ✨AI打光（各自独立的灯位控制，共享光色/亮度/大小/形状/饱和度）
+  document.querySelectorAll('.mtab').forEach((t) => {
+    t.addEventListener('click', () => {
+      st.aiMode = t.dataset.mode === 'ai';
+      document.querySelectorAll('.mtab').forEach((x) => x.classList.toggle('on', x === t));
+      $('card').classList.toggle('mode-ai', st.aiMode);
+      fitSquares();
+      if (st.aiMode) {
+        renderGizmo();
+        try { $('wrap').scrollTop = 0; } catch {}
+        msg('');
+      } else {
+        msg('');
+      }
+      requestRender();
+    });
+  });
+
+  // 预览台/摆灯台 = 卡内能放下的最大正方形（0910用户反馈"AI打光布局丑"：方台被 CSS 高度封顶后与按钮行之间留一大片空）
+  // 边长 = min(可用宽, 可用高 − 按钮行 − 间距)；卡片缩放/切模式时重算，摆灯台重算后重绘
+  function fitSquares() {
+    const wrap = $('wrap');
+    const cs = getComputedStyle(wrap);
+    const gap = parseFloat(cs.rowGap) || 9;
+    const innerW = wrap.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const varsH = $('aiVars').offsetHeight;   // 多张候选缩略条占位（display:none 时为 0）
+    const availH = wrap.clientHeight - $('padRow').offsetHeight - gap - (varsH ? varsH + gap : 0) - 2;
+    const side = Math.max(120, Math.floor(Math.min(innerW, availH))) + 'px';
+    if ($('stage').style.width === side) return;
+    $('stage').style.width = side;
+    $('gzwrap').style.width = side;
+    if (st.aiMode) renderGizmo();
+  }
+  // 回调里改尺寸要推到下一帧，否则 Chromium 报 "ResizeObserver loop completed with undelivered notifications"
+  let fitRaf = 0;
+  const queueFit = () => { cancelAnimationFrame(fitRaf); fitRaf = requestAnimationFrame(fitSquares); };
+  try {
+    const ro = new ResizeObserver(queueFit);
+    ro.observe($('wrap')); ro.observe($('padRow')); ro.observe($('aiVars'));
+  } catch (e) { window.addEventListener('resize', queueFit); }
+  fitSquares();
+
+  // ============================================================
+  // 光盘交互：拖=灯位置，滚轮=强度
+  // ============================================================
+  const pad = $('pad'), puck = $('puck');
+  function setPuck() {
+    puck.style.left = (50 + st.p.px * 46) + '%';
+    puck.style.top = (50 + st.p.py * 46) + '%';
+    // 圆球大小跟随「照射大小」：一眼看出光池多大
+    const d = Math.round(10 + st.p.size * 9);
+    puck.style.width = d + 'px';
+    puck.style.height = d + 'px';
+    puck.style.boxShadow = '0 0 ' + Math.round(6 + st.p.size * 6) + 'px var(--accent)';
+  }
+  function padPoint(e) {
+    const r = pad.getBoundingClientRect();
+    let x = ((e.clientX - r.left) / r.width - 0.5) * 2;
+    let y = ((e.clientY - r.top) / r.height - 0.5) * 2;
+    const d = Math.sqrt(x * x + y * y);
+    if (d > 0.95) { x = x / d * 0.95; y = y / d * 0.95; }
+    st.p.px = x; st.p.py = y;
+    dirtyAi(); setPuck(); requestRender();
+  }
+  let padDrag = false;
+  pad.addEventListener('pointerdown', (e) => { e.preventDefault(); padDrag = true; pad.setPointerCapture(e.pointerId); padPoint(e); });
+  pad.addEventListener('pointermove', (e) => { if (padDrag) padPoint(e); });
+  pad.addEventListener('pointerup', () => { padDrag = false; });
+  pad.addEventListener('pointercancel', () => { padDrag = false; });
+  pad.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    st.p.size = Math.max(0.15, Math.min(2.5, st.p.size + (e.deltaY > 0 ? -0.08 : 0.08)));
+    dirtyAi(); setPuck(); requestRender();
+  });
+
+  // ============================================================
+  // 光色 / 滑块 / 小按钮 / 混合模式 / 深度模式
+  // ============================================================
+  const hex2rgb = (x) => [parseInt(x.slice(1, 3), 16) / 255, parseInt(x.slice(3, 5), 16) / 255, parseInt(x.slice(5, 7), 16) / 255];
+  $('swCustom').addEventListener('input', () => {
+    st.p.color = hex2rgb($('swCustom').value);
+    dirtyAi(); requestRender();
+  });
+  // 按钮状态同步
+  function syncSubjectBtn() {
+    $('btnSubject').classList.toggle('on', st.p.maskMode === 'subject');
+  }
+  $('btnSubject').addEventListener('click', () => {
+    st.p.maskMode = st.p.maskMode === 'subject' ? 'all' : 'subject';
+    syncSubjectBtn();
+    if (st.p.maskMode === 'subject') msg('已开启只照人物——置入时PS自动识别主体打蒙版（预览不显示）');
+    else msg('已恢复全画面照射');
+  });
+  function setDepthMode(on) {
+    document.querySelectorAll('.depthonly').forEach((x) => { if (x) x.style.display = on ? '' : 'none'; });
+    document.querySelectorAll('.flatonly').forEach((x) => { if (x) x.style.display = on ? 'none' : ''; });
+    const zf = $('btnZflip');
+    if (zf) zf.style.display = on ? '' : 'none';
+  }
+  $('btnYflip').addEventListener('click', () => {
+    st.p.yflip = !st.p.yflip;
+    $('btnYflip').classList.toggle('on', st.p.yflip);
+    dirtyAi(); requestRender();
+  });
+  $('btnReset').addEventListener('click', () => {
+    const keep = { yflip: st.p.yflip, zflip: st.p.zflip };
+    st.p = Object.assign({}, DEF, { color: DEF.color.slice() }, keep);
+    $('swCustom').value = '#ffd2a0';
+    dirtyAi(); setPuck(); syncSubjectBtn(); requestRender();
+  });
+
+  // ============================================================
+  // 一键流程：识别选区 → 法线+深度并行生成 → 就绪
+  // ============================================================
+  function busy(btn, on, text) {
+    btn.disabled = on;
+    btn.classList.toggle('busy', on);
+    // 不设置textContent，避免清空SVG图标
+  }
+  async function captureSel() {
+    const r = await window.orange.psExec('captureInput', {}, 30000);
+    if (!r.ok) { err(r.error || '识别失败（PS连接了吗？）'); return false; }
+    const res = r.result || {};
+    if (!res.selection) { err('未检测到选区——先在PS里框选再点'); return false; }
+    if (!res.image) { err(res.note || '选区截图失败'); return false; }
+    st.pctx = { docId: res.docId || null, selection: res.selection };
+    st.capB64 = res.image;
+    st.normImg = null; st.normD = null;
+    st.depthImg = null; st.depthD = null; st.zP = null;
+    st.aiLight = null; st.aiVars = null;
+    setDepthMode(false);
+    $('btnBake').disabled = true;
+    st.origImg = await loadImg('data:image/png;base64,' + res.image);
+    prep(); render();
+    if (st.aiMode) renderGizmo();
+    return true;
+  }
+
+  $('btnGo').addEventListener('click', async () => {
+    busy($('btnGo'), true, '识别选区…');
+    try {
+      if (!(await captureSel())) return;
+
+      busy($('btnGo'), true, '生成中…');
+      step('生成中…');
+      msg('分析画面几何与空间中…（约10-30秒）');
+      const [rn, rd] = await Promise.all([
+        window.orange.aiGenerate({ prompt: NORMAL_PROMPT, inputImage: st.capB64, inputMime: 'image/png' }),
+        window.orange.aiGenerate({ prompt: DEPTH_PROMPT, inputImage: st.capB64, inputMime: 'image/png' }),
+      ]);
+      if (!rn.ok) return err('分析失败: ' + (rn.error || ''));
+      st.normImg = await loadImg(rn.dataUrl);
+      if (rd.ok) {
+        try { st.depthImg = await loadImg(rd.dataUrl); } catch (e2) { st.depthImg = null; }
+      }
+      prep();
+      setDepthMode(!!st.depthImg);
+      render();
+      if (st.aiMode) renderGizmo();
+      $('btnBake').disabled = false;
+      step('拖光盘摆灯 → 置入');
+      msg(st.depthImg
+        ? '就绪——拖光盘摆灯；「灯深」滑到1=灯到人身后打轮廓光'
+        : '就绪（深度生成失败，本次为平面灯位）——拖光盘摆灯');
+    } catch (e) { err(e.message || String(e)); }
+    finally { busy($('btnGo'), false, '开始打光'); }
+  });
+
+  // ============================================================
+  // AI打光：把当前灯位坐标/光色/功率写进提示词，AI直出灰底Lighting-Only AOV灯光层
+  // 数学模式照不了的它全能画：逆光轮廓/发丝光/半透明透光/背景光晕。一次生成一次计费。
+  // ============================================================
+  function aiHexColor() {
+    const c2 = effColor().map((v) => Math.round(gclamp(v, 0, 1) * 255));
+    return '#' + c2.map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
+  function aiColorName() {
+    const [r, g, b] = effColor();
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx - mn < 0.08) return '中性白';
+    let h;
+    if (mx === r) h = ((g - b) / (mx - mn) + 6) % 6;
+    else if (mx === g) h = (b - r) / (mx - mn) + 2;
+    else h = (r - g) / (mx - mn) + 4;
+    h = h * 60;
+    return h < 20 ? '红' : h < 45 ? '暖橙' : h < 70 ? '金黄' : h < 160 ? '绿' : h < 200 ? '青' : h < 260 ? '蓝' : h < 320 ? '品红紫' : '红';
+  }
+  function buildAiLightPrompt() {
+    const dist = st.ai.dist;
+    const azD = ((Math.round(st.ai.az * 180 / Math.PI) + 180) % 360 + 360) % 360 - 180;
+    const elD = Math.round(st.ai.el * 180 / Math.PI);
+    const label = gzLabel(azD, elD, dist);
+    const behind = Math.abs(azD) > 90;
+    const p = st.p;
+    const powerT = p.intensity < 0.5 ? '弱' : p.intensity < 1 ? '中等' : p.intensity < 1.5 ? '强' : '极强';
+    const distT = dist < 0.55 ? '贴近·强烈局部' : dist < 1.0 ? '近距' : dist < 1.8 ? '中距' : '远距·大面均匀';
+    const sizeT = p.size < 0.7 ? '窄束' : p.size < 1.4 ? '常规覆盖' : '宽泛大面';
+    const shapeT = p.shape > 0.5 ? '光池边缘锐利(束光筒感)' : '光池边缘柔和过渡';
+    return `{
+  "scene_type": "CGI Lighting-Only AOV Pass·中性灰底纯光照能量图层(无Albedo无物体信息·柔光叠加用)",
+
+  "system_role": "你是资深CGI灯光合成师，以多通道渲染思维工作：Beauty = Albedo × Lighting。下方给出一盏虚拟灯的精确空间参数，你据此只渲染【Lighting-Only光照AOV通道】，画在中性灰底上。这张图只含光照能量信息——哪里被照到、多亮、什么光色；不含任何物体表面颜色、纹理、细节、五官、发丝、服装图案、背景内容。用户将在PS以柔光模式叠回原图。",
+
+  "灯光参数": {
+    "空间位置": "${label}——方位角${azD}°(0°=主体正前方,±90°=正侧方,±180°=正后方,正值在右负值在左)，仰角${elD}°(正=高于主体俯照,负=低于主体仰照)，距离${dist.toFixed(2)}(${distT})",
+    "灯在主体${behind ? '后方(逆光位)' : '前方'}": "光从该位置射向主体",
+    "光色": "${aiHexColor()}(${aiColorName()})，照亮区饱和度25-50%不卡通染色",
+    "功率": "${powerT}(${p.intensity.toFixed(2)}/2)——功率同时决定峰值亮度与覆盖范围",
+    "覆盖": "${sizeT}，${shapeT}"
+  },
+
+  "⚠️核心机制_纯光照剥离Albedo_SUPREME": "只输出光照能量数据：被光照到的表面按法线朝向与距离升出灰基线，未照到处=干净中性灰底。绝不包含物体固有色/皮肤色/发色/织物颜色/材质纹理/五官/妆容/背景内容/主体剪影。未照亮区若显出原图内容即为错误。心智模型：手电筒照向一块空的哑光灰幕，只记录光能量的亮度分布。",
+
+  "⚠️绝对亮度下限_SUPREME": "中性灰打底，每个像素≥灰基线，任何情况无例外。彩色光只把对应通道升到基线之上，绝不把任何通道压到基线之下。禁止一切隐性压暗：Albedo渗漏/阴影渲染/遮蔽压暗。",
+
+  "⚠️无可见光路_SUPREME": "禁止：可见光束/光锥/丁达尔光柱/镜头光斑/星芒/bloom光晕团/发光的灯具本体。输出只含'光打在三维表面上的照明图案'。",
+
+  "后方灯位规则": "灯在主体后方时=逆光：主体面向相机的大部分表面接收不到直射、保持灰基线；主体轮廓边缘出现明亮的轮廓光带(发丝外缘/肩线/耳廓)，半透明材质(发丝/薄衣角/耳朵)出现透光加亮；灯所在方向的背景区域获得光照能量。这是逆光AOV的正确形态。",
+
+  "几何与材质": "用原图三维几何(法线/遮挡/深度)只决定'光照到哪个面、多亮'：朝灯的面受光，被遮挡的面保持灰基线。材质只调节加亮幅度绝不注入物体色：皮肤柔和SSS、金属锐利镜面、织物宽缓滚降、头发各向异性高光带。",
+
+  "execution_order": [
+    "1.按灯光参数在三维空间中放置这盏灯",
+    "2.分析原图几何与材质(仅用于光照计算)",
+    "3.画布初始化为均匀中性灰基线",
+    "4.计算这盏灯的直射+间接反弹能量，逐像素加到基线上",
+    "5.逐像素≥基线校验、照亮区与灰底间羽化过渡",
+    "6.执行validation三检，全过才输出"
+  ],
+
+  "validation_protocol": {
+    "1_物体信息检": "把输出当没见过原图来看：能认出主体长相/穿着/背景吗？能=混入Albedo，重做。",
+    "2_基线检": "逐像素≥灰基线？有低于者重做。",
+    "3_灯位检": "亮区分布符合${label}的灯位吗？${behind ? '主体正面大部分应保持灰基线、轮廓边缘亮' : '朝灯面亮、背灯面保持基线'}？不符=重做。"
+  },
+
+  "negative_prompts": [
+    "无任何物体颜色纹理信息、无主体剪影、无背景内容复制",
+    "无低于灰基线的像素、无阴影生成、无压暗",
+    "无可见光束/光锥/光斑/发光灯体",
+    "无卡通高饱和染色",
+    "输出不是原图的调亮版或压暗版，是纯光照AOV"
+  ]
+}`;
+  }
+  // 生成设置全部跟随「生图模式」卡（0910用户裁定）：渠道/模型/张数/比例/分辨率一律读全局 config，本卡不再单独选
+
+  // 多张候选条：点缩略图切换当前灯光层
+  function syncVars() {
+    const box = $('aiVars');
+    const alive = st.aiVars && st.aiVars.rev === st.rev && st.aiVars.list.length > 1;
+    box.classList.toggle('has', !!alive);
+  }
+  function showVars() {
+    const box = $('aiVars');
+    box.innerHTML = '';
+    if (!st.aiVars) return;
+    st.aiVars.list.forEach((v, i) => {
+      const im = document.createElement('img');
+      im.src = v.dataUrl;
+      im.classList.toggle('on', st.aiLight && st.aiLight.dataUrl === v.dataUrl);
+      im.title = '第' + (i + 1) + '张';
+      im.addEventListener('click', () => {
+        st.aiLight = { dataUrl: v.dataUrl, D: v.D, rev: st.aiVars.rev };
+        box.querySelectorAll('img').forEach((x) => x.classList.toggle('on', x === im));
+        requestRender();
+      });
+      box.appendChild(im);
+    });
+    syncVars();
+  }
+
+  async function runAiLight() {
+    if ($('btnAi').disabled) return { ok: false, error: '正在生成中' };
+    if (!st.aiMode) { err('请先切到「AI打光」页'); return { ok: false, error: '不在AI打光页' }; }
+    busy($('btnAi'), true, '生成中…');
+    try {
+      if (!st.capB64) { if (!(await captureSel())) return { ok: false, error: '未识别到选区' }; }
+      const g = ((await window.orange.getConfig()) || {}).gen || {};
+      const n = Math.max(1, Math.min(4, Number(g.count) || 1));
+      msg('AI按当前灯位生成灯光层 ×' + n + '…（进度看生图日志卡）');
+      const rev = st.rev;
+      const rr = await window.orange.relightAiGen({
+        prompt: buildAiLightPrompt(), inputImage: st.capB64, inputMime: 'image/png',
+        ratio: g.ratio || 'Auto',
+        size: g.size || 'Auto',
+        count: n,
+        pctx: st.pctx,
+        label: ($('gzread').textContent || '').split('方位')[0].trim(),
+        // 自动置入所需（跟随生图模式卡「自动回传」开关，由主进程裁决）
+        blend: 'softLight', opacity: st.p.opacity, maskMode: st.p.maskMode,
+      });
+      if (!rr.ok) { err('AI打光失败: ' + (rr.error || '')); return rr; }
+      const list = [];
+      for (const r2 of rr.results) {
+        try {
+          const img = await loadImg(r2.dataUrl);
+          list.push({ dataUrl: r2.dataUrl, D: grabData(img, st.pw, st.ph) });
+        } catch {}
+      }
+      if (!list.length) { err('灯光层解码失败'); return { ok: false, error: '灯光层解码失败' }; }
+      st.aiVars = { list, rev };
+      st.aiLight = { dataUrl: list[0].dataUrl, D: list[0].D, rev };
+      showVars();
+      if (st.rev !== rev) { msg('生成期间灯参数改过——本批已按旧参数作废，可重新生成'); return { ok: true }; }
+      render();
+      $('btnBake').disabled = false;
+      step(rr.placed ? '已自动置入' : 'AI灯光层就绪 → 置入');
+      msg(rr.placed
+        ? '✓ AI灯光层已自动置入PS（柔光 ' + Math.round(st.p.opacity) + '%）——还想再叠一层就点置入'
+        : 'AI灯光层就绪 ×' + list.length + (list.length > 1 ? '（点缩略图切换）' : '') + '——置入PS落地；改灯参数会作废');
+      return { ok: true };
+    } catch (e) { err(e.message || String(e)); return { ok: false, error: e.message || String(e) }; }
+    finally { busy($('btnAi'), false, 'AI打光'); }
+  }
+  $('btnAi').addEventListener('click', () => { runAiLight(); });
+  // 总控「生成」键武装到打光卡时走这里（照 Forge 的 __fireForge 同一套）
+  window.__fireRelight = () => runAiLight();
+
+  // 识别PS选区（AI打光会自动识别，这个按钮用于手动换选区）
+  $('btnUpload').addEventListener('click', async () => {
+    const ok = await captureSel();
+    if (ok) { renderGizmo(); msg('已识别选区 ' + st.origImg.naturalWidth + '×' + st.origImg.naturalHeight + '——摆好灯点「AI打光」'); }
+  });
+
+  $('btnBake').addEventListener('click', async () => {
+    const aiOk = st.aiMode && st.aiLight && st.aiLight.rev === st.rev;
+    if (!st.origImg) return err('先抓选区或上传图');
+    if (st.aiMode && !aiOk) return err('先点「AI打光」生成灯光层');
+    if (!st.aiMode && !st.normImg) return err('先点「开始打光」');
+    busy($('btnBake'), true, '置入中…');
+    try {
+      // AI灯光层：直接用全分辨率原始生成图置入（placeBatch会拉伸对齐选区）
+      if (aiOk) {
+        const r = await window.orange.relightBake({
+          dataUrl: st.aiLight.dataUrl,
+          pctx: st.pctx,
+          blend: 'softLight',   // AI灯光层固定柔光
+          opacity: st.p.opacity,
+          maskMode: st.p.maskMode,
+        });
+        if (!r.ok) return err(r.error || '置入失败');
+        const scopeTxt2 = st.p.maskMode === 'subject' ? '·只照人物' : '';
+        msg('✓ AI灯光层已置入（柔光 ' + Math.round(st.p.opacity) + '%' + scopeTxt2 + '）');
+        return;
+      }
+      const W = st.origImg.naturalWidth, H = st.origImg.naturalHeight;
+      const oc = document.createElement('canvas');
+      oc.width = W; oc.height = H;
+      const og = oc.getContext('2d', { willReadFrequently: true });
+      og.drawImage(st.origImg, 0, 0, W, H);
+      const hpF = makeHighpass(og.getImageData(0, 0, W, H).data, W, H);
+      let zF = null;
+      if (st.depthImg) {
+        og.drawImage(st.depthImg, 0, 0, W, H);
+        zF = makeZ(og.getImageData(0, 0, W, H).data, W, H, st.p.zflip);
+      }
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(st.normImg, 0, 0, W, H);
+      const nd = g.getImageData(0, 0, W, H);
+      const out = g.createImageData(W, H);
+      computeLight(nd.data, hpF, zF, out.data, W, H);
+      g.putImageData(out, 0, 0);
+      const r = await window.orange.relightBake({
+        dataUrl: c.toDataURL('image/png'),
+        pctx: st.pctx,
+        blend: st.p.blend,
+        opacity: st.p.opacity,
+        maskMode: st.p.maskMode,
+      });
+      if (!r.ok) return err(r.error || '置入失败');
+      const scopeTxt = st.p.maskMode === 'subject' ? '·只照人物' : st.p.maskMode === 'background' ? '·只照背景' : '';
+      msg('✓ 已置入（' + ({ softLight: '柔光', overlay: '叠加', linearLight: '线性光' }[st.p.blend] || st.p.blend) + ' ' + Math.round(st.p.opacity) + '%' + scopeTxt + '）——可继续调再置入一层');
+    } catch (e) { err(e.message || String(e)); }
+    finally { busy($('btnBake'), false, '置入PS'); }
+  });
+
+  // ============================================================
+  // 初始化
+  // ============================================================
+  $('swCustom').value = '#ffd2a0';
+  setPuck();
+  syncSubjectBtn();
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

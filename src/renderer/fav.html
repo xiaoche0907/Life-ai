@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+
+  /* 搜索框并进标题行（0904用户裁定：位置大小与提示词库卡一致） */
+  #head .title { flex-shrink: 0; }
+  #head #search {
+    flex: 1; min-width: 0; height: 26px;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 11px; padding: 0 10px; outline: none;
+    user-select: text; cursor: text;
+  }
+  #head #search:focus { border-color: var(--accent-border); }
+  #list { flex: 1; overflow-y: auto; padding: 2px 14px 10px; display: flex; flex-direction: column; gap: 6px;
+    /* 列表底部渐变过渡（0904用户裁定）：加满后不再生硬切断 */
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 26px), transparent 100%);
+    mask-image: linear-gradient(180deg, #000 calc(100% - 26px), transparent 100%);
+  }
+  /* iOS风格编辑模式：长按蓄力微缩 → 全体抖动(相位错开) → 拖拽行放大浮起 */
+  .row.holding { transform: scale(0.97); transition: transform 0.35s ease; }
+  @keyframes rowJig {
+    from { transform: rotate(-0.7deg) translateY(-0.6px); }
+    to   { transform: rotate(0.7deg) translateY(0.6px); }
+  }
+  #list.jiggling .row { animation: rowJig 0.15s infinite alternate ease-in-out; }
+  #list.jiggling .row:nth-child(2n) { animation-duration: 0.17s; animation-delay: -0.08s; }
+  #list.jiggling .row:nth-child(3n) { animation-duration: 0.16s; animation-delay: -0.12s; }
+  .row.dragging {
+    animation: none !important;
+    transform: scale(1.04); opacity: 0.92;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    border-color: var(--accent-border);
+    position: relative; z-index: 5;
+  }
+  #list::-webkit-scrollbar { width: 4px; }
+  #list::-webkit-scrollbar-thumb { background: var(--btn-bg-hover); border-radius: 2px; }
+  .row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: var(--inset-bg);
+    border: 1px solid var(--inset-border);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .row:hover { border-color: var(--accent-border); }
+  .row.sel { border-color: var(--accent-text); background: var(--accent-soft); }
+  .row .heart { display: flex; flex-shrink: 0; color: var(--accent-text); cursor: pointer; }
+  .row .heart svg { width: 15px; height: 15px; fill: var(--accent-text); }
+  .row .heart:hover { transform: scale(1.15); }
+  /* 搜索命中的未甄选词条：空心爱心，点一下加入甄选 */
+  .row .heart.off { color: var(--text-dim); }
+  .row .heart.off svg { fill: none; }
+  .row .name { flex: 1; font-size: 12px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .fbadge {
+    flex-shrink: 0;
+    width: 15px; height: 15px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9.5px; font-weight: 700;
+    border: 1px solid var(--accent-border);
+    color: var(--accent-text);
+  }
+
+  #empty { text-align: center; font-size: 11.5px; color: var(--text-dim); padding: 30px 10px; }
+
+  #foot { display: flex; align-items: center; gap: 8px; padding: 0 14px 12px; }
+  #foot .sp { flex: 1; }
+  #btnRun {
+    height: 32px; padding: 0 22px;
+    border: 1px solid var(--accent-border); border-radius: 11px;
+    background: var(--accent-soft); color: var(--accent-text);
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  #btnRun:hover { filter: brightness(1.2); }
+  #btnRun:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>甄选</span>
+    <input id="search" type="text" data-nodrag placeholder="搜索全部提示词…" />
+  </div>
+  <div id="list"></div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.fav;
+
+  const I_HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
+
+  let lib = { groups: [], prompts: [] };
+  let selId = null;   // 最近点击填入的一条，高亮反馈
+  let kw = '';        // 搜索关键词
+
+  const save = () => window.orange.plibSet(lib);
+
+  // 甄选排序：手动顺序(favOrder)优先，没排过的按收藏时间倒序垫底
+  function favSorted() {
+    return lib.prompts.filter((p) => p.fav).sort((a, b) => {
+      const ao = (a.favOrder != null) ? a.favOrder : 1e9;
+      const bo = (b.favOrder != null) ? b.favOrder : 1e9;
+      if (ao !== bo) return ao - bo;
+      return (b.ts || 0) - (a.ts || 0);
+    });
+  }
+
+  function renderList() {
+    const list = $('list');
+    list.innerHTML = '';
+    let arr;
+    if (kw) {
+      // 0910用户裁定：搜索时在整个提示词库里找（不只甄选），只搜标题，按匹配位置排（与提示词库卡同口径）；
+      // 未甄选的命中项爱心空心，点一下即加入甄选
+      const k = kw.toLowerCase();
+      arr = lib.prompts
+        .map((p) => ({ p, at: (p.name || '').toLowerCase().indexOf(k) }))
+        .filter((x) => x.at >= 0)
+        .sort((a, b) => (a.at - b.at) || ((b.p.fav ? 1 : 0) - (a.p.fav ? 1 : 0)) || ((b.p.ts || 0) - (a.p.ts || 0)))
+        .map((x) => x.p);
+    } else {
+      arr = favSorted();
+    }
+    if (!arr.length) {
+      list.innerHTML = '<div id="empty">' + (kw ? '提示词库里没有标题含「' + kw.replace(/</g, '&lt;') + '」的词条' : '还没有甄选<br>在提示词库里点亮提示词前的爱心') + '</div>';
+      return;
+    }
+    arr.forEach((p) => {
+      const row = document.createElement('div');
+      row.className = 'row' + (p.id === selId ? ' sel' : '');
+      row.title = (p.text || '').slice(0, 300);
+      row.dataset.pid = p.id;
+      bindReorder(row);
+
+      const heart = document.createElement('span');
+      heart.className = 'heart' + (p.fav ? '' : ' off');
+      heart.innerHTML = I_HEART;
+      heart.title = p.fav ? '移出甄选' : '加入甄选';
+      heart.addEventListener('click', (e) => {
+        e.stopPropagation();
+        p.fav = !p.fav;
+        if (!p.fav && selId === p.id) selId = null;
+        save();
+        renderList();
+      });
+
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = p.name || '未命名';
+
+      // 单击=填入并武装：F词条→Forge卡正向提示词；普通→提示词卡
+      row.addEventListener('click', () => {
+        if (dragMoved || editMode) return;   // 拖拽松手/编辑模式中的click不算点击填入
+        selId = p.id;
+        if (p.forge) {
+          if (window.orange.glassLog) window.orange.glassLog('[fav] 点击F词条 ' + (p.name || '') + ' preset=' + (p.presetName || '无'));
+          if (window.orange.forgeApplyPreset) window.orange.forgeApplyPreset(p.presetName || '', p.text);
+          else if (window.orange.forgeFillPos) window.orange.forgeFillPos(p.text);
+          if (window.orange.armModule) window.orange.armModule('forge');
+        } else {
+          // 来源标记先行（0904机制，与提示词库同款）：带滑块/正则控件的词条优先翻控件面
+          if (window.orange.promptLibFill) window.orange.promptLibFill();
+          window.orange.setConfig({ gen: { prompt: p.text } });
+          if (window.orange.armModule) window.orange.armModule('prompt-box');
+        }
+        renderList();
+      });
+
+      row.append(heart, name);
+      // F词条标识：爱心右侧的F方框
+      if (p.forge) {
+        const fb = document.createElement('span');
+        fb.className = 'fbadge';
+        fb.textContent = 'F';
+        fb.title = 'Forge 预设提示词';
+        row.insertBefore(fb, name);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  // ---------- 搜索（120ms防抖：连续敲字不逐键全量重渲） ----------
+  let kwTimer = null;
+  $('search').addEventListener('input', () => {
+    clearTimeout(kwTimer);
+    kwTimer = setTimeout(() => { kw = $('search').value.trim(); renderList(); }, 120);
+  });
+
+  // ---------- 编辑模式排序（iOS风格）：按住1秒全体抖动，抖动中拖拽换位；点空白/按钮退出 ----------
+  // 搜索过滤中不允许进入（只见子集，顺序语义不明）
+  let dragMoved = false;
+  let editMode = false;
+  let justDropped = false;   // 拖拽松手瞬间合成的click落在容器上会误判"点空白"，短暂免疫
+  function setEdit(on) {
+    editMode = !!on;
+    $('list').classList.toggle('jiggling', editMode);
+  }
+  // 退出编辑：点面板空白区域或任意按钮/控件（爱心/搜索框等）；切走窗口兜底退出
+  document.addEventListener('click', (e) => {
+    if (!editMode || justDropped) return;
+    if (e.target.closest('button, select, input, .heart, .hbtn') || !e.target.closest('.row')) setEdit(false);
+  }, true);
+  window.addEventListener('blur', () => setEdit(false));
+
+  function bindReorder(row) {
+    row.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || kw) return;
+      if (e.target.closest('.heart')) return;   // 爱心=移出甄选，不参与长按/拖拽
+      const list = $('list');
+      const sy = e.clientY;
+      let started = false;
+      let canDrag = editMode;   // 已在编辑模式=按下即可拖；否则先长按1秒
+      let holdTimer = null;
+      dragMoved = false;
+      if (!editMode) {
+        row.classList.add('holding');   // 蓄力反馈：微缩
+        holdTimer = setTimeout(() => {
+          row.classList.remove('holding');
+          setEdit(true);   // 1秒到：全体抖动，本次按压直接获得拖拽权
+          canDrag = true;
+        }, 1000);
+      }
+      // ⚠监听必须挂window级：本环境(focusable:false透明窗)setPointerCapture返回成功但从不路由事件，
+      //   挂行上的move/up在光标离开起始行后就收不到=拖拽静默死亡（0905探针实锤，此卡自出生即踩坑）
+      const move = (ev) => {
+        if (!canDrag) {
+          // 长按蓄力中大幅移动=不是长按，取消蓄力（松手仍是普通点击填入）
+          if (Math.abs(ev.clientY - sy) > 8) { clearTimeout(holdTimer); row.classList.remove('holding'); }
+          return;
+        }
+        if (!started) {
+          if (Math.abs(ev.clientY - sy) < 4) return;
+          started = true;
+          dragMoved = true;
+          row.classList.add('dragging');
+        }
+        // 按光标位置在兄弟行之间挪动自己（实时可见的插入效果）
+        const rows = [...list.querySelectorAll('.row')].filter((r) => r !== row);
+        let before = null;
+        for (const r of rows) {
+          const rc = r.getBoundingClientRect();
+          if (ev.clientY < rc.top + rc.height / 2) { before = r; break; }
+        }
+        if (before) list.insertBefore(row, before);
+        else list.appendChild(row);
+      };
+      const finish = (commit) => {
+        clearTimeout(holdTimer);
+        row.classList.remove('holding');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', cancel);
+        window.removeEventListener('blur', cancel);
+        if (!started) return;
+        row.classList.remove('dragging');
+        justDropped = true;
+        setTimeout(() => { justDropped = false; }, 150);
+        if (commit) {
+          // 按当前DOM顺序落库：全部甄选重排favOrder
+          const order = [...$('list').querySelectorAll('.row')].map((r) => r.dataset.pid);
+          order.forEach((pid, i) => {
+            const p = lib.prompts.find((x) => x.id === pid);
+            if (p) p.favOrder = i;
+          });
+          save();
+        } else {
+          renderList();   // 取消(blur/cancel)：按未动的favOrder重渲染=复原
+        }
+        setTimeout(() => { dragMoved = false; }, 120);   // 吞掉紧随的click
+      };
+      const up = () => finish(true);
+      const cancel = () => finish(false);
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', cancel);
+      window.addEventListener('blur', cancel);
+    });
+  }
+
+  (async () => {
+    lib = await window.orange.plibGet();
+    renderList();
+  })();
+  if (window.orange.onPlibChanged) {
+    window.orange.onPlibChanged((l) => { lib = l; renderList(); });
+  }
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

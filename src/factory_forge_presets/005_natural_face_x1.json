@@ -1,0 +1,23 @@
+{
+  "id": "ocg_natural_x1",
+  "name": "0橙自然修脸X1",
+  "displayName": "橙自然修脸-X1",
+  "category": "head",
+  "data": {
+    "model": "leosamsHelloworldXL_helloworldXL70.safetensors",
+    "lora": "orangeskin_v2",
+    "loraWeight": "0.8",
+    "redrawAmount": "0.37",
+    "imageCount": "3",
+    "resolution": "1024",
+    "positivePrompt": "orangeskin, masterpiece, best quality, ultra-detailed, 1girl, solo, portrait, flawless skin, even skin tone, (delicate makeup:1.15), detailed eyes, long eyelashes, glossy lips,",
+    "negativePrompt": "paintings, sketches, (worst quality:2), (low quality:2), lowres, monochrome, grayscale, (skin spots:1.4), (acnes:1.4), (skin blemishes:1.4), age spot, mole, overexposed, washed out colors, watermark, username, signature, text",
+    "selectedControlNetModule": "lineart_realistic",
+    "controlNetModel": "controlnet-union-sdxl-promax",
+    "controlNetWeight": "0.65",
+    "step": "28",
+    "selectedName": "DPM++ 2M",
+    "selectedScheduler": "karras"
+  },
+  "_isFactory": true
+}

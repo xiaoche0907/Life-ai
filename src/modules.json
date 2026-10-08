@@ -1,0 +1,242 @@
+[
+  {
+    "id": "gen",
+    "icon": "▶️",
+    "label": "生成",
+    "file": "gen.html",
+    "width": 240,
+    "height": 220,
+    "ready": true
+  },
+  {
+    "id": "ai-gen",
+    "icon": "🎨",
+    "label": "生图模式",
+    "file": "ai-gen.html",
+    "width": 440,
+    "height": 520,
+    "ready": true,
+    "companions": [
+      "prompt-box"
+    ]
+  },
+  {
+    "id": "prompt-box",
+    "icon": "✏️",
+    "label": "提示词",
+    "file": "prompt-box.html",
+    "width": 380,
+    "height": 250,
+    "ready": true
+  },
+  {
+    "id": "refs",
+    "icon": "🖼️",
+    "label": "参考图",
+    "file": "refs.html",
+    "width": 380,
+    "height": 132,
+    "ready": true
+  },
+  {
+    "id": "progress",
+    "icon": "📈",
+    "label": "生图进度",
+    "file": "progress.html",
+    "width": 400,
+    "height": 520,
+    "ready": true
+  },
+  {
+    "id": "logs",
+    "icon": "📜",
+    "label": "生图日志",
+    "file": "logs.html",
+    "width": 420,
+    "height": 460,
+    "ready": true
+  },
+  {
+    "id": "anti",
+    "icon": "🛡️",
+    "label": "抗截断",
+    "file": "anti.html",
+    "width": 380,
+    "height": 330,
+    "ready": true
+  },
+  {
+    "id": "lock",
+    "icon": "🔒",
+    "label": "锁定",
+    "file": "lock.html",
+    "width": 320,
+    "height": 200,
+    "ready": true
+  },
+  {
+    "id": "batchall",
+    "icon": "📚",
+    "label": "批处理",
+    "file": "batchall.html",
+    "width": 320,
+    "height": 210,
+    "ready": true
+  },
+  {
+    "id": "autofix",
+    "icon": "🛠️",
+    "label": "自动修图",
+    "file": "autofix.html",
+    "width": 420,
+    "height": 640,
+    "ready": true
+  },
+  {
+    "id": "fx",
+    "icon": "✨",
+    "label": "特效",
+    "file": "fx.html",
+    "width": 380,
+    "height": 520,
+    "ready": true
+  },
+  {
+    "id": "colorcal",
+    "icon": "🎛️",
+    "label": "校色",
+    "file": "colorcal.html",
+    "width": 380,
+    "height": 330,
+    "ready": true
+  },
+  {
+    "id": "align",
+    "icon": "🎯",
+    "label": "对齐",
+    "file": "align.html",
+    "width": 240,
+    "height": 220,
+    "ready": true
+  },
+  {
+    "id": "forge",
+    "icon": "🔨",
+    "label": "Forge",
+    "file": "forge.html",
+    "width": 400,
+    "height": 640,
+    "ready": true
+  },
+  {
+    "id": "comfy",
+    "icon": "🧩",
+    "label": "ComfyUI",
+    "file": "comfy.html",
+    "width": 400,
+    "height": 600,
+    "ready": true
+  },
+  {
+    "id": "composite",
+    "icon": "🧩",
+    "label": "半合成",
+    "file": "composite.html",
+    "width": 380,
+    "height": 520,
+    "ready": true
+  },
+  {
+    "id": "relight",
+    "icon": "💡",
+    "label": "打光",
+    "file": "relight.html",
+    "width": 380,
+    "height": 600,
+    "ready": true
+  },
+  {
+    "id": "glow",
+    "icon": "🌟",
+    "label": "辉光",
+    "file": "glow.html",
+    "width": 720,
+    "height": 600,
+    "ready": true
+  },
+  {
+    "id": "prompts",
+    "icon": "📚",
+    "label": "提示词库",
+    "file": "prompts.html",
+    "width": 400,
+    "height": 560,
+    "ready": true,
+    "companions": [
+      "fav"
+    ]
+  },
+  {
+    "id": "fav",
+    "icon": "❤️",
+    "label": "甄选",
+    "file": "fav.html",
+    "width": 300,
+    "height": 420,
+    "ready": true
+  },
+  {
+    "id": "qpresets",
+    "icon": "⚡",
+    "label": "快捷预设",
+    "file": "qpresets.html",
+    "width": 300,
+    "height": 460,
+    "ready": true
+  },
+  {
+    "id": "layout",
+    "icon": "🧩",
+    "label": "快速布局",
+    "file": "layout.html",
+    "width": 280,
+    "height": 240,
+    "ready": true
+  },
+  {
+    "id": "pee",
+    "icon": "🚽",
+    "label": "尿尿提醒",
+    "file": "pee.html",
+    "width": 280,
+    "height": 122,
+    "ready": true
+  },
+  {
+    "id": "chat",
+    "icon": "💬",
+    "label": "AI对话",
+    "file": "chat.html",
+    "width": 420,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "settings",
+    "icon": "⚙️",
+    "label": "设置",
+    "file": "settings.html",
+    "width": 360,
+    "height": 520,
+    "ready": true
+  },
+  {
+    "id": "statement",
+    "icon": "📄",
+    "label": "声明",
+    "file": "statement.html",
+    "width": 360,
+    "height": 340,
+    "ready": true
+  }
+]

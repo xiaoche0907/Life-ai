@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  #body { flex: 1; overflow-y: auto; padding: 2px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+  #body::-webkit-scrollbar { width: 5px; }
+  #body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 3px; }
+
+  .lbl { font-size: 11px; color: #fff; opacity: 0.82; letter-spacing: 1px; }
+  .row { display: flex; align-items: center; gap: 7px; }
+  select, input[type="text"] {
+    height: 28px; padding: 0 8px; border-radius: 9px;
+    border: 1px solid var(--inset-border); background: var(--inset-bg); color: var(--text);
+    font-size: 11px; outline: none; min-width: 0;
+  }
+  select option { background: #222; }
+  .dirRow { display: flex; align-items: center; gap: 7px; }
+  .dirPath {
+    flex: 1; min-width: 0; height: 28px; line-height: 28px; padding: 0 9px;
+    border-radius: 9px; background: var(--inset-bg); border: 1px solid var(--inset-border);
+    font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mbtn {
+    height: 28px; padding: 0 11px; border: none; border-radius: 9px;
+    background: var(--btn-bg); color: var(--text); font-size: 11px; cursor: pointer; flex: none;
+  }
+  .mbtn:hover { background: var(--btn-bg-hover); }
+  .mbtn.accent { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
+
+  /* 工序行 */
+  .step {
+    border: 1px solid var(--inset-border); border-radius: 12px;
+    background: var(--inset-bg); padding: 8px 9px; display: flex; flex-direction: column; gap: 7px;
+    cursor: grab;   /* 长按1秒进入编辑模式(iOS抖动)后可拖拽排序 */
+  }
+  /* iOS风格编辑模式：长按蓄力微缩 → 全体抖动(相位错开) → 拖拽行放大浮起 */
+  .step.holding { transform: scale(0.975); transition: transform 0.35s ease; }
+  @keyframes stepJig {
+    from { transform: rotate(-0.7deg) translateY(-0.6px); }
+    to   { transform: rotate(0.7deg) translateY(0.6px); }
+  }
+  #steps.jiggling .step { animation: stepJig 0.15s infinite alternate ease-in-out; }
+  #steps.jiggling .step:nth-child(2n) { animation-duration: 0.17s; animation-delay: -0.08s; }
+  #steps.jiggling .step:nth-child(3n) { animation-duration: 0.16s; animation-delay: -0.12s; }
+  .step.dragging {
+    animation: none !important;
+    transform: scale(1.04); opacity: 0.92; cursor: grabbing;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+    border-color: var(--accent-border);
+    position: relative; z-index: 5;
+  }
+  .step .top { display: flex; align-items: center; gap: 6px; }
+  .step .no { font-size: 12px; font-weight: 700; color: var(--accent-text); flex: none; width: 18px; }
+  .step select.part { width: 82px; flex: none; }
+  .step select.prov { width: 96px; flex: none; }
+  /* 工序移动反馈：换位后目标行闪一下，肉眼可见"动了" */
+  @keyframes stepflash { 0% { border-color: var(--accent-text); background: var(--accent-soft); } 100% { border-color: var(--inset-border); background: var(--inset-bg); } }
+  .step.flash { animation: stepflash 0.7s ease-out; }
+  /* 提示词选择按钮（点开甄选/提示词库弹层，替代下拉） */
+  .pbtn {
+    flex: 1; min-width: 0; height: 28px; padding: 0 9px; text-align: left;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text); font-size: 11px; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pbtn:hover { border-color: var(--accent-border); }
+  .pbtn.empty { color: var(--text-dim); }
+  .sbtn {
+    width: 22px; height: 22px; border: none; border-radius: 7px; flex: none;
+    background: var(--btn-bg); color: var(--text); font-size: 11px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sbtn:hover { background: var(--btn-bg-hover); }
+  .sbtn.del:hover { color: var(--err); }
+  .adv { display: none; gap: 7px; align-items: center; flex-wrap: wrap; font-size: 10px; color: var(--text-dim); }
+  .step.advOn .adv { display: flex; }
+  .adv select { height: 24px; font-size: 10px; }
+  .adv input[type="range"] { width: 80px; accent-color: var(--accent); }
+
+  #recipeRow select { flex: 1; }
+  #estimate { font-size: 10.5px; color: var(--text-dim); }
+  #progress { font-size: 11px; color: var(--accent-text); min-height: 15px; }
+  #btnRun {
+    height: 34px; border: 1px solid var(--accent-border); border-radius: 11px;
+    background: var(--accent-soft); color: var(--accent-text);
+    font-size: 12.5px; font-weight: 700; cursor: pointer; flex: 1;
+  }
+  #btnRun:hover { filter: brightness(1.2); }
+  #btnRun:disabled { opacity: 0.45; cursor: default; }
+  #btnStop { display: none; }
+  body.running #btnStop { display: block; }
+  /* 关机倒计时条：红色系警示，只在已排定关机时现身 */
+  #shutBar {
+    display: none; align-items: center; gap: 8px;
+    padding: 6px 10px; border-radius: 10px;
+    background: rgba(255, 59, 48, 0.18); border: 1px solid rgba(255, 59, 48, 0.55);
+    font-size: 12px; color: #ffb3ad; font-variant-numeric: tabular-nums;
+  }
+  #shutBar.on { display: flex; }
+  #shutTxt { flex: 1; font-weight: 700; }
+  #btnShutCancel { background: rgba(255, 59, 48, 0.35); color: #fff; }
+  /* 苹果开关（设置卡同款；关机开关开着走红色，一眼看见） */
+  .swrow { display: flex; align-items: center; gap: 10px; padding: 2px 2px; }
+  .swlab { flex: 1; font-size: 12px; color: var(--text); }
+  .swsub { font-size: 10px; color: var(--text-dim); margin-left: 4px; }
+  .aswitch {
+    position: relative; flex: none;
+    width: 44px; height: 24px; border-radius: 12px;
+    background: rgba(255, 255, 255, 0.16);
+    cursor: pointer;
+    transition: background 0.22s;
+  }
+  .aswitch::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    transition: left 0.22s cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  .aswitch.on { background: var(--accent); }
+  .aswitch.on::after { left: 22px; }
+  .aswitch.warn.on { background: #ff3b30; box-shadow: 0 0 8px rgba(255, 59, 48, 0.6); }
+
+  /* 提示词选择弹层（0907重做：继承提示词库设计——分组logo网格→点组进列表；搜索全库直达） */
+  #pick { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.45); border-radius: 22px; align-items: center; justify-content: center; z-index: 50; }
+  #pick.on { display: flex; }
+  #pickBox {
+    width: 90%; height: 78%; background: rgba(24, 26, 34, 0.98);
+    border: 1px solid var(--accent-border); border-radius: 14px; padding: 12px;
+    display: flex; flex-direction: column; gap: 9px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  }
+  .pkTop { display: flex; align-items: center; gap: 7px; }
+  #pkBack {
+    width: 26px; height: 26px; border: none; border-radius: 50%; flex: none;
+    display: none; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text); cursor: pointer;
+  }
+  #pkBack.on { display: flex; }
+  #pkBack:hover { background: var(--btn-bg-hover); }
+  #pkBack svg { width: 13px; height: 13px; }
+  #pkWhere { display: none; align-items: center; gap: 5px; flex: none; font-size: 11.5px; font-weight: 600; color: #fff; }
+  #pkWhere.on { display: flex; }
+  #pkWhere svg { width: 15px; height: 15px; color: var(--accent-text); }
+  #pkWhere .cnt { font-size: 9.5px; color: var(--text-dim); font-weight: 400; }
+  #pkSearch {
+    flex: 1; min-width: 0; height: 26px; padding: 0 9px;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text); font-size: 11px; outline: none;
+    user-select: text; cursor: text;
+  }
+  #pkSearch:focus { border-color: var(--accent-border); }
+  #pkClose { width: 26px; height: 26px; border: none; border-radius: 9px; background: var(--btn-bg); color: var(--text); font-size: 11px; cursor: pointer; flex: none; }
+  #pkClose:hover { color: var(--err); }
+  /* 分组logo网格（提示词库正面同款gtile） */
+  #pkGroups {
+    flex: 1; overflow-y: auto;
+    display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: min-content; gap: 7px;
+  }
+  #pkGroups::-webkit-scrollbar { width: 0; }
+  .gtile {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 13px 2px;
+    border-radius: 13px; background: var(--btn-bg);
+    border: 1px solid transparent; cursor: pointer; min-width: 0;
+  }
+  .gtile:hover { background: var(--btn-bg-hover); }
+  .gtile svg { width: 26px; height: 26px; stroke-width: 1.45; color: var(--text); flex-shrink: 0; transition: transform 0.15s; }
+  .gtile:hover svg { transform: scale(1.1); }
+  .gtile .glab { font-size: 8.5px; color: var(--text-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gcount {
+    position: absolute; top: 4px; right: 5px;
+    min-width: 13px; height: 13px; padding: 0 3px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700;
+    background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border);
+  }
+  #pkList { flex: 1; overflow-y: auto; display: none; flex-direction: column; gap: 5px; }
+  #pkList.on { display: flex; }
+  #pkList::-webkit-scrollbar { width: 4px; }
+  #pkList::-webkit-scrollbar-thumb { background: var(--btn-bg-hover); border-radius: 2px; }
+  /* 词条行（提示词库背面同款：爱心+名字+灰色内容预览） */
+  #pkList .row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; flex: none;
+    border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border);
+    cursor: pointer; transition: border-color 0.15s;
+  }
+  #pkList .row:hover { border-color: var(--accent-border); }
+  #pkList .row .heart { flex: none; display: flex; color: var(--accent-text); }
+  #pkList .row .heart svg { width: 13px; height: 13px; fill: var(--accent-text); }
+  #pkList .row .name { flex: none; max-width: 55%; font-size: 11.5px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pkList .row .prev { flex: 1; font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pkEmpty { text-align: center; font-size: 11px; color: var(--text-dim); padding: 24px 8px; }
+</style>
+</head>
+<body data-arm-id="">
+<script src="icons.js"></script>
+<script src="param-controls.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>自动修图</span>
+    <div class="sp"></div>
+  </div>
+  <div id="body">
+    <div>
+      <div class="lbl" style="margin-bottom:5px">源文件夹（原图，只读不动）</div>
+      <div class="dirRow"><div class="dirPath" id="srcPath">未选择</div><button class="mbtn" id="btnSrc" data-pass>选择</button></div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:5px">输出文件夹（成品PSD）</div>
+      <div class="dirRow"><div class="dirPath" id="outPath">未选择</div><button class="mbtn" id="btnOut" data-pass>选择</button></div>
+    </div>
+
+    <div>
+      <div class="row" style="justify-content:space-between;margin-bottom:5px">
+        <span class="lbl">工序流水线（自上而下执行）</span>
+        <span style="display:flex;gap:6px">
+          <button class="mbtn" id="btnChain" data-pass title="开=每道工序在上一道结果上继续修（PSD含盖印层）；关=每道都对原图独立跑（各组为平行方案，PSD无盖印层）">盖印链·开</button>
+          <button class="mbtn" id="btnAddStep" data-pass>+ 加工序</button>
+        </span>
+      </div>
+      <div id="steps" style="display:flex;flex-direction:column;gap:7px"></div>
+    </div>
+
+    <div class="row" title="识图大模型：给区域工序定部位框（一图一次调用），全部词条共用；与生成模型互不干扰">
+      <span class="lbl">识图模型</span>
+      <select id="detProv" data-pass style="width:76px"></select>
+      <select id="detModel" data-pass style="flex:1;min-width:0"></select>
+    </div>
+    <div class="row"><span id="estimate"></span></div>
+
+    <div>
+      <div class="lbl" style="margin-bottom:5px">配方（整套设置一键复用）</div>
+      <div class="row" id="recipeRow">
+        <select id="recipeSel" data-pass></select>
+        <button class="mbtn" id="btnRecipeSave" data-pass title="把当前整套设置（文件夹+工序+张数）存为配方">保存</button>
+        <button class="mbtn" id="btnRecipeDel" data-pass title="删除当前选中的配方">删除</button>
+      </div>
+      <input type="text" id="recipeName" data-nodrag placeholder="新配方名称（保存时填写）" style="width:100%;margin-top:6px" />
+    </div>
+
+    <div>
+      <div class="lbl" style="margin-bottom:5px">跑批收尾</div>
+      <div class="swrow" title="开=跑批期间阻止电脑自动睡眠（屏幕照常可关）；结束或停止后自动解除">
+        <span class="swlab">防止电脑睡眠</span>
+        <span class="aswitch" id="swAwake" data-pass></span>
+      </div>
+      <div class="swrow" title="开=全部图片自然跑完后60秒倒计时关机（可取消）；手动停止/熔断不关机；此开关每次启动软件归零">
+        <span class="swlab">全部完成后自动关机 <span class="swsub">60秒可取消 · 每次启动归零</span></span>
+        <span class="aswitch warn" id="swShut" data-pass></span>
+      </div>
+    </div>
+
+    <div id="progress"></div>
+    <div id="pbarWrap" style="display:none;height:4px;border-radius:2px;background:var(--inset-bg);overflow:hidden"><div id="pbar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s"></div></div>
+    <div id="shutBar" data-pass>
+      <span id="shutTxt">⏻ 60秒后关机</span>
+      <button class="mbtn" id="btnShutCancel" data-pass>取消关机</button>
+    </div>
+    <div class="row">
+      <button id="btnRun" data-pass>▶ 开始批量修图</button>
+      <button class="mbtn" id="btnStop" data-pass style="height:34px;color:#ff9a9a">停止</button>
+    </div>
+  </div>
+
+  <!-- 提示词选择弹层（0907继承提示词库设计）：分组logo网格→点组进词条列表；搜索全库直达 -->
+  <div id="pick" data-pass>
+    <div id="pickBox" data-pass>
+      <div class="pkTop">
+        <button type="button" id="pkBack" data-pass title="返回分组"></button>
+        <span id="pkWhere"></span>
+        <input id="pkSearch" type="text" data-nodrag placeholder="搜索名称或内容…" />
+        <button type="button" id="pkClose" data-pass title="关闭">✕</button>
+      </div>
+      <div id="pkGroups" data-pass></div>
+      <div id="pkList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.autofix || window.ORANGE_ICONS.fx;
+
+  // v2检测式部位：识图大模型(卡面全局选)按语义返回部位紧贴框→代码强制正方形(1:1喂香蕉零位移)→生成→原位贴回
+  // 部位语义(发给识图模型)：脸=头顶到脖中/头发=全部头发(长发框到发梢)/上半身=脖中到大腿根/下半身=腰到脚
+  // 0908用户裁定：去掉「背景」部位（与全图行为无差别，只多一个让人犹豫的选项）；老配方里的 bg 由下方守卫落回全图
+  const PARTS = [['full', '全图'], ['face', '脸部'], ['hair', '头发'], ['upper', '上半身'], ['chest', '胸部'], ['lower', '下半身'], ['top', '竖构图-上区域'], ['bottom', '竖构图-下区域'], ['left', '横构图-左侧'], ['center', '横构图-中间'], ['right', '横构图-右侧']];
+  const REGION_PARTS = ['face', 'hair', 'upper', 'chest', 'lower'];   // 需要识图的部位（top/bottom/left/center/right是纯几何不识图不花钱）
+  const GEO_PARTS = ['top', 'bottom', 'left', 'center', 'right'];   // 0908：横构图左/中/右三件=正方形边长取图高，贴左/居中/贴右；竖图方图跳过
+  const RATIOS = ['跟原图', '1:1'];   // 仅全图/背景可选；区域工序锁死1:1（香蕉1:1构图才不位移）
+  const I_HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
+  let plibPrompts = [];       // [{id,name,text,fav,favOrder,ts}]
+  let PROV = null;            // getProviders()完整信封（meta里有生图models与chatModels）
+  let provList = [];          // [{id,label}]，id=''表示跟随全局渠道；'forge'=本地 SD 通道（0918）
+  let FORGE_PRESETS = [];     // Forge 预设（渠道选 forge 时，模型下拉只列这些）
+  let steps = [];             // [{part,promptId,label,prompt,provider,model,ratio,pad,tier,n,adv}]
+  let srcDir = '', outDir = '', srcCount = 0;
+  let running = false;
+
+  const TIERS = ['1K', '2K', '4K'];   // 0908用户裁定：档位去掉"自动"，明选；老配方/预设里的Auto按2K
+  function defStep() { return { part: 'full', promptId: '', label: '', prompt: '', provider: '', model: '', ratio: '跟原图', pad: 30, tier: '2K', n: 1, adv: false, ctl: { params: {}, blanks: {} }, ctlOpen: false }; }
+
+  function renderSteps(flashIdx) {
+    const box = $('steps');
+    box.innerHTML = '';
+    steps.forEach((st, i) => {
+      const el = document.createElement('div');
+      el.className = 'step' + (st.adv ? ' advOn' : '') + (i === flashIdx ? ' flash' : '');
+      el.dataset.i = i;
+      el.setAttribute('data-nodrag', '');   // 行内拖拽自己接管，别触发glass.js整卡拖动
+      el.setAttribute('data-pass', '');     // 锁定模式放行整行（拖拽排序在锁定下也能用）
+      bindStepDrag(el);
+      const top = document.createElement('div');
+      top.className = 'top';
+      const no = document.createElement('span'); no.className = 'no'; no.textContent = '①②③④⑤⑥⑦⑧'[i] || (i + 1);
+      const part = document.createElement('select'); part.className = 'part'; part.setAttribute('data-pass', '');
+      PARTS.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; part.appendChild(o); });
+      part.value = st.part;
+      part.addEventListener('change', () => {
+        st.part = part.value;
+        if (REGION_PARTS.includes(st.part)) st.ratio = '1:1';   // 区域工序锁1:1
+        renderSteps();   // 高级行的比例锁显示随部位变
+        persistLast();
+      });
+      // 提示词=按钮，点开甄选/提示词库弹层选（用户裁定：不要下拉）
+      // Forge 工序（0918）：提示词来自预设，这个按钮改当「选预设」入口，两步并一步少翻 ⚙
+      const pr = document.createElement('button'); pr.type = 'button';
+      if (st.provider === 'forge') {
+        const fp = FORGE_PRESETS.find((p) => p.name === st.model);
+        pr.className = 'pbtn' + (fp ? '' : ' empty');
+        pr.textContent = fp ? (fp.displayName || fp.name) : '选择 Forge 预设…';
+        pr.title = 'Forge 本地通道：模型/LoRA/重绘/步数等整套参数都来自预设';
+        pr.dataset.act = 'pickforge'; pr.dataset.i = i;
+      } else {
+        pr.className = 'pbtn' + (st.label ? '' : ' empty');
+        pr.textContent = st.label || '选择提示词…';
+        pr.title = st.prompt ? st.prompt.slice(0, 300) : '从甄选/提示词库中选择';
+        pr.dataset.act = 'pick'; pr.dataset.i = i;
+      }
+      const mkBtn = (act, txt, tip, cls) => {
+        const b = document.createElement('button'); b.type = 'button';
+        b.className = 'sbtn' + (cls ? ' ' + cls : ''); b.textContent = txt; b.title = tip;
+        b.dataset.act = act; b.dataset.i = i;
+        return b;
+      };
+      top.append(no, part, pr);
+      // 词条带滑块/填空控件才现身的调节钮（用户裁定：流水线提示词也要能调正则和滑块）
+      const pcInfo = (window.ORANGE_PARAM_CTL && st.prompt) ? window.ORANGE_PARAM_CTL.parse(st.prompt) : { sliders: [], blanks: [] };
+      const hasCtl = pcInfo.sliders.length + pcInfo.blanks.length > 0;
+      if (hasCtl) top.append(mkBtn('ctl', '🎚', '调节该词条的滑块/填空（每道工序独立）', st.ctlOpen ? 'del' : ''));
+      top.append(mkBtn('adv', '⚙', '高级（渠道/模型/档位/张数/比例/外扩）'), mkBtn('del', '✕', '删除该工序', 'del'));
+      el.appendChild(top);
+
+      // 高级行=词条五件套（用户裁定全收进⚙）：渠道/模型/档位/张数/比例/外扩，全部以词条为准零回落
+      const adv = document.createElement('div');
+      adv.className = 'adv';
+      adv.style.flexWrap = 'wrap';
+      const pv = document.createElement('select'); pv.className = 'prov'; pv.setAttribute('data-pass', ''); pv.style.maxWidth = '92px';
+      provList.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label; pv.appendChild(o); });
+      pv.value = st.provider || '';
+      pv.addEventListener('change', () => {
+        st.provider = pv.value;
+        st.model = '';   // 换渠道模型清零，按新渠道重建模型表
+        renderSteps();
+        persistLast();
+      });
+      adv.appendChild(pv);
+      const isForge = st.provider === 'forge';
+      adv.appendChild(document.createTextNode(isForge ? ' 预设 ' : ' 模型 '));
+      const ms = document.createElement('select'); ms.setAttribute('data-pass', ''); ms.style.maxWidth = '118px';
+      if (isForge) {
+        // Forge 工序：模型下拉只列 Forge 预设（0918 用户裁定）——预设本身就是完整的一套参数
+        const mo0 = document.createElement('option'); mo0.value = ''; mo0.textContent = FORGE_PRESETS.length ? '选预设…' : '无预设';
+        ms.appendChild(mo0);
+        FORGE_PRESETS.forEach((p) => {
+          const o = document.createElement('option'); o.value = p.name; o.textContent = p.displayName || p.name; ms.appendChild(o);
+        });
+        ms.value = (st.model && FORGE_PRESETS.some((p) => p.name === st.model)) ? st.model : '';
+      } else {
+        const provId = st.provider || (PROV && PROV.current) || '';
+        const pm = (PROV && PROV.meta && PROV.meta[provId] && PROV.meta[provId].models) || {};
+        const mo0 = document.createElement('option'); mo0.value = ''; mo0.textContent = '渠道当前'; ms.appendChild(mo0);
+        Object.keys(pm).forEach((mid) => { const o = document.createElement('option'); o.value = mid; o.textContent = pm[mid].name || mid; ms.appendChild(o); });
+        ms.value = (st.model && pm[st.model]) ? st.model : '';
+      }
+      ms.addEventListener('change', () => { st.model = ms.value; persistLast(); });
+      adv.appendChild(ms);
+      // 档位（1K/2K/4K）只对云端渠道有意义：Forge 按原图尺寸跑，不显示这个选择（0918 用户裁定）
+      if (!isForge) {
+        adv.appendChild(document.createTextNode(' 档位 '));
+        const ts = document.createElement('select'); ts.setAttribute('data-pass', '');
+        TIERS.forEach((v) => { const o = document.createElement('option'); o.value = v; o.textContent = v; ts.appendChild(o); });
+        ts.value = TIERS.includes(st.tier) ? st.tier : '2K';
+        ts.addEventListener('change', () => { st.tier = ts.value; persistLast(); });
+        adv.appendChild(ts);
+      }
+      adv.appendChild(document.createTextNode(' 张数 '));
+      const ns = document.createElement('select'); ns.setAttribute('data-pass', '');
+      [1, 2, 3].forEach((v) => { const o = document.createElement('option'); o.value = v; o.textContent = v + '张'; ns.appendChild(o); });
+      ns.value = String(st.n || 1);
+      ns.addEventListener('change', () => { st.n = Number(ns.value); persistLast(); updateEstimate(); });
+      adv.appendChild(ns);
+      if (REGION_PARTS.includes(st.part)) {
+        st.ratio = '1:1';
+        const lk = document.createElement('span');
+        lk.textContent = ' 比例1:1🔒';
+        lk.style.color = 'var(--accent-text)';
+        lk.title = '区域工序固定1:1正方形裁剪——香蕉1:1构图才不位移';
+        adv.appendChild(lk);
+      } else {
+        adv.appendChild(document.createTextNode(' 比例 '));
+        const rs = document.createElement('select'); rs.setAttribute('data-pass', '');
+        RATIOS.forEach((v) => { const o = document.createElement('option'); o.value = v; o.textContent = v; rs.appendChild(o); });
+        rs.value = (st.ratio && RATIOS.includes(st.ratio)) ? st.ratio : '跟原图';
+        rs.addEventListener('change', () => { st.ratio = rs.value; persistLast(); });
+        adv.appendChild(rs);
+      }
+      // 外扩只对区域工序有意义（识图框→正方形的再放大比例）；全图/背景不显示
+      if (REGION_PARTS.includes(st.part)) {
+        const padLbl = document.createElement('span'); padLbl.textContent = ' 外扩' + (st.pad || 0) + '%';
+        const pad = document.createElement('input'); pad.type = 'range'; pad.min = 0; pad.max = 100; pad.step = 5; pad.value = st.pad || 0; pad.setAttribute('data-pass', ''); pad.style.width = '90px';
+        pad.title = '区域正方形在识图框基础上再放大的比例';
+        pad.addEventListener('input', () => { st.pad = Number(pad.value); padLbl.textContent = ' 外扩' + st.pad + '%'; persistLast(); });
+        adv.append(pad, padLbl);
+      }
+      el.appendChild(adv);
+      // 滑块/填空控件区（🎚展开）：每道工序一份独立ctl，调的值只作用于本道
+      if (hasCtl && st.ctlOpen && window.ORANGE_PARAM_CTL) {
+        if (!st.ctl) st.ctl = { params: {}, blanks: {} };
+        const ctlBox = document.createElement('div');
+        ctlBox.setAttribute('data-pass', '');
+        ctlBox.style.marginTop = '2px';
+        window.ORANGE_PARAM_CTL.render(ctlBox, st.prompt, st.ctl, () => persistLast());
+        el.appendChild(ctlBox);
+      }
+      box.appendChild(el);
+    });
+    if (!steps.length) box.innerHTML = '<div style="font-size:11px;color:var(--text-dim);text-align:center;padding:8px">点「+ 加工序」开始编排流水线</div>';
+  }
+
+  // 工序行按钮全部走容器级事件委托：重渲染/异常都不会丢监听
+  $('steps').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    e.stopPropagation();
+    const i = Number(b.dataset.i), act = b.dataset.act;
+    if (window.orange.glassLog) window.orange.glassLog('[自动修图] 工序按钮 ' + act + ' #' + (i + 1) + '/' + steps.length);
+    if (!steps[i]) return;
+    if (act === 'pick') { openPicker(i); return; }
+    if (act === 'pickforge') { openForgePicker(i); return; }
+    if (act === 'adv') { steps[i].adv = !steps[i].adv; renderSteps(); }
+    else if (act === 'ctl') { steps[i].ctlOpen = !steps[i].ctlOpen; renderSteps(); }
+    else if (act === 'del') { steps.splice(i, 1); renderSteps(); persistLast(); updateEstimate(); }
+  });
+
+  // ---------- 工序编辑模式（iOS风格）：按住1秒全体抖动，抖动中拖拽换位；点空白/按钮退出 ----------
+  let editMode = false;
+  let justDropped = false;   // 拖拽松手瞬间合成的click落在容器上会误判"点空白"，短暂免疫
+  function setEdit(on) {
+    editMode = !!on;
+    $('steps').classList.toggle('jiggling', editMode);
+  }
+  // 退出编辑：点面板空白区域或任意按钮/控件（capture级，内层stopPropagation也拦不住）；切走窗口兜底退出
+  document.addEventListener('click', (e) => {
+    if (!editMode || justDropped) return;
+    if (e.target.closest('button, select, input') || !e.target.closest('.step')) setEdit(false);
+  }, true);
+  window.addEventListener('blur', () => setEdit(false));
+
+  function bindStepDrag(el) {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('button, select, input')) return;   // 控件区不参与长按/拖拽
+      const box = $('steps');
+      const sy = e.clientY;
+      let started = false;
+      let canDrag = editMode;   // 已在编辑模式=按下即可拖；否则先长按1秒
+      let holdTimer = null;
+      if (!editMode) {
+        el.classList.add('holding');   // 蓄力反馈：微缩
+        holdTimer = setTimeout(() => {
+          el.classList.remove('holding');
+          setEdit(true);   // 1秒到：全体抖动，本次按压直接获得拖拽权
+          canDrag = true;
+        }, 1000);
+      }
+      const renumber = () => {
+        [...box.querySelectorAll('.step')].forEach((r, k) => {
+          const n = r.querySelector('.no');
+          if (n) n.textContent = '①②③④⑤⑥⑦⑧'[k] || (k + 1);
+        });
+      };
+      // ⚠监听必须挂window级：本环境(focusable:false透明窗)setPointerCapture返回成功但从不路由事件，
+      //   挂行上的move/up在光标离开起始行后就收不到=拖拽静默死亡（0905探针实锤，甄选卡同病）
+      const move = (ev) => {
+        if (!canDrag) {
+          // 长按蓄力中大幅移动=不是长按，取消蓄力
+          if (Math.abs(ev.clientY - sy) > 8) { clearTimeout(holdTimer); el.classList.remove('holding'); }
+          return;
+        }
+        if (!started) {
+          if (Math.abs(ev.clientY - sy) < 4) return;
+          started = true;
+          el.classList.add('dragging');
+        }
+        const rows = [...box.querySelectorAll('.step')].filter((r) => r !== el);
+        let before = null;
+        for (const r of rows) {
+          const rc = r.getBoundingClientRect();
+          if (ev.clientY < rc.top + rc.height / 2) { before = r; break; }
+        }
+        if (before) box.insertBefore(el, before);
+        else box.appendChild(el);
+        renumber();
+      };
+      const finish = (commit) => {
+        clearTimeout(holdTimer);
+        el.classList.remove('holding');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', cancel);
+        window.removeEventListener('blur', cancel);
+        if (!started) return;
+        el.classList.remove('dragging');
+        justDropped = true;
+        setTimeout(() => { justDropped = false; }, 150);
+        if (commit) {
+          const order = [...box.querySelectorAll('.step')].map((r) => Number(r.dataset.i));
+          if (window.orange.glassLog) window.orange.glassLog('[自动修图] 拖拽排序落位 ' + order.map((x) => x + 1).join(','));
+          steps = order.map((i) => steps[i]);
+        }
+        renderSteps();   // 取消(blur/cancel)时按未动的steps重渲染=复原
+        if (commit) persistLast();
+      };
+      const up = () => finish(true);
+      const cancel = () => finish(false);
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', cancel);
+      window.addEventListener('blur', cancel);
+    });
+  }
+
+  // ---------- 提示词选择弹层：甄选/提示词库两页签 ----------
+  // ---------- 词条选择弹层（0907重做）：继承提示词库设计——分组logo网格→点组进列表；搜索全库直达 ----------
+  let pickFor = -1, pkGroup = null, pkKw = '', pkForge = false;   // pkForge：这个弹层在选 Forge 预设而不是提示词
+  let plibGroups = [];   // [{id,name,icon}]（含F组以外全部分组）
+  const PI = window.PLIB_ICONS || {};
+  const I_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
+  $('pkBack').innerHTML = I_BACK;
+  function groupIconOf(grp) {
+    if (grp.icon && PI[grp.icon]) return PI[grp.icon];
+    if (grp.id === 'factory') return window.ORANGE_ICONS.orange;
+    return PI.tag || '';
+  }
+  function favCmp(a, b) {
+    const ao = (a.favOrder != null) ? a.favOrder : 1e9;
+    const bo = (b.favOrder != null) ? b.favOrder : 1e9;
+    if (ao !== bo) return ao - bo;
+    return (b.ts || 0) - (a.ts || 0);
+  }
+  function openPicker(i) {
+    pickFor = i; pkKw = ''; pkGroup = null; pkForge = false;
+    $('pkSearch').value = ''; $('pkSearch').placeholder = '搜索名称或内容…';
+    renderPicker();
+    $('pick').classList.add('on');
+    $('pkSearch').focus();
+  }
+  // Forge 预设选择器（0918）：复用同一个弹层，跳过分组网格直接列预设（预设没有分组层级）
+  function openForgePicker(i) {
+    pickFor = i; pkKw = ''; pkGroup = null; pkForge = true;
+    $('pkSearch').value = ''; $('pkSearch').placeholder = '搜索预设名…';
+    renderPicker();
+    $('pick').classList.add('on');
+  }
+  function closePicker() { $('pick').classList.remove('on'); pickFor = -1; pkForge = false; }
+  // 视图判定：搜索词优先（全库直达列表）；否则选了组进列表、没选组看分组网格
+  function renderPicker() {
+    if (pkForge) { renderForgeList(pkKw); return; }
+    if (pkKw) { renderPkList(null, pkKw); return; }
+    if (pkGroup) { renderPkList(pkGroup, ''); return; }
+    renderPkGroups();
+  }
+  function renderForgeList(kw) {
+    $('pkGroups').style.display = 'none';
+    const list = $('pkList');
+    list.classList.add('on');
+    list.innerHTML = '';
+    const k = (kw || '').toLowerCase();
+    const arr = FORGE_PRESETS.filter((p) => !k || ((p.name || '') + ' ' + (p.displayName || '')).toLowerCase().includes(k));
+    $('pkBack').classList.remove('on');   // 没有上一级可回
+    $('pkWhere').classList.add('on');
+    $('pkWhere').innerHTML = (PI.forgeF || '') + '<span></span><span class="cnt"></span>';
+    const kids = $('pkWhere').children;
+    kids[kids.length - 2].textContent = 'Forge 预设';
+    $('pkWhere').querySelector('.cnt').textContent = arr.length + ' 个';
+    if (!arr.length) {
+      list.innerHTML = '<div id="pkEmpty">' + (FORGE_PRESETS.length ? '没有匹配的预设' : 'Forge 预设是空的（Forge 卡 → 预设文件夹里放 json）') + '</div>';
+      return;
+    }
+    arr.forEach((p) => {
+      const d = p.data || {};
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.title = [d.model, d.lora ? ('LoRA ' + d.lora + ' ×' + d.loraWeight) : '', '重绘' + d.redrawAmount, '步数' + d.step, d.selectedName].filter(Boolean).join(' · ');
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = p.displayName || p.name;
+      row.appendChild(name);
+      const prev = document.createElement('span'); prev.className = 'prev';
+      prev.textContent = ['重绘' + (d.redrawAmount || '-'), (d.model || '').replace(/\.safetensors$/i, '')].join(' · ');
+      row.appendChild(prev);
+      row.addEventListener('click', () => {
+        const idx = pickFor;
+        const st = steps[idx];
+        if (st) { st.model = p.name; st.label = p.displayName || p.name; }
+        closePicker();
+        renderSteps(idx);
+        persistLast(); updateEstimate();
+      });
+      list.appendChild(row);
+    });
+  }
+  function renderPkGroups() {
+    $('pkBack').classList.remove('on');
+    $('pkWhere').classList.remove('on');
+    $('pkList').classList.remove('on');
+    const box = $('pkGroups');
+    box.style.display = '';
+    box.innerHTML = '';
+    const cnt = {};
+    plibPrompts.forEach((p) => { cnt[p.group] = (cnt[p.group] || 0) + 1; });
+    // 甄选=虚拟第一组（爱心logo，提示词库没有这组但选词场景最常用）
+    const favN = plibPrompts.filter((p) => p.fav).length;
+    const groups = (favN ? [{ id: '__fav', name: '甄选', icon: 'heart2' }] : []).concat(plibGroups);
+    groups.forEach((grp) => {
+      const el = document.createElement('div');
+      el.className = 'gtile';
+      el.setAttribute('data-pass', '');
+      el.innerHTML = groupIconOf(grp);
+      const lab = document.createElement('span');
+      lab.className = 'glab';
+      lab.textContent = grp.name || grp.id;
+      el.appendChild(lab);
+      const n = grp.id === '__fav' ? favN : (cnt[grp.id] || 0);
+      if (n) {
+        const b = document.createElement('span');
+        b.className = 'gcount';
+        b.textContent = n > 99 ? '99+' : n;
+        el.appendChild(b);
+      }
+      el.title = (grp.name || '') + (n ? '（' + n + '条）' : '（空）');
+      el.addEventListener('click', () => { pkGroup = grp.id; renderPicker(); });
+      box.appendChild(el);
+    });
+  }
+  function renderPkList(groupId, kw) {
+    $('pkGroups').style.display = 'none';
+    const list = $('pkList');
+    list.classList.add('on');
+    list.innerHTML = '';
+    let arr = plibPrompts.slice();
+    let whereIco = '', whereName = '';
+    if (kw) {
+      const k = kw.toLowerCase();
+      arr = arr.filter((p) => ((p.name || '') + ' ' + (p.text || '')).toLowerCase().includes(k));
+      arr.sort((a, b) => ((b.fav ? 1 : 0) - (a.fav ? 1 : 0)) || ((b.ts || 0) - (a.ts || 0)));
+      whereIco = PI.tag || ''; whereName = '搜索结果';
+    } else if (groupId === '__fav') {
+      arr = arr.filter((p) => p.fav).sort(favCmp);
+      whereIco = PI.heart2 || ''; whereName = '甄选';
+    } else {
+      arr = arr.filter((p) => p.group === groupId);
+      arr.sort((a, b) => ((b.fav ? 1 : 0) - (a.fav ? 1 : 0)) || ((b.ts || 0) - (a.ts || 0)));   // 提示词库同款：甄选置顶+时间倒序
+      const grp = plibGroups.find((g) => g.id === groupId) || {};
+      whereIco = groupIconOf(grp); whereName = grp.name || groupId;
+    }
+    $('pkBack').classList.toggle('on', !kw);
+    $('pkWhere').classList.add('on');
+    $('pkWhere').innerHTML = whereIco + '<span></span><span class="cnt"></span>';
+    $('pkWhere').children[$('pkWhere').children.length - 2].textContent = whereName;
+    $('pkWhere').querySelector('.cnt').textContent = arr.length + ' 条';
+    if (!arr.length) {
+      list.innerHTML = '<div id="pkEmpty">' + (kw ? '没有匹配的提示词' : '这个分组是空的') + '</div>';
+      return;
+    }
+    arr.forEach((p) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.title = (p.text || '').slice(0, 300);
+      if (p.fav) {
+        const heart = document.createElement('span'); heart.className = 'heart'; heart.innerHTML = I_HEART;
+        row.appendChild(heart);
+      }
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name || '未命名';
+      row.appendChild(name);
+      const prev = document.createElement('span'); prev.className = 'prev'; prev.textContent = (p.text || '').slice(0, 60).replace(/\s+/g, ' ');
+      row.appendChild(prev);
+      row.addEventListener('click', () => {
+        const idx = pickFor;   // closePicker会重置pickFor，先存下来
+        const st = steps[idx];
+        if (st) {
+          st.promptId = p.id; st.label = p.name || ''; st.prompt = p.text || '';
+          st.ctl = { params: {}, blanks: {} };   // 换词条=滑块值清零重来
+          const pc = window.ORANGE_PARAM_CTL ? window.ORANGE_PARAM_CTL.parse(st.prompt) : { sliders: [], blanks: [] };
+          st.ctlOpen = pc.sliders.length + pc.blanks.length > 0;   // 带控件的词条选中即展开
+        }
+        closePicker();
+        renderSteps(idx);
+        persistLast(); updateEstimate();
+      });
+      list.appendChild(row);
+    });
+  }
+  $('pkBack').addEventListener('click', () => { if (pkForge) return; pkGroup = null; renderPicker(); });
+  $('pkClose').addEventListener('click', closePicker);
+  $('pick').addEventListener('click', (e) => { if (e.target === $('pick')) closePicker(); });   // 点暗处关闭
+  let pkKwTimer = null;
+  $('pkSearch').addEventListener('input', () => {
+    clearTimeout(pkKwTimer);
+    pkKwTimer = setTimeout(() => { pkKw = $('pkSearch').value.trim(); renderPicker(); }, 120);
+  });
+
+  function updateEstimate() {
+    // Forge 工序不靠工序里的提示词（词来自预设），所以"有词"这条只筛云端工序
+    const valid = steps.filter((s) => s.provider === 'forge' || (s.prompt || '').trim());
+    const per = valid.reduce((a, s) => a + (Number(s.n) || 1), 0);
+    const det = valid.some((s) => REGION_PARTS.includes(s.part));
+    $('estimate').textContent = srcCount && per
+      ? ('本次最多 ' + (srcCount * per) + ' 次生成（' + srcCount + '图×每图' + per + '张）' + (det ? ' + 识图' + srcCount + '次' : ''))
+      : '';
+  }
+
+  function gatherRecipe() {
+    return {
+      srcDir, outDir, chain: chainOn, keepAwake: awakeOn,   // 关机开关故意不进配方/不落盘（见swShut）
+      det: { provider: $('detProv').value, model: $('detModel').value },
+      steps: steps.map((s) => ({ part: s.part, promptId: s.promptId, label: s.label, prompt: s.prompt, provider: s.provider, model: s.model, ratio: s.ratio, pad: s.pad, tier: s.tier, n: s.n, ctl: s.ctl })),
+    };
+  }
+  function applyRecipe(r) {
+    if (!r) return;
+    srcDir = r.srcDir || ''; outDir = r.outDir || '';
+    $('srcPath').textContent = srcDir || '未选择'; $('outPath').textContent = outDir || '未选择';
+    steps = (r.steps || []).map((s) => Object.assign(defStep(), s));
+    steps.forEach((s) => {
+      // 旧存档清洗：早期版本把接口包装字段(current/meta/conf)当渠道存了→一律回落到跟随全局
+      if (s.provider && !provList.some((p) => p.id === s.provider)) s.provider = '';
+      if (s.part === 'body') s.part = 'upper';   // 旧「身体」→上半身
+      if (!PARTS.some(([v]) => v === s.part)) s.part = 'full';
+      s.n = Math.max(1, Math.min(3, Number(s.n) || Number(r.n) || 1));   // 旧配方全局张数迁移进每道词条
+      if (typeof s.model !== 'string') s.model = '';
+      if (!TIERS.includes(s.tier)) s.tier = '2K';   // 旧配方/工厂预设里的 Auto → 2K
+      if (!s.ctl || typeof s.ctl !== 'object') s.ctl = { params: {}, blanks: {} };
+      if (REGION_PARTS.includes(s.part)) s.ratio = '1:1';   // 区域工序锁1:1
+      else if (s.ratio !== '1:1') s.ratio = '跟原图';
+    });
+    if (r.det && r.det.provider) setDet(r.det);   // 配方里存过识图模型就跟着配方走
+    chainOn = r.chain !== false;
+    refreshChainBtn();
+    awakeOn = r.keepAwake !== false;
+    refreshTailBtns();
+    renderSteps();
+    if (srcDir) window.orange.autofixScan(srcDir).then((x) => { srcCount = x.count || 0; $('srcPath').textContent = srcDir + '（' + srcCount + '张）'; updateEstimate(); });
+    updateEstimate();
+  }
+
+  // ---------- 识图模型（卡面全局，全部词条共用；0908 改走对话渠道表 chatProviders，与生图渠道解耦） ----------
+  // 0907#5 识图圈定gemini；0908用户裁定：对话卡放开全部模型，但自动修图这里**保持只列gemini**（识图走gemini最稳）
+  let CHATP = {};   // window.orange.chatProviders().conf：{id:{label,hasKey,builtin,models:[{id,name,dead}]}}
+  const isGem = (m) => !m.dead && /gemini/i.test(m.id);
+  function fillDetModels(keep) {
+    const dm = $('detModel');
+    dm.innerHTML = '';
+    const list = ((CHATP[$('detProv').value] || {}).models || []).filter(isGem);
+    for (const m of list) {
+      const o = document.createElement('option');
+      o.value = m.id; o.textContent = m.name || m.id;
+      dm.appendChild(o);
+    }
+    if (keep && list.some((m) => m.id === keep)) dm.value = keep;
+    else if (list.some((m) => m.id === 'gemini-3.1-flash-lite')) dm.value = 'gemini-3.1-flash-lite';   // 默认挑便宜的flash级
+    else if (list.length) dm.value = list[0].id;
+  }
+  function setDet(det) {
+    const dp = $('detProv');
+    if (det && det.provider && [...dp.options].some((o) => o.value === det.provider)) dp.value = det.provider;
+    fillDetModels(det && det.model);
+  }
+  function persistDet() {
+    window.orange.setConfig({ autofix: { det: { provider: $('detProv').value, model: $('detModel').value } } });
+  }
+  function initDetSelectors(savedDet, chatCfg) {
+    const dp = $('detProv');
+    dp.innerHTML = '';
+    // 只列有 gemini 模型的对话渠道（识图限定gemini，0908用户裁定自动修图保留此限制）
+    const provs = Object.keys(CHATP).filter((k) => (CHATP[k].models || []).some(isGem));
+    provs.forEach((k) => { const o = document.createElement('option'); o.value = k; o.textContent = CHATP[k].label || k; dp.appendChild(o); });
+    // 默认：存过的 > 对话卡当前渠道 > 第一个有gemini的渠道(GRS)
+    const want = (savedDet && savedDet.provider) || (chatCfg && chatCfg.provider) || provs[0] || '';
+    dp.value = provs.includes(want) ? want : (provs[0] || '');
+    fillDetModels(savedDet && savedDet.model);
+    dp.addEventListener('change', () => { fillDetModels(); persistDet(); });
+    $('detModel').addEventListener('change', persistDet);
+  }
+  let lastTimer = null;
+  function persistLast() {
+    clearTimeout(lastTimer);
+    lastTimer = setTimeout(() => window.orange.setConfig({ autofix: { last: gatherRecipe() } }), 400);
+  }
+
+  // ---------- 文件夹选择 ----------
+  $('btnSrc').addEventListener('click', async () => {
+    const r = await window.orange.autofixPickDir('src');
+    if (r.ok) { srcDir = r.dir; srcCount = r.count || 0; $('srcPath').textContent = srcDir + '（' + srcCount + '张）'; persistLast(); updateEstimate(); }
+  });
+  $('btnOut').addEventListener('click', async () => {
+    const r = await window.orange.autofixPickDir('out');
+    if (r.ok) { outDir = r.dir; $('outPath').textContent = outDir; persistLast(); }
+  });
+
+  $('btnAddStep').addEventListener('click', () => { if (steps.length < 8) { steps.push(defStep()); renderSteps(); persistLast(); } });
+
+  // ---------- 盖印链开关：开=链式续修(默认)，关=每道独立对原图跑 ----------
+  let chainOn = true;
+  function refreshChainBtn() {
+    $('btnChain').textContent = '盖印链·' + (chainOn ? '开' : '关');
+    $('btnChain').style.color = chainOn ? 'var(--accent-text)' : 'var(--text-dim)';
+    $('btnChain').style.borderColor = chainOn ? 'var(--accent-border)' : '';
+  }
+  $('btnChain').addEventListener('click', () => { chainOn = !chainOn; refreshChainBtn(); persistLast(); });
+
+  // ---------- 跑批收尾：防睡眠（随配方落盘，默认开）/ 完成后关机（不落盘，每次启动归零） ----------
+  let awakeOn = true, shutOn = false;
+  function refreshTailBtns() {
+    $('swAwake').classList.toggle('on', awakeOn);
+    $('swShut').classList.toggle('on', shutOn);
+  }
+  $('swAwake').addEventListener('click', () => { awakeOn = !awakeOn; refreshTailBtns(); persistLast(); });
+  $('swShut').addEventListener('click', () => { shutOn = !shutOn; refreshTailBtns(); });
+  // 关机倒计时条：主进程排定/取消都会广播；卡重开时主动问一次状态（倒计时期间卡被关过也能取消）
+  let shutTimer = null;
+  function showShutBar(deadline) {
+    clearInterval(shutTimer); shutTimer = null;
+    if (!deadline) { $('shutBar').classList.remove('on'); return; }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      $('shutTxt').textContent = '⏻ ' + left + ' 秒后关机';
+      if (left <= 0) { clearInterval(shutTimer); shutTimer = null; }
+    };
+    tick();
+    $('shutBar').classList.add('on');
+    shutTimer = setInterval(tick, 500);
+  }
+  $('btnShutCancel').addEventListener('click', () => { window.orange.autofixShutdownCancel(); showShutBar(null); });
+  if (window.orange.onAutofixShutdown) window.orange.onAutofixShutdown((p) => showShutBar(p.deadline));
+  if (window.orange.autofixShutdownStatus) window.orange.autofixShutdownStatus().then((p) => { if (p && p.deadline) showShutBar(p.deadline); }).catch(() => {});
+
+  // ---------- 配方增删/选用 ----------
+  let recipes = [];
+  function renderRecipes(sel) {
+    const s = $('recipeSel');
+    s.innerHTML = '<option value="">— 选择配方 —</option>';
+    recipes.forEach((r, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = r.name; s.appendChild(o); });
+    if (sel != null) s.value = String(sel);
+  }
+  $('recipeSel').addEventListener('change', () => {
+    const i = Number($('recipeSel').value);
+    if (!isNaN(i) && recipes[i]) { applyRecipe(recipes[i]); persistLast(); }
+  });
+  $('btnRecipeSave').addEventListener('click', () => {
+    const name = ($('recipeName').value || '').trim() || ('配方' + (recipes.length + 1));
+    const r = Object.assign({ name }, gatherRecipe());
+    const exist = recipes.findIndex((x) => x.name === name);
+    if (exist >= 0) recipes[exist] = r; else recipes.push(r);
+    window.orange.setConfig({ autofix: { recipes } });
+    renderRecipes(exist >= 0 ? exist : recipes.length - 1);
+    $('recipeName').value = '';
+  });
+  $('btnRecipeDel').addEventListener('click', () => {
+    const i = Number($('recipeSel').value);
+    if (isNaN(i) || !recipes[i]) return;
+    recipes.splice(i, 1);
+    window.orange.setConfig({ autofix: { recipes } });
+    renderRecipes();
+  });
+
+  // ---------- 运行 ----------
+  $('btnRun').addEventListener('click', async () => {
+    if (running) return;
+    const r = await window.orange.autofixRun(Object.assign(gatherRecipe(), { shutdownAfter: shutOn }));
+    if (r && !r.ok) $('progress').textContent = '✗ ' + (r.error || '启动失败');
+  });
+  $('btnStop').addEventListener('click', () => window.orange.autofixStop());
+  // ---------- 完成提示音（跟随生图卡的声音设置：开关/音量/自定义音效，gen-vars实时同步） ----------
+  let soundOn = true, soundVol = 60, soundFile = '', soundDirPath = '';
+  if (window.orange.soundList) window.orange.soundList().then((r) => { soundDirPath = (r && r.dir) || ''; }).catch(() => {});
+  function playTones(tones, type) {
+    if (!soundOn || soundVol <= 0) return;
+    try {
+      const ac = new AudioContext();
+      const t0 = ac.currentTime;
+      const peak = 0.32 * (soundVol / 100);
+      tones.forEach(([f, dt, dur]) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = f; o.type = type || 'sine';
+        g.gain.setValueAtTime(0.0001, t0 + dt);
+        g.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), t0 + dt + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + (dur || 0.35));
+        o.connect(g); g.connect(ac.destination);
+        o.start(t0 + dt); o.stop(t0 + dt + (dur || 0.35) + 0.05);
+      });
+      setTimeout(() => ac.close(), 1200);
+    } catch (e) {}
+  }
+  function playChime() {
+    if (!soundOn || soundVol <= 0) return;
+    if (soundFile && soundDirPath) {
+      try {
+        const a = new Audio('file:///' + (soundDirPath + '/' + soundFile).replace(/\\/g, '/'));
+        a.volume = Math.max(0, Math.min(1, soundVol / 100));
+        a.play().catch(() => {});
+        return;
+      } catch (e) {}
+    }
+    playTones([[880, 0], [1318.5, 0.12]], 'sine');
+  }
+  const playFail = () => playTones([[330, 0, 0.28], [196, 0.2, 0.45]], 'triangle');
+  if (window.orange.onGenVars) {
+    window.orange.onGenVars((g) => {
+      if (!g) return;
+      if (g.sound !== undefined) soundOn = g.sound !== false;
+      if (g.soundVol != null) soundVol = Number(g.soundVol);
+      if (g.soundFile !== undefined) soundFile = g.soundFile || '';
+    });
+  }
+
+  let wasRunning = false;
+  if (window.orange.onAutofixProgress) {
+    window.orange.onAutofixProgress((p) => {
+      running = !!p.running;
+      if (wasRunning && !running) {
+        // 批次收尾：听声辨结果（有成品=上行双音/全军覆没=下行低音），跟随生图卡音效设置
+        const m = (p.msg || '').match(/完成 (\d+)/);
+        (m && Number(m[1]) > 0) ? playChime() : playFail();
+      }
+      wasRunning = running;
+      document.body.classList.toggle('running', running);
+      $('btnRun').disabled = running;
+      $('progress').textContent = (running ? '⏳ ' : '✓ ') + (p.msg || '') + (p.total ? '（第' + Math.min(p.done + 1, p.total) + '/' + p.total + '图）' : '')
+        + (p.reqTotal ? ' [' + (p.reqDone || 0) + '/' + p.reqTotal + '次]' : '');
+      // 实时进度条：按已发生成次数走百分比
+      if (running && p.reqTotal) {
+        $('pbarWrap').style.display = 'block';
+        $('pbar').style.width = Math.round((p.reqDone || 0) / p.reqTotal * 100) + '%';
+      } else if (!running) {
+        $('pbarWrap').style.display = 'none';
+        $('pbar').style.width = '0%';
+      }
+      const lg = document.querySelector('.lg');
+      let ring = lg.querySelector(':scope > .warnring');
+      if (running && !ring) { ring = document.createElement('div'); ring.className = 'glowring warnring'; lg.appendChild(ring); }
+      else if (!running && ring) ring.remove();
+    });
+  }
+
+  // ---------- 初始化 ----------
+  const mapPrompt = (p) => ({ id: p.id, name: p.name, text: p.text, group: p.group, fav: !!p.fav, favOrder: p.favOrder, ts: p.ts });
+  (async () => {
+    const lib = await window.orange.plibGet();
+    plibPrompts = (lib.prompts || []).filter((p) => !p.forge).map(mapPrompt);
+    plibGroups = (lib.groups || []).filter((g) => g.id !== 'forge');
+    // 渠道表在meta里（顶层的current/meta/conf是接口包装字段，不是渠道！）；momo已休眠不列
+    PROV = await window.orange.getProviders();
+    const meta = (PROV && PROV.meta) || {};
+    provList = [{ id: '', label: '跟随全局' }].concat(
+      Object.keys(meta).filter((k) => k !== 'momo').map((k) => ({ id: k, label: (meta[k] && meta[k].label) || k })));
+    // Forge 本地通道（0918）：本机 SD，选它=整套参数跟着 Forge 预设走。列在末尾，名字带「本地」好认
+    provList.push({ id: 'forge', label: 'Forge（本地）' });
+    try { FORGE_PRESETS = (await window.orange.forgePresets()) || []; } catch (e) { FORGE_PRESETS = []; }
+    const cfg = await window.orange.getConfig();
+    if (cfg.gen) {   // 提示音初始值跟随生图卡设置
+      soundOn = cfg.gen.sound !== false;
+      if (cfg.gen.soundVol != null) soundVol = Number(cfg.gen.soundVol);
+      soundFile = cfg.gen.soundFile || '';
+    }
+    try { CHATP = ((await window.orange.chatProviders()) || {}).conf || {}; } catch (e) { CHATP = {}; }   // 识图渠道=对话渠道表（0908）
+    initDetSelectors(cfg.autofix && cfg.autofix.det, cfg.chat);
+    refreshChainBtn();
+    refreshTailBtns();
+    recipes = (cfg.autofix && cfg.autofix.recipes) || [];
+    renderRecipes();
+    applyRecipe(cfg.autofix && cfg.autofix.last);
+    if (!steps.length) { steps = [defStep()]; renderSteps(); }
+  })();
+  // 提示词库/甄选实时同步（别的卡里增删改、点亮爱心，这边弹层立刻跟上）
+  if (window.orange.onPlibChanged) {
+    window.orange.onPlibChanged((l) => {
+      plibPrompts = ((l && l.prompts) || []).filter((p) => !p.forge).map(mapPrompt);
+      plibGroups = ((l && l.groups) || []).filter((g) => g.id !== 'forge');
+      if ($('pick').classList.contains('on')) renderPicker();
+    });
+  }
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

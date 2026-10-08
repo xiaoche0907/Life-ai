@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 24px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+
+  #head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .sp { flex: 1; }
+  .hbtn {
+    width: 34px; height: 34px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    background: var(--btn-bg);
+    color: var(--accent-text);
+    transition: background 0.2s;
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+  .hbtn.on { background: var(--accent-soft); }
+  /* 自动回传开关（0905用户裁定）：未激活明确变暗压灰，激活恢复彩色主题光——一眼分清 */
+  #btnReturn { opacity: 0.32; filter: grayscale(0.7); }
+  #btnReturn.on {
+    opacity: 1; filter: none;
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 8px var(--accent-soft);
+  }
+  .hbtn svg { width: 17px; height: 17px; }
+  #psDot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); margin-left: 4px; }
+  #psDot.on { background: var(--ok); }
+
+  #body { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 2px 14px 12px; overflow-y: auto; overflow-x: hidden; }
+
+  /* 设置页：打开时替换整个生图区域（这里是设置区不是生图区） */
+  #settings { display: none; flex-direction: column; gap: 12px; }
+  #settings.show { display: flex; }
+  #body.setmode #pills, #body.setmode #modelMenu { display: none; }
+  .setLabel { font-size: 11px; color: var(--accent-text); letter-spacing: 1.5px; }
+  #settings input {
+    width: 100%; height: 32px;
+    border: 1px solid var(--inset-border); border-radius: 10px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 12px; padding: 0 10px; outline: none; user-select: text;
+  }
+  #settings input:focus { border-color: var(--accent-border); }
+  #settings select {
+    width: 100%; height: 32px;
+    border: 1px solid var(--inset-border); border-radius: 10px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 12px; padding: 0 8px; outline: none;
+  }
+  #settings select option { background: var(--option-bg); }
+  .setRow { display: flex; align-items: center; gap: 8px; }
+  .setRow .grow { flex: 1; min-width: 0; }
+  /* 渠道两列并排（0908用户裁定）：AJI|GRS 一横排，其后自定义/用户新增渠道两两一排 */
+  #provGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .provBox { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); }
+  .provBox.off { opacity: 0.45; }
+  .provHead { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+  .provHead .nm { flex: 1; min-width: 0; font-size: 11.5px; color: var(--accent-text); letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .provHead .nm input { height: 22px; font-size: 11px; padding: 0 6px; border-radius: 6px; }
+  .eye, .xdel { width: 22px; height: 22px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--btn-bg); color: var(--text-dim); }
+  .eye svg { width: 13px; height: 13px; }
+  .eye.on { color: var(--accent-text); background: var(--accent-soft); }
+  .eye:hover, .xdel:hover { background: var(--btn-bg-hover); }
+  .xdel { font-size: 12px; }
+  .xdel:hover { color: var(--err); }
+  .provBox input, .provBox select { height: 28px; font-size: 11.5px; }
+  #btnAddProv { border: 1px dashed var(--inset-border); background: transparent; color: var(--text-dim); height: 34px; border-radius: 12px; cursor: pointer; font-size: 12px; }
+  #btnAddProv:hover { border-color: var(--accent-border); color: var(--accent-text); }
+  .mini {
+    height: 32px; padding: 0 12px; border: none; border-radius: 10px;
+    background: var(--btn-bg); color: var(--text);
+    font-size: 12px; cursor: pointer; white-space: nowrap;
+  }
+  .mini:hover { background: var(--btn-bg-hover); }
+  #btnSaveApi { background: var(--accent-soft); color: var(--accent-text); }
+  #cachePath {
+    flex: 1; min-width: 0;
+    font-size: 10.5px; color: var(--text-dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    user-select: text;
+  }
+  /* 胶囊：无文字标注，滚轮/点击调参 */
+  #pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+  .pill {
+    height: 46px; border-radius: 14px;
+    background: var(--btn-bg);
+    border: 1px solid var(--glass-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; letter-spacing: 1px;   /* 0908 对齐控制台字号档(11-12)：原 14 是全软件最大的正文基准 */
+    color: var(--text);
+    cursor: pointer;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    padding: 0 8px;
+    transition: background 0.18s;
+  }
+  .pill:hover { background: var(--btn-bg-hover); }
+  .pill:active { transform: scale(0.97); }
+
+  #modelMenu {
+    display: none;
+    position: absolute; left: 14px; right: 14px; top: 112px;
+    max-height: 220px; overflow-y: auto;
+    border-radius: 14px;
+    background: var(--option-bg);
+    border: 1px solid var(--glass-border);
+    z-index: 20;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
+  #modelMenu.show { display: block; }
+  #modelMenu .mi { padding: 10px 14px; font-size: 12.5px; cursor: pointer; color: var(--text); }
+  #modelMenu .mi:hover { background: var(--accent-soft); color: var(--accent-text); }
+  #modelMenu .mi.pull { color: var(--accent-text); border-bottom: 1px solid var(--inset-border); }
+
+
+  #status { font-size: 11.5px; color: var(--text-dim); text-align: center; min-height: 15px; }
+  #status.err { color: var(--err); }
+  #status.ok { color: var(--ok); }
+
+  .sq {
+    width: 52px; height: 52px; border-radius: 16px;
+    background: var(--btn-bg);
+    border: 1px solid var(--glass-border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent-text); cursor: pointer;
+    transition: background 0.2s;
+  }
+  .sq:hover { background: var(--btn-bg-hover); }
+  .sq svg { width: 20px; height: 20px; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block; width: 11px; height: 11px;
+    border: 2px solid var(--btn-bg-hover);
+    border-top-color: var(--accent-text); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: -2px; margin-right: 5px;
+  }
+</style>
+</head>
+<body data-arm-id="ai-gen">
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span style="color:var(--accent-text);display:flex" id="logoIco"></span>
+    <div id="psDot"></div>
+    <div class="sp"></div>
+    <div class="hbtn" id="btnRefresh" title="刷新生成页面"></div>
+    <div class="hbtn" id="btnReturn" title="自动回传：生成完自动贴回PS"></div>
+    <div class="hbtn" id="btnSettings" title="设置"></div>
+  </div>
+
+  <div id="body">
+    <div id="settings">
+      <div class="setLabel">渠道（小眼睛=是否出现在渠道胶囊里；AJI/GRS内置，其余可增删）</div>
+      <div id="provGrid"></div>
+      <button id="btnAddProv" data-pass>＋ 新增自定义渠道（Gemini兼容中转）</button>
+
+      <div class="setLabel">生成超时（秒）</div>
+      <div class="setRow">
+        <input type="number" id="inpGenTimeout" data-pass min="30" max="3600" style="width:90px" title="生成请求超时时间（秒）；批处理时每张都受此限制" />
+        <span style="font-size:10.5px;color:var(--text-dim);flex:1;min-width:0">云端生图、打光、ComfyUI 等请求的超时时间；批处理时每张单独计时</span>
+      </div>
+
+      <div class="setLabel">图片缓存文件夹</div>
+      <div class="setRow">
+        <span id="cachePath">…</span>
+      </div>
+      <div class="setRow">
+        <button class="mini" id="btnOpenCache">打开文件夹</button>
+        <button class="mini" id="btnClearCache">清除缓存图片</button>
+        <button class="mini" id="btnPickCache" data-pass title="生图结果/进度卡/参考图/Forge出图都存这里；改了位置后已有的进度记录仍指向原文件">更改位置</button>
+        <button class="mini" id="btnResetCache" data-pass title="恢复到系统临时目录\orange-ai">恢复默认</button>
+      </div>
+      <div class="setRow" style="margin-top:6px">
+        <span style="font-size:11px;color:var(--text-dim)">自动清理（天）</span>
+        <input type="number" id="inpAutoClean" data-pass min="0" max="365" style="width:90px" title="缓存图片保留天数；0=永不清理；不区分是否已贴回，到期全删" />
+        <span id="autoCleanHint" style="font-size:10.5px;color:var(--text-dim);flex:1;min-width:0"></span>
+      </div>
+
+      <button class="mini" id="btnSaveApi">保存设置</button>
+    </div>
+
+    <div id="pills">
+      <div class="pill" id="pChannel" title="渠道">momo</div>
+      <div class="pill" id="pModel" title="模型 · 点击选择 / 滚轮切换"><span id="pModelName">未选择</span></div>
+      <div class="pill" id="pSize" title="分辨率 · 点击或滚轮切换"><span id="pSizeVal">2K</span></div>
+      <div class="pill" id="pRatio" title="比例 · 点击或滚轮切换"><span id="pRatioVal">Auto</span></div>
+      <div class="pill" id="pCount" title="数量 · 滚轮调节(Shift×10) 最多100"><span id="pCountVal">1</span></div>
+      <div class="pill" id="pBalance" title="余额 · 点击刷新"><span id="pBalanceVal">—</span></div>
+    </div>
+
+    <div id="modelMenu"></div>
+
+
+    <div id="status"></div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const RATIOS = ['Auto', '1:1', '4:3', '3:4', '3:2', '2:3', '16:9', '9:16', '21:9', '2.35:1'];
+  const SIZES = ['1K', '2K', '4K'];   // 0908用户裁定：分辨率去掉Auto，一律明选（老配置的Auto由MIGRATIONS v16改成2K）
+
+  const S24 = (p) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+  $('logoIco').innerHTML = window.ORANGE_ICONS.orange;
+  $('btnRefresh').innerHTML = S24('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>');
+  $('btnReturn').innerHTML = S24('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+  $('btnSettings').innerHTML = window.ORANGE_ICONS.settings;
+  let cfg = null;
+  let runningBatches = 0;
+
+  function setStatus(t, cls) { const s = $('status'); s.className = cls || ''; s.innerHTML = t; }
+  function toast(t) { setStatus(t, ''); setTimeout(() => { if ($('status').innerHTML === t) setStatus(''); }, 1600); }
+
+  // ---------- 参数：点击循环 + 滚轮上下 ----------
+  function cycle(list, cur, dir) {
+    const i = list.indexOf(cur);
+    return list[((i + dir) % list.length + list.length) % list.length];
+  }
+  function bindWheelCycle(pillId, valId, list, key, onStep) {
+    const step = (dir) => {
+      const v = cycle(list, $(valId).textContent, dir);
+      $(valId).textContent = v;
+      const patch = {}; patch[key] = v;
+      window.orange.setConfig({ gen: patch });
+      if (onStep) onStep();
+    };
+    $(pillId).addEventListener('click', () => step(1));
+    // 滚轮上下切档（0908用户裁定恢复）：pill 是调参控件，滚轮=调参；preventDefault 防页面/切牌抢滚轮
+    $(pillId).addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); step(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+  }
+  bindWheelCycle('pSize', 'pSizeVal', SIZES, 'size');
+  bindWheelCycle('pRatio', 'pRatioVal', RATIOS, 'ratio', () => queueRatioSync());
+
+  // 比例联动PS矩形选框工具：切比例 → 桥接件按名选工具预设（tpl自带"来福预设_<比例>"，跨PS版本稳定）
+  // 首次切比例前先让桥接件把插件内 presets/marquee.tpl 导入一次（老插件同款机制；本会话只导一次）
+  // 防抖300ms——点击/滚轮快速滑过中间档位时不逐个下发（滚轮从bindWheelCycle的onStep进来）
+  let ratioSyncTimer = null, presetsImported = false;
+  function queueRatioSync() {
+    clearTimeout(ratioSyncTimer);
+    ratioSyncTimer = setTimeout(async () => {
+      const aspect = $('pRatioVal').textContent;
+      if (!presetsImported) {
+        const imp = await window.orange.psExec('importMarqueePresets', {}, 20000).catch((e) => ({ ok: false, error: String(e) }));
+        presetsImported = !!(imp && imp.ok);
+        try { window.orange.glassLog('[ratioSync] 预设导入 ' + JSON.stringify(imp).slice(0, 300)); } catch (e) {}
+      }
+      const r = await window.orange.psExec('syncMarqueeAspect', { aspect }, 20000);
+      // 完整结果(含桥接件自诊断diag)落glass日志，联动排查全靠它
+      try { window.orange.glassLog('[ratioSync ' + aspect + '] ' + JSON.stringify(r).slice(0, 1800)); } catch (e) {}
+      // 报错不上卡面（0905用户裁定）：一律进生图日志卡
+      if (!r.ok) window.orange.ologWrite && window.orange.ologWrite('选框比例同步失败: ' + (r.error || ''), 'err');
+      else if (r.result && r.result.note && r.result.note.indexOf('未生效') !== -1) {
+        window.orange.ologWrite && window.orange.ologWrite('选框联动未生效（诊断已记录在glass日志）', 'err');
+      }
+    }, 300);
+  }
+
+  // 数量：1-100，滚轮±1，Shift滚轮±10，点击+1（值存config.gen.count，生成气泡跑图时读）
+  let count = 1;
+  function setCount(v) {
+    count = Math.max(1, Math.min(100, v));
+    $('pCountVal').textContent = count;
+    window.orange.setConfig({ gen: { count } });
+  }
+  $('pCount').addEventListener('click', () => setCount(count >= 100 ? 1 : count + 1));
+  $('pCount').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const step = e.shiftKey ? 10 : 1;
+    setCount(count + (e.deltaY > 0 ? -step : step));
+  });
+
+  // ---------- 渠道系统：AJI / GRS(静态模型+价格表) / custom + cus_*(动态模型，Gemini兼容中转) ----------
+  let PROV = null;
+  let curProv = 'aji';
+  let curModelId = '';
+  const BUILTIN = ['aji', 'grs', 'custom'];   // momo已休眠不进列表
+  // 渠道胶囊可轮换的集合：内置+自定义里没被小眼睛关掉的（0908）
+  function provOrder() {
+    const all = BUILTIN.concat(Object.keys(PROV.conf).filter((k) => /^cus_/.test(k)));
+    const vis = all.filter((k) => PROV.meta[k] && !(PROV.conf[k] && PROV.conf[k].hidden));
+    return vis.length ? vis : ['aji'];
+  }
+  function provLabel(k) { return (PROV.conf[k] && PROV.conf[k].label) || (PROV.meta[k] && PROV.meta[k].label) || k; }
+
+  function modelList() {
+    if (PROV.meta[curProv].dynamicModels) {
+      return (PROV.conf[curProv].models || []).map((id) => ({ id, name: id, priceTxt: '' }));
+    }
+    const m = PROV.meta[curProv].models;
+    return Object.keys(m).map((id) => {
+      const c = m[id];
+      const ps = Object.values(c.prices);
+      const lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+      // 0909：GRS 计费单位是积分（如 1200/张），带上官网换算的人民币参考（cny 字段，¥=积分/20000）免得看不懂
+      const cnyTxt = c.cny != null ? ' ≈¥' + c.cny : '';
+      return { id, name: c.name, priceTxt: PROV.meta[curProv].currency + (lo === hi ? lo : lo + '~' + hi) + '/张' + cnyTxt };
+    });
+  }
+  function modelDisplay(id) {
+    const mm = PROV.meta[curProv].models && PROV.meta[curProv].models[id];
+    return (mm && mm.name) || id || '未选择';
+  }
+  function applyProviderUI() {
+    if (!PROV.meta[curProv]) curProv = provOrder()[0];
+    $('pChannel').textContent = provLabel(curProv);
+    curModelId = PROV.conf[curProv].model || '';
+    $('pModelName').textContent = modelDisplay(curModelId);
+    $('pBalanceVal').textContent = '…';
+    refreshBalance();
+  }
+  function setProvider(p) {
+    curProv = p;
+    window.orange.setConfig({ provider: p });
+    applyProviderUI();
+  }
+  $('pChannel').addEventListener('click', () => setProvider(cycle(provOrder(), curProv, 1)));
+  $('pChannel').addEventListener('wheel', (e) => { e.preventDefault(); setProvider(cycle(provOrder(), curProv, e.deltaY > 0 ? 1 : -1)); });
+
+  // ---------- 设置页渠道网格：两列并排 + 小眼睛显隐 + 自定义渠道增删（0908用户裁定） ----------
+  const EYE = window.ORANGE_ICONS && window.ORANGE_ICONS.eye;
+  function provBox(k) {
+    const conf = PROV.conf[k] || {};
+    const isCus = /^cus_/.test(k);
+    const box = document.createElement('div');
+    box.className = 'provBox' + (conf.hidden ? ' off' : '');
+    box.dataset.prov = k;
+    const head = document.createElement('div');
+    head.className = 'provHead';
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    if (isCus) {
+      const ni = document.createElement('input');
+      ni.value = conf.label || k; ni.placeholder = '渠道名'; ni.dataset.field = 'label'; ni.setAttribute('data-pass', '');
+      nm.appendChild(ni);
+    } else nm.textContent = provLabel(k);
+    const eye = document.createElement('div');
+    eye.className = 'eye' + (conf.hidden ? '' : ' on');
+    eye.title = conf.hidden ? '已隐藏：点击显示到渠道胶囊' : '显示中：点击从渠道胶囊隐藏';
+    eye.innerHTML = EYE || '◉';
+    eye.dataset.act = 'eye';
+    eye.setAttribute('data-pass', '');
+    head.appendChild(nm); head.appendChild(eye);
+    if (isCus) {
+      const x = document.createElement('div');
+      x.className = 'xdel'; x.textContent = '✕'; x.title = '删除此渠道（需再点一次确认）'; x.dataset.act = 'del'; x.setAttribute('data-pass', '');
+      head.appendChild(x);
+    }
+    box.appendChild(head);
+    if (k === 'grs') {
+      const sel = document.createElement('select');
+      sel.dataset.field = 'base'; sel.setAttribute('data-pass', '');
+      sel.innerHTML = '<option value="https://grsai.dakka.com.cn">国内直连 · grsai.dakka.com.cn</option><option value="https://grsaiapi.com">海外 · grsaiapi.com</option>';
+      sel.value = conf.base || 'https://grsai.dakka.com.cn';
+      box.appendChild(sel);
+    } else {
+      const b = document.createElement('input');
+      b.dataset.field = 'base'; b.placeholder = k === 'aji' ? '网址（默认 https://ai.ajiai.top）' : '网址 https://…'; b.value = conf.base || ''; b.setAttribute('data-pass', '');
+      box.appendChild(b);
+    }
+    const key = document.createElement('input');
+    key.type = 'password'; key.dataset.field = 'key'; key.placeholder = 'API Key'; key.value = conf.key || ''; key.setAttribute('data-pass', '');
+    box.appendChild(key);
+    return box;
+  }
+  function renderProvGrid() {
+    const g = $('provGrid');
+    g.innerHTML = '';
+    const ks = BUILTIN.concat(Object.keys(PROV.conf).filter((k) => /^cus_/.test(k)));
+    for (const k of ks) if (PROV.meta[k]) g.appendChild(provBox(k));
+  }
+  // 事件委托（铁律13）：小眼睛/删除按 data-act 寻址，字段改动即时落库
+  let delArm = null;
+  $('provGrid').addEventListener('click', async (e) => {
+    const box = e.target.closest('.provBox'); if (!box) return;
+    const k = box.dataset.prov;
+    const act = e.target.closest('[data-act]') && e.target.closest('[data-act]').dataset.act;
+    if (act === 'eye') {
+      const hidden = !(PROV.conf[k].hidden);
+      // 至少留一个可见渠道，不然胶囊没得切
+      if (hidden && provOrder().length <= 1) { setStatus('至少保留一个可见渠道', 'err'); return; }
+      PROV.conf[k].hidden = hidden;
+      const patch = {}; patch[k] = { hidden };
+      await window.orange.setConfig({ providers: patch });
+      renderProvGrid();
+      if (hidden && curProv === k) setProvider(provOrder()[0]);
+      else $('pChannel').textContent = provLabel(curProv);
+    } else if (act === 'del') {
+      const x = e.target.closest('[data-act]');
+      if (delArm !== k) { delArm = k; x.textContent = '确认'; x.style.color = 'var(--err)'; setTimeout(() => { if (delArm === k) { delArm = null; renderProvGrid(); } }, 3000); return; }
+      delArm = null;
+      const patch = {}; patch[k] = null;
+      delete PROV.conf[k]; delete PROV.meta[k];
+      await window.orange.setConfig({ providers: patch });
+      if (curProv === k) setProvider(provOrder()[0]);
+      renderProvGrid();
+      setStatus('渠道已删除', 'ok');
+    }
+  });
+  let fieldTimer = null;
+  $('provGrid').addEventListener('input', (e) => {
+    const box = e.target.closest('.provBox'); const f = e.target.dataset.field; if (!box || !f) return;
+    const k = box.dataset.prov;
+    const v = e.target.value.trim();
+    PROV.conf[k][f] = (f === 'base' && k === 'aji' && !v) ? 'https://ai.ajiai.top' : v;
+    clearTimeout(fieldTimer);
+    fieldTimer = setTimeout(async () => {
+      const patch = {}; patch[k] = {}; patch[k][f] = PROV.conf[k][f];
+      await window.orange.setConfig({ providers: patch });
+      if (f === 'label') { PROV.meta[k].label = v || k; if (curProv === k) $('pChannel').textContent = provLabel(k); }
+      if (f === 'key' && curProv === k) refreshBalance();
+    }, 400);
+  });
+  $('provGrid').addEventListener('change', (e) => {   // select(GRS线路)不触发input
+    if (e.target.tagName === 'SELECT') e.target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  $('btnAddProv').addEventListener('click', async () => {
+    const k = 'cus_' + Math.random().toString(36).slice(2, 8);
+    const n = Object.keys(PROV.conf).filter((x) => /^cus_/.test(x)).length + 1;
+    const patch = {}; patch[k] = { base: '', key: '', model: '', models: [], label: '自定义' + n, hidden: false };
+    await window.orange.setConfig({ providers: patch });
+    PROV = await window.orange.getProviders();
+    renderProvGrid();
+    setStatus('已新增渠道「自定义' + n + '」：填网址和Key，模型用胶囊里的↻拉取', 'ok');
+  });
+  // 别的窗口改了渠道（对话设置等）→ 重拉表刷新
+  if (window.orange.onProvidersChanged) window.orange.onProvidersChanged(async () => {
+    const wasOpen = $('settings').classList.contains('show');
+    PROV = await window.orange.getProviders();
+    if (!PROV.meta[curProv]) curProv = provOrder()[0];
+    if (wasOpen) renderProvGrid();
+    $('pChannel').textContent = provLabel(curProv);
+  });
+
+  function pickModel(id) {
+    curModelId = id;
+    $('pModelName').textContent = modelDisplay(id);
+    PROV.conf[curProv].model = id;
+    const patch = {}; patch[curProv] = { model: id };
+    window.orange.setConfig({ providers: patch });
+  }
+  $('pModel').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const ids = modelList().map((x) => x.id);
+    if (!ids.length) return;
+    pickModel(cycle(ids, ids.includes(curModelId) ? curModelId : ids[0], e.deltaY > 0 ? 1 : -1));
+  });
+
+  // ---------- 余额：切渠道/跑图后自动刷新；momo实时接口，AJI/GRS本地扣费 ----------
+  async function refreshBalance() {
+    const r = await window.orange.aiBalance();
+    if (!r.ok) { $('pBalanceVal').textContent = '—'; return; }
+    if (r.credits != null) { $('pBalanceVal').textContent = r.credits + '积分' + (Number.isFinite(r.credits) ? ' ≈¥' + (r.credits / 20000).toFixed(2) : ''); return; }   // GRS 官网口径 ¥=积分/20000
+    if (r.unlimited) { $('pBalanceVal').textContent = '∞'; return; }
+    if (r.cny != null) { $('pBalanceVal').textContent = '¥' + Number(r.cny).toFixed(2); return; }
+    if (r.usd != null) { $('pBalanceVal').textContent = '$' + Number(r.usd).toFixed(2); return; }
+    $('pBalanceVal').textContent = '—';
+  }
+  $('pBalance').addEventListener('click', () => { $('pBalanceVal').textContent = '…'; refreshBalance(); });
+  setInterval(refreshBalance, 60000);
+
+  // 0915：不再显示"本次扣费"——报错未出图时部分渠道不扣钱，显示金额会冤枉渠道；
+  // 余额刷新+批末响铃由下方统一的 onBilling 订阅处理（余额是唯一真账）
+
+  // ---------- 模型下拉（静态渠道带价格；momo带拉取） ----------
+  function renderModelMenu() {
+    const menu = $('modelMenu');
+    menu.innerHTML = '';
+    if (PROV.meta[curProv].dynamicModels) {
+      const pull = document.createElement('div');
+      pull.className = 'mi pull';
+      pull.textContent = '↻ 拉取模型列表';
+      pull.addEventListener('click', async () => {
+        pull.textContent = '拉取中…';
+        const r = await window.orange.aiModels();
+        if (r.ok) {
+          PROV.conf[curProv].models = r.models;
+          if (!r.models.includes(PROV.conf[curProv].model)) PROV.conf[curProv].model = '';   // 主进程已清掉不合格的选中模型，本地镜像同步
+          renderModelMenu();
+          applyProviderUI();
+          // 0908用户裁定：这里只列生图模型；拉到的语言等其他模型不列入，明说数量免得用户以为"拉少了"
+          const dropped = (r.total || 0) - r.models.length;
+          setStatus(r.models.length ? ('已拉取生图模型 ' + r.models.length + ' 个' + (dropped > 0 ? '（另 ' + dropped + ' 个非生图模型不列入）' : '')) : ('拉到 ' + (r.total || 0) + ' 个模型，没有一个是生图模型'), r.models.length ? 'ok' : 'err');
+        }
+        else { pull.textContent = '拉取失败: ' + r.error; }
+      });
+      menu.appendChild(pull);
+    }
+    modelList().forEach((m) => {
+      const d = document.createElement('div');
+      d.className = 'mi';
+      d.textContent = m.name + (m.priceTxt ? '　·　' + m.priceTxt : '');
+      d.addEventListener('click', () => { pickModel(m.id); menu.classList.remove('show'); });
+      menu.appendChild(d);
+    });
+  }
+  $('pModel').addEventListener('click', () => { renderModelMenu(); $('modelMenu').classList.toggle('show'); });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#pModel') && !e.target.closest('#modelMenu')) $('modelMenu').classList.remove('show');
+  });
+
+  // ---------- 顶部按钮 ----------
+  // 设置页：打开时隐藏所有生图控件（设置区≠生图区）
+  function setSettingsMode(open) {
+    $('settings').classList.toggle('show', open);
+    $('body').classList.toggle('setmode', open);
+  }
+  $('btnSettings').addEventListener('click', () => setSettingsMode(!$('settings').classList.contains('show')));
+  // 卡片收回再展开/布局切换复用窗口时，自动退回生图区（设置页状态不残留）
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setSettingsMode(false); });
+  $('btnRefresh').addEventListener('click', () => location.reload());
+  $('btnReturn').addEventListener('click', async () => {
+    const on = !$('btnReturn').classList.contains('on');
+    $('btnReturn').classList.toggle('on', on);
+    await window.orange.setConfig({ gen: { autoReturn: on } });
+    toast(on ? '自动回传已开启' : '自动回传已关闭（手动点图贴回）');
+  });
+  $('btnSaveApi').addEventListener('click', async () => {
+    // 字段已在 input 时即时落库；这里只收口：退出设置页 + 重查余额
+    setSettingsMode(false);
+    setStatus('设置已保存', 'ok');
+    refreshBalance();
+  });
+
+  // ---------- 生图音效（开关/音量/自定义音效都在「设置」卡里调，本卡只负责播放） ----------
+  let soundOn = true;
+  let soundVol = 60;
+  let soundFile = '';       // 自定义音效文件名（空=内置合成音）
+  let soundDirPath = '';    // 文档目录来福/sounds
+  if (window.orange.soundList) window.orange.soundList().then((r) => { soundDirPath = r.dir || ''; });
+  function playCustom() {
+    try {
+      const a = new Audio('file:///' + (soundDirPath + '/' + soundFile).replace(/\\/g, '/'));
+      a.volume = Math.max(0, Math.min(1, soundVol / 100));
+      a.play().catch(() => {});
+    } catch (e) {}
+  }
+  function playTones(tones, type) {
+    if (!soundOn || soundVol <= 0) return;
+    try {
+      const ac = new AudioContext();
+      const t0 = ac.currentTime;
+      const peak = 0.32 * (soundVol / 100);
+      tones.forEach(([f, dt, dur]) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = f; o.type = type || 'sine';
+        g.gain.setValueAtTime(0.0001, t0 + dt);
+        g.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), t0 + dt + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + (dur || 0.35));
+        o.connect(g); g.connect(ac.destination);
+        o.start(t0 + dt); o.stop(t0 + dt + (dur || 0.35) + 0.05);
+      });
+      setTimeout(() => ac.close(), 1200);
+    } catch (e) {}
+  }
+  // 成功：自定义音效优先，没有则内置上行双音；失败恒为内置下行低音（听声辨结果）
+  const playChime = () => {
+    if (!soundOn || soundVol <= 0) return;
+    if (soundFile) playCustom();
+    else playTones([[880, 0], [1318.5, 0.12]], 'sine');
+  };
+  const playFail = () => playTones([[330, 0, 0.28], [196, 0.2, 0.45]], 'triangle'); // 失败：下行低音
+
+  // 设置卡里改动实时跟随（gen-vars广播）
+  if (window.orange.onGenVars) {
+    window.orange.onGenVars((g) => {
+      if (!g) return;
+      if (g.sound !== undefined) soundOn = g.sound !== false;
+      if (g.soundVol != null) soundVol = Number(g.soundVol);
+      if (g.soundFile !== undefined) soundFile = g.soundFile || '';
+    });
+  }
+
+  // ---------- 缓存文件夹 ----------
+  $('btnOpenCache').addEventListener('click', () => window.orange.openCache());
+  $('btnClearCache').addEventListener('click', async () => {
+    const r = await window.orange.clearCache();
+    setStatus('已清除缓存图片 ' + r.count + ' 个', 'ok');
+  });
+  // 0911 用户要求：缓存位置可自选（生图结果/进度卡/参考图/Forge 出图同一个文件夹，改这里全体跟着走）
+  const refreshCachePath = () => window.orange.cacheInfo().then((d) => { $('cachePath').textContent = d; });
+  $('btnPickCache').addEventListener('click', async () => {
+    if (!window.orange.pickFolder) return;
+    const r = await window.orange.pickFolder();
+    if (!r || !r.ok) { if (r && r.error) setStatus(r.error, 'err'); return; }
+    await window.orange.setConfig({ cacheDir: r.path });
+    await refreshCachePath();
+    setStatus('缓存文件夹已改为 ' + r.path + '（之前的进度记录仍指向原文件，可照常贴回）', 'ok');
+  });
+  $('btnResetCache').addEventListener('click', async () => {
+    await window.orange.setConfig({ cacheDir: '' });
+    await refreshCachePath();
+    setStatus('缓存文件夹已恢复默认位置', 'ok');
+  });
+
+  // 生成超时（输入秒数）
+  // ⚠0919 用户实报"改了时间后出现30秒、怎么都删不掉"：原写法在 input 事件里回写 .value，
+  // 用户每敲一个字符就被钳一次——想输 600，刚敲下 "6" 就被改成 30（6<30）并写进输入框，
+  // 此后光标怎么也删不掉那个 30（删一下又触发 input，空值兜底成 600 再钳回 30 的循环）。
+  // 修法：输入过程**不回写**，只在失焦/回车(change)时钳一次并落库；非法输入恢复上次的值。
+  let genTimeoutSaved = 600;
+  function commitGenTimeout() {
+    const raw = String($('inpGenTimeout').value || '').trim();
+    const n = Number(raw);
+    const v = (raw === '' || !Number.isFinite(n)) ? genTimeoutSaved : Math.max(30, Math.min(3600, Math.round(n)));
+    genTimeoutSaved = v;
+    $('inpGenTimeout').value = v;
+    window.orange.setConfig({ gen: { genTimeout: v } });
+  }
+  $('inpGenTimeout').addEventListener('change', commitGenTimeout);
+  $('inpGenTimeout').addEventListener('blur', commitGenTimeout);
+  $('inpGenTimeout').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitGenTimeout(); $('inpGenTimeout').blur(); } });
+
+  // 自动清理（输入天数）——同生成超时：输入过程不回写，只在失焦/回车时钳一次并落库
+  function updateAutoCleanHint(days) {
+    $('autoCleanHint').textContent = days > 0 ? '开机 + 每天各清一次 ' + days + ' 天的图（含已贴回）' : '';
+  }
+  let autoCleanSaved = 0;
+  function commitAutoClean() {
+    const raw = String($('inpAutoClean').value || '').trim();
+    const n = Number(raw);
+    const v = (raw === '' || !Number.isFinite(n)) ? autoCleanSaved : Math.max(0, Math.min(365, Math.round(n)));
+    autoCleanSaved = v;
+    $('inpAutoClean').value = v;
+    updateAutoCleanHint(v);
+    window.orange.setConfig({ gen: { autoCleanDays: v } });
+  }
+  $('inpAutoClean').addEventListener('change', commitAutoClean);
+  $('inpAutoClean').addEventListener('blur', commitAutoClean);
+  $('inpAutoClean').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitAutoClean(); $('inpAutoClean').blur(); } });
+
+  // ---------- 生成负载：总控▶生成时向本卡收取（渠道/模型/比例/尺寸/参考图全参数） ----------
+  window.__getGenPayload = async () => {
+    const fresh = await window.orange.getConfig();
+    const prompt = (fresh.gen && fresh.gen.prompt || '').trim();
+    if (!prompt || !curModelId) return null;
+    window.orange.showCard('progress');   // 自动弹出生图进度卡
+    return {
+      prompt,
+      provider: curProv,
+      model: curModelId,
+      antiMode: Number(fresh.gen && fresh.gen.antiMode) || 0,   // 抗截断状态在「抗截断」卡里设置
+      chartOn: !!(fresh.gen && fresh.gen.chartOn),
+      ratio: $('pRatioVal').textContent,
+      size: $('pSizeVal').textContent,
+      refs: (fresh.gen && fresh.gen.refs) || [],   // 参考图由「参考图」卡维护
+    };
+  };
+  // 批次结束的提示音：监听计费广播（批末必发）
+  if (window.orange.onBilling) window.orange.onBilling(() => { playChime(); refreshBalance(); });
+
+  // ---------- 初始化 ----------
+  (async () => {
+    cfg = await window.orange.getConfig();
+    PROV = await window.orange.getProviders();
+    curProv = PROV.current || 'momo';
+    $('pSizeVal').textContent = SIZES.includes(cfg.gen.size) ? cfg.gen.size : '2K';
+    $('pRatioVal').textContent = cfg.gen.ratio || 'Auto';
+    if (cfg.gen.count) { count = Math.max(1, Math.min(100, Number(cfg.gen.count))); $('pCountVal').textContent = count; }
+    $('btnReturn').classList.toggle('on', cfg.gen.autoReturn !== false);   // 默认开启
+    applyProviderUI();
+    // 设置页初始填充：渠道网格（两列+小眼睛+增删）
+    renderProvGrid();
+    soundOn = cfg.gen.sound !== false;
+    soundVol = cfg.gen.soundVol != null ? cfg.gen.soundVol : 60;
+    soundFile = cfg.gen.soundFile || '';
+    window.orange.cacheInfo().then((d) => { $('cachePath').textContent = d; });
+    // 生成超时 + 自动清理初始值（同时初始化内存缓存值）
+    genTimeoutSaved = cfg.gen.genTimeout != null ? cfg.gen.genTimeout : 600;
+    $('inpGenTimeout').value = genTimeoutSaved;
+    autoCleanSaved = cfg.gen.autoCleanDays || 0;
+    $('inpAutoClean').value = autoCleanSaved;
+    updateAutoCleanHint(autoCleanSaved);
+    if (!PROV.conf[curProv].key) { setSettingsMode(true); setStatus('请先在设置里填写渠道Key'); }
+    const on = await window.orange.isPSConnected();
+    $('psDot').classList.toggle('on', on);
+  })();
+  window.orange.onPSStatus((s) => {
+    $('psDot').classList.toggle('on', s.connected);
+    // 旧版插件警告已删（0905）：握手前广播bridgeVer=0被误判成旧版=常驻红字假警报；
+    // 真旧版的提醒主进程bridge.js已按curBridgeVer正确判定并写进生图日志
+  });
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

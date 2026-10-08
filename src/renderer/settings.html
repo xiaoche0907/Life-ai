@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 24px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 16px 10px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { font-size: 15px; font-weight: 600; color: #fff; }
+  #head .sp { flex: 1; }
+  .hbtn {
+    -webkit-app-region: no-drag;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+
+  #body { flex: 1; overflow-y: auto; padding: 6px 18px 16px; display: flex; flex-direction: column; gap: 16px; }
+  /* 苹果开关（布尔设置项通用，0905用户裁定） */
+  .aswitch {
+    position: relative; flex: none;
+    width: 44px; height: 24px; border-radius: 12px;
+    background: rgba(255, 255, 255, 0.16);
+    cursor: pointer;
+    transition: background 0.22s;
+  }
+  .aswitch::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    transition: left 0.22s cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  .aswitch.on { background: var(--accent); }
+  .aswitch.on::after { left: 22px; }
+  /* 滚动条必须可见（0905修）：宽度0=用户不知道下面还有内容，"新加的开关看不到" */
+  #body::-webkit-scrollbar { width: 5px; }
+  #body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 3px; }
+
+  .label { font-size: 11px; color: #fff; opacity: 0.82; letter-spacing: 1px; margin-bottom: 8px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+
+  input[type="range"] { flex: 1; accent-color: var(--accent); height: 22px; cursor: pointer; }
+  .val {
+    min-width: 46px; text-align: right;
+    font-size: 12px; color: var(--accent-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 调色盘 ---------- */
+  #sv {
+    position: relative;
+    width: 100%; height: 150px;
+    border-radius: 14px;
+    cursor: crosshair;
+    border: 1px solid var(--inset-border);
+    /* 背景由JS按色相实时设置 */
+  }
+  #svThumb {
+    position: absolute;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2.5px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+    transform: translate(-8px, -8px);
+    pointer-events: none;
+  }
+  #hue {
+    -webkit-appearance: none;
+    width: 100%; height: 14px;
+    border-radius: 7px;
+    background: linear-gradient(to right,
+      #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+    cursor: pointer;
+    accent-color: transparent;
+  }
+  #hue::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid rgba(0,0,0,0.35);
+    cursor: pointer;
+  }
+  #colorRow { display: flex; align-items: center; gap: 10px; }
+  #preview {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.6);
+    background: var(--accent);
+  }
+  #hex { font-size: 13px; color: var(--text); letter-spacing: 1px; font-family: Consolas, monospace; }
+
+  #btnReset {
+    height: 36px; border: none; border-radius: 12px;
+    background: var(--btn-bg);
+    color: var(--text); font-size: 12.5px; cursor: pointer;
+    transition: background 0.2s;
+  }
+  #btnReset:hover { background: var(--btn-bg-hover); }
+
+  /* ---------- 修图模式：新手(带文字) / 盲人(纯玻璃极简) ---------- */
+  #modeRow { display: flex; gap: 8px; }
+  .mbtn {
+    flex: 1; height: 34px;
+    border: 1px solid var(--inset-border); border-radius: 11px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 12px; cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .mbtn:hover { background: var(--btn-bg-hover); }
+  .mbtn.on {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent-text);
+  }
+  .modeDesc { font-size: 10px; color: var(--text-dim); line-height: 1.6; margin-top: 6px; }
+
+  /* ---------- 苹果式开关 ---------- */
+  .swrow { display: flex; align-items: center; gap: 10px; padding: 2px 2px; }
+  .swlab { flex: 1; font-size: 12px; color: var(--text); }
+  .sw {
+    position: relative; flex: none;
+    width: 42px; height: 24px; border-radius: 12px;
+    background: rgba(255,255,255,0.16);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .sw::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    transition: left 0.2s cubic-bezier(0.34, 1.3, 0.64, 1);
+  }
+  .sw.on { background: var(--accent); }
+  .sw.on::after { left: 20px; }
+
+  /* ---------- 预设主题：材质预览小卡（一眼看出底板差异；一横排4个，0907用户裁定） ---------- */
+  #themeRow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 5px; justify-items: center; padding: 2px 0; }
+  .tsw { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; min-width: 0; }
+  .tsw .c {
+    position: relative;
+    width: 54px; height: 40px;
+    border: 1.5px solid rgba(255,255,255,0.30);
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .tsw:hover .c { transform: scale(1.12); border-color: #fff; }
+  .tsw .c .d {
+    position: absolute; right: 5px; bottom: 5px;
+    width: 11px; height: 11px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.5);
+  }
+  .tsw .n { font-size: 10px; color: var(--text-dim); }
+
+</style>
+</head>
+<body>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title">⚙️ 界面设置</span>
+    <div class="sp"></div>
+  </div>
+
+  <div id="body">
+    <div>
+      <div class="label">修图模式</div>
+      <div id="modeRow">
+        <button class="mbtn" data-mode="novice">新手修图模式</button>
+        <button class="mbtn" data-mode="blind">盲人修图模式</button>
+      </div>
+      <div class="modeDesc">盲人模式：去掉全部文字标注和悬停提示，气泡变纯玻璃方块，只留logo——给闭着眼都知道按钮在哪的老手</div>
+    </div>
+
+    <div>
+      <div class="label">小球中键（短按）</div>
+      <div id="ballRow" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="mbtn" data-act="layout">快速切换布局</button>
+        <button class="mbtn" data-act="gather">卡牌收纳/释放</button>
+        <button class="mbtn" data-act="hub">开关控制台</button>
+        <button class="mbtn" data-act="pass">锁定开关</button>
+      </div>
+      <div class="modeDesc">左键=收纳/释放卡牌 · 右键=快捷菜单 · 中键=此处自定义。切换布局：每点一次换到下一个布局（默认→自定义…循环）；收纳/释放：点一次全收进球，再点飞回</div>
+    </div>
+
+    <div>
+      <div class="label">生成行为</div>
+      <div class="swrow">
+        <span class="swlab">PS无选区时默认跑全图</span>
+        <div class="sw" id="swNoSel" data-pass></div>
+      </div>
+      <div class="modeDesc">默认开启：没框选区就按整幅画布跑图，比例一律跟原图（不受卡上比例选择影响，防拉伸变形）；全图img2img按同样单价扣费。关掉则无选区时不跑图只提示</div>
+    </div>
+
+    <div>
+      <div class="label">悬浮层级</div>
+      <div class="swrow">
+        <span class="swlab">卡牌只浮在PS之上</span>
+        <div class="sw" id="swPsTop" data-pass></div>
+      </div>
+      <div class="modeDesc">默认开启：只有 PS（或来福自己）在前台时卡牌才压在最上面，切到浏览器等其他程序卡牌自动沉下去，回到 PS 自动浮回；来福悬浮球和控制台永远置顶。要在别的程序前面用卡牌：右键来福悬浮球→「拉回最前」（或点任务栏右下角来福图标），卡牌会一直浮着，直到你点进别的程序</div>
+      <div class="swrow" style="margin-top:6px">
+        <span class="swlab">PS 弹窗 / 浮动面板压在卡牌上</span>
+        <div class="sw" id="swPsDlg" data-pass></div>
+      </div>
+      <div class="modeDesc">默认开启（需上面开关开着）：Camera Raw、滤镜库、液化、曲线这类弹窗和拖出来的浮动面板一打开，卡牌自动让到它们下面、仍浮在 PS 主界面上；关掉弹窗卡牌自动回到最上面。弹窗在前时「拉回最前」不生效</div>
+    </div>
+
+    <div>
+      <div class="label">生图提示音</div>
+      <div class="swrow">
+        <span class="swlab">批次完成提示音</span>
+        <div class="sw" id="swSound" data-pass></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="range" id="sndVol" min="0" max="100" step="1" />
+        <span class="val" id="sndVolVal"></span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <select id="sndSel" style="flex:1;min-width:0;height:30px;border-radius:9px;background:var(--option-bg);color:var(--text);border:1px solid var(--inset-border);font-size:12px;padding:0 8px;outline:none"></select>
+        <button class="mbtn" id="btnSndFolder" style="flex:none;height:30px;padding:0 12px;font-size:11px">打开提示音文件夹</button>
+      </div>
+      <div class="modeDesc">把mp3/wav等音频丢进文件夹，回来点开下拉即可选用（自动刷新+试听）；「内置合成音」=原双音提示；失败音恒为低音便于听声辨结果</div>
+    </div>
+
+    <div>
+      <div class="label">预设主题</div>
+      <div id="themeRow"></div>
+    </div>
+
+    <div>
+      <div class="label">主题色</div>
+      <div id="sv"><div id="svThumb"></div></div>
+      <div style="height:10px"></div>
+      <input type="range" id="hue" min="0" max="360" step="1" />
+      <div style="height:10px"></div>
+      <div id="colorRow">
+        <div id="preview"></div>
+        <span id="hex">#FF9F0A</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="label" title="100% = 完全实心底板">背景不透明度<span style="opacity:0.5;letter-spacing:0;margin-left:6px">100% = 完全实心底板</span></div>
+      <div class="row">
+        <input type="range" id="tint" min="0" max="100" step="1" />
+        <span class="val" id="tintVal"></span>
+      </div>
+    </div>
+
+    <div>
+      <div class="label">背景图片</div>
+      <div class="row">
+        <button class="mbtn" id="btnBgPick" style="flex:1;height:32px">选择图片 / 视频</button>
+        <button class="mbtn" id="btnBgClear" style="flex:none;height:32px;padding:0 12px">清除</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="range" id="bgOp" min="0" max="100" step="1" />
+        <span class="val" id="bgOpVal"></span>
+      </div>
+      <div class="modeDesc" id="bgStat">铺在全部卡牌的玻璃底上：jpg/png/webp/gif动图/mp4/webm视频都行；滑杆=背景图不透明度</div>
+    </div>
+
+    <div>
+      <div class="label">文字大小</div>
+      <div class="row">
+        <input type="range" id="fontScale" min="80" max="225" step="5" />
+        <span class="val" id="fontScaleVal"></span>
+      </div>
+      <div class="modeDesc">全部卡牌文字实时缩放；4K高分屏会在此基础上自动再放大适配（嫌大就往左拉）</div>
+    </div>
+
+    <div>
+      <div class="label">PS插件</div>
+      <div class="row">
+        <button class="mbtn" id="btnBridge" style="flex:1;height:32px">重新安装PS插件</button>
+      </div>
+      <div class="modeDesc" id="bridgeStat">软件启动时会自动把桥接插件装进PS（重启PS生效）；装了新版PS或连不上时点上面重装</div>
+    </div>
+
+    <button id="btnReset" title="改动实时应用到所有窗口并自动保存；不透明度决定玻璃底色浓淡">恢复默认</button>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const DEFAULTS = { tint: 0.32, accent: '#19b5bc', style: 'classic', bgFile: '', bgOpacity: 0.6 };
+
+  function save(patch) { window.orange.setConfig({ ui: patch }); }
+
+  // ---------- 颜色工具 ----------
+  function hsvToHex(h, s, v) {
+    const f = (n) => {
+      const k = (n + h / 60) % 6;
+      const c = v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+      return Math.round(c * 255).toString(16).padStart(2, '0');
+    };
+    return '#' + f(5) + f(3) + f(1);
+  }
+  function hexToHsv(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+    }
+    return { h, s: max ? d / max : 0, v: max };
+  }
+
+  // ---------- 调色盘状态 ----------
+  const sv = $('sv'), thumb = $('svThumb'), hue = $('hue');
+  let H = 36, S = 0.96, V = 1;
+
+  function renderSV() {
+    sv.style.background =
+      'linear-gradient(to top, #000, rgba(0,0,0,0)), ' +
+      'linear-gradient(to right, #fff, hsl(' + H + ', 100%, 50%))';
+    thumb.style.left = (S * 100) + '%';
+    thumb.style.top = ((1 - V) * 100) + '%';
+  }
+  let pending = false;
+  function commit() {
+    const hex = hsvToHex(H, S, V);
+    $('hex').textContent = hex.toUpperCase();
+    $('preview').style.background = hex;
+    if (!pending) {                       // rAF节流，拖动丝滑且不刷爆IPC
+      pending = true;
+      requestAnimationFrame(() => { pending = false; save({ accent: hsvToHex(H, S, V) }); });
+    }
+  }
+
+  // SV方块拖拽取色
+  function pickSV(e) {
+    const r = sv.getBoundingClientRect();
+    S = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    V = 1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    renderSV(); commit();
+  }
+  sv.addEventListener('pointerdown', (e) => {
+    sv.setPointerCapture(e.pointerId);
+    pickSV(e);
+    const move = (ev) => pickSV(ev);
+    const up = () => { sv.removeEventListener('pointermove', move); sv.removeEventListener('pointerup', up); };
+    sv.addEventListener('pointermove', move);
+    sv.addEventListener('pointerup', up);
+  });
+
+  // 色相条
+  hue.addEventListener('input', () => { H = Number(hue.value); renderSV(); commit(); });
+
+  // ---------- 不透明度（滑块+滚轮） ----------
+  function syncTint(a) { $('tint').value = Math.round(a * 100); $('tintVal').textContent = Math.round(a * 100) + '%'; }
+  $('tint').addEventListener('input', () => { const a = Number($('tint').value) / 100; syncTint(a); save({ tint: a }); });
+  $('tint').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const v = Math.max(0, Math.min(100, Number($('tint').value) + (e.deltaY > 0 ? -2 : 2)));
+    syncTint(v / 100); save({ tint: v / 100 });
+  });
+
+  // ---------- 文字大小（0905用户裁定：众口难调=给滑杆；高分屏另有自动适配系数） ----------
+  function syncFont(v) { $('fontScale').value = v; $('fontScaleVal').textContent = v + '%'; }
+  $('fontScale').addEventListener('input', () => { const v = Number($('fontScale').value); syncFont(v); save({ fontScale: v }); });
+  $('fontScale').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const v = Math.max(80, Math.min(225, Number($('fontScale').value) + (e.deltaY > 0 ? -5 : 5)));
+    syncFont(v); save({ fontScale: v });
+  });
+  // 色相条滚轮微调
+  hue.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    H = ((Number(hue.value) + (e.deltaY > 0 ? -3 : 3)) % 360 + 360) % 360;
+    hue.value = H; renderSV(); commit();
+  });
+
+  // ---------- 恢复默认 ----------
+  $('btnReset').addEventListener('click', () => {
+    const hsv = hexToHsv(DEFAULTS.accent);
+    H = hsv.h; S = hsv.s; V = hsv.v;
+    hue.value = H;
+    renderSV();
+    syncTint(DEFAULTS.tint);
+    $('hex').textContent = DEFAULTS.accent.toUpperCase();
+    $('preview').style.background = DEFAULTS.accent;
+    bgFile = ''; syncBg(); syncBgOp(DEFAULTS.bgOpacity);
+    save(DEFAULTS);
+  });
+
+  // ---------- 背景图片/视频：铺在全部卡牌玻璃底上（glass.js按ui.bgFile挂.bgMedia层，路径直引不复制） ----------
+  const btnBgPick = $('btnBgPick'), btnBgClear = $('btnBgClear');
+  let bgFile = '';
+  function syncBg() {
+    $('bgStat').textContent = bgFile
+      ? '当前：' + bgFile.split(/[\\/]/).pop()
+      : '铺在全部卡牌的玻璃底上：jpg/png/webp/gif动图/mp4/webm视频都行；滑杆=背景图不透明度';
+  }
+  function syncBgOp(a) { $('bgOp').value = Math.round(a * 100); $('bgOpVal').textContent = Math.round(a * 100) + '%'; }
+  btnBgPick.setAttribute('data-pass', '');
+  btnBgClear.setAttribute('data-pass', '');
+  btnBgPick.addEventListener('click', async () => {
+    const r = await window.orange.bgPick();
+    if (!r || !r.ok) return;
+    bgFile = r.file; syncBg(); save({ bgFile });
+  });
+  btnBgClear.addEventListener('click', () => { bgFile = ''; syncBg(); save({ bgFile: '' }); });
+  $('bgOp').addEventListener('input', () => { const a = Number($('bgOp').value) / 100; syncBgOp(a); save({ bgOpacity: a }); });
+  $('bgOp').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const v = Math.max(0, Math.min(100, Number($('bgOp').value) + (e.deltaY > 0 ? -2 : 2)));
+    syncBgOp(v / 100); save({ bgOpacity: v / 100 });
+  });
+
+  // ---------- 预设主题：颜色+底板材质整套换装（styles见theme.css的data-style段） ----------
+  // 一横排4个（0907）：第一行=基础四款；第二行=硬边四兄弟(硬边黑/琥珀断层/冷钢刻线/石墨极光)整行；之后动效系
+  const THEMES = [
+    { name: '来福青绿', accent: '#19b5bc', tint: 0.32, style: 'classic',
+      prev: 'border-radius:11px;background:linear-gradient(165deg, rgba(74,74,88,0.95), rgba(18,18,26,0.98))' },
+    { name: '磨砂灰', accent: '#0a84ff', tint: 0.40, style: 'frost',
+      prev: 'border-radius:11px;background:linear-gradient(170deg, #565a68, #3a3d4a)' },
+    { name: '幻彩渐变', accent: '#bf5af2', tint: 0.36, style: 'gradient',
+      prev: 'border-radius:11px;background:linear-gradient(155deg, #8b3fd9, #2a1f3d 52%, #5b2a86)' },
+    { name: '跟随PS', accent: '#0a84ff', tint: 0.38, style: 'pssync',
+      prev: 'border-radius:11px;background:linear-gradient(135deg, #1b1c20 25%, #33353a 25% 50%, #54575e 50% 75%, #6e7178 75%)' },
+    // ---- 硬边三兄弟（同一硬边规范：直角+扁平底+压角控件；后两款带描边光效，Fable 5.1 v2） ----
+    { name: '硬边黑', accent: '#30d158', tint: 0.34, style: 'sharp',
+      prev: 'border-radius:3px;background:linear-gradient(180deg, #15161a, #0a0b0e)' },
+    { name: '琥珀断层', accent: '#ffb648', tint: 0.36, style: 'amber',
+      prev: 'border-radius:3px;background:linear-gradient(180deg, #16100c, #0c0907);box-shadow:inset 0 0 0 1.5px rgba(255,170,60,0.22), inset 18px 0 0 -16.5px #ffb648, inset 0 -18px 0 -16.5px rgba(255,200,120,0.9)' },
+    { name: '冷钢刻线', accent: '#9fb4cc', tint: 0.40, style: 'steel',
+      prev: 'border-radius:0;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0) 30%), linear-gradient(180deg, #181a1e, #0d0e11);box-shadow:inset 0 0 0 1px rgba(215,222,232,0.45), inset 0 0 0 2px rgba(0,0,0,0.6), inset 0 0 0 3px rgba(255,255,255,0.07)' },
+    { name: '石墨极光', accent: '#c8ced9', tint: 0.38, style: 'graphite',
+      prev: 'border-radius:3px;background:radial-gradient(70% 55% at 22% 18%, rgba(220,226,236,0.42), rgba(0,0,0,0) 65%), radial-gradient(65% 55% at 82% 82%, rgba(150,152,160,0.36), rgba(0,0,0,0) 65%), linear-gradient(165deg, #141519, #090a0d);box-shadow:inset 0 0 0 1px rgba(190,196,208,0.4)' },
+    { name: '赛博霓虹', accent: '#00e5ff', tint: 0.30, style: 'neon',
+      prev: 'border-radius:11px;background:radial-gradient(120% 90% at 15% 0%, rgba(0,229,255,0.35), rgba(0,0,0,0) 45%), radial-gradient(130% 100% at 100% 100%, rgba(255,45,180,0.30), rgba(0,0,0,0) 50%), linear-gradient(160deg, #0d1020, #05070e);box-shadow:inset 0 0 0 1px rgba(0,229,255,0.55)' },
+    // ---- 动效系 ----
+    { name: '鎏金流光', accent: '#ffd60a', tint: 0.32, style: 'goldflow',
+      prev: 'border-radius:11px;background:linear-gradient(105deg, rgba(0,0,0,0) 38%, rgba(255,216,120,0.5) 50%, rgba(0,0,0,0) 62%), linear-gradient(160deg, #1e1a12, #0c0a06);box-shadow:inset 0 0 0 1px rgba(255,214,90,0.4)' },
+    { name: '极光漫游', accent: '#4be3b0', tint: 0.34, style: 'aurora',
+      prev: 'border-radius:11px;background:radial-gradient(70% 55% at 22% 18%, rgba(80,240,200,0.5), rgba(0,0,0,0) 65%), radial-gradient(65% 55% at 82% 82%, rgba(140,110,255,0.45), rgba(0,0,0,0) 65%), linear-gradient(165deg, #081018, #050810)' },
+    { name: '星环流转', accent: '#8a7bff', tint: 0.32, style: 'orbit',
+      prev: 'border-radius:11px;background:linear-gradient(165deg, #10111a, #08090f);box-shadow:inset 0 0 0 1.5px rgba(138,123,255,0.75), inset 0 0 9px rgba(138,123,255,0.35)' },
+    { name: '霓虹流转', accent: '#00e5ff', tint: 0.34, style: 'neonflow',
+      prev: 'border-radius:11px;background:radial-gradient(60% 50% at 18% 18%, rgba(0,229,255,0.3), rgba(0,0,0,0) 65%), radial-gradient(55% 50% at 84% 84%, rgba(255,45,180,0.28), rgba(0,0,0,0) 65%), linear-gradient(160deg, #0b0e1c, #05060d);box-shadow:inset 0 0 0 1.5px rgba(0,229,255,0.6), inset 0 0 0 3px rgba(255,45,180,0.25)' },
+    { name: '极速流光', accent: '#37e6c8', tint: 0.34, style: 'speed',
+      prev: 'border-radius:11px;background:linear-gradient(135deg, rgba(0,0,0,0) 30%, rgba(55,230,200,0.45) 46%, rgba(0,0,0,0) 52%, rgba(255,95,162,0.3) 66%, rgba(0,0,0,0) 78%), linear-gradient(165deg, #090e11, #05070a);box-shadow:inset 0 0 0 1px rgba(55,230,200,0.5)' },
+    { name: '霓虹脉冲', accent: '#ff5fa2', tint: 0.34, style: 'pulse',
+      prev: 'border-radius:11px;background:radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 30%, rgba(255,95,162,0.55) 38%, rgba(190,110,255,0.3) 44%, rgba(0,0,0,0) 52%), linear-gradient(165deg, #180c1a, #0b060e);box-shadow:inset 0 0 0 1px rgba(255,95,162,0.5)' },
+    { name: '一刀999', accent: '#ffd700', tint: 0.36, style: 'yidao',
+      prev: 'border-radius:11px;background:linear-gradient(100deg, rgba(0,0,0,0) 38%, rgba(255,230,120,0.65) 50%, rgba(0,0,0,0) 62%), radial-gradient(120% 70% at 50% 110%, rgba(255,80,0,0.75), rgba(0,0,0,0) 65%), linear-gradient(170deg, #30140a, #140604);box-shadow:inset 0 0 0 2px #ffd700, inset 0 0 10px rgba(255,120,0,0.6)' },
+  ];
+  const themeRow = $('themeRow');
+  THEMES.forEach((t) => {
+    const sw = document.createElement('div');
+    sw.className = 'tsw';
+    sw.setAttribute('data-pass', '');
+    sw.title = t.name + ' · ' + t.accent.toUpperCase();
+    sw.innerHTML = '<div class="c" style="' + t.prev + '"><div class="d" style="background:' + t.accent + '"></div></div>'
+      + '<div class="n">' + t.name + '</div>';
+    sw.addEventListener('click', () => {
+      // 套用=颜色+浓度+底板风格一起落库，同步调色盘状态；后续仍可手调微调
+      const hsv = hexToHsv(t.accent);
+      H = hsv.h; S = hsv.s; V = hsv.v;
+      hue.value = H;
+      renderSV();
+      $('hex').textContent = t.accent.toUpperCase();
+      $('preview').style.background = t.accent;
+      syncTint(t.tint);
+      save({ accent: t.accent, tint: t.tint, style: t.style });
+      // 跟随PS：套用瞬间就去读一次PS界面明暗（此后每次桥接连上自动同步）
+      if (t.style === 'pssync' && window.orange.psUiRefresh) window.orange.psUiRefresh();
+    });
+    themeRow.appendChild(sw);
+  });
+
+  // ---------- 修图模式：新手(现状) / 盲人(极简) ----------
+  // 行为选择器一律用data-属性（止血规范）：.mbtn只是外观，靠它绑事件=新加一颗功能按钮就误伤别的功能
+  const modeBtns = document.querySelectorAll('[data-mode]');
+  function syncModeBtns(mode) {
+    modeBtns.forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+  }
+  modeBtns.forEach((b) => {
+    b.setAttribute('data-pass', '');   // 穿透模式放行
+    b.addEventListener('click', () => {
+      syncModeBtns(b.dataset.mode);
+      save({ uiMode: b.dataset.mode });   // ui-vars广播，全部窗口实时换装
+    });
+  });
+
+  // ---------- 小球中键动作（原左键自定义挪到中键；左键固定收纳/释放） ----------
+  const BALL_ACTS = ['layout', 'gather', 'hub', 'pass'];
+  const ballBtns = document.querySelectorAll('#ballRow [data-act]');
+  function syncBallBtns(act) {
+    ballBtns.forEach((b) => b.classList.toggle('on', b.dataset.act === act));
+  }
+  ballBtns.forEach((b) => {
+    b.setAttribute('data-pass', '');
+    b.addEventListener('click', () => {
+      syncBallBtns(b.dataset.act);
+      save({ ballMiddle: b.dataset.act });   // ui-vars广播，球端实时生效
+    });
+  });
+
+  // ---------- 无选区默认跑全图（苹果式开关） ----------
+  const swNoSel = $('swNoSel');
+  let noSelFull = false;
+  function syncNoSel() { swNoSel.classList.toggle('on', noSelFull); }
+  swNoSel.addEventListener('click', () => {
+    noSelFull = !noSelFull;
+    syncNoSel();
+    window.orange.setConfig({ gen: { noSelFull } });
+  });
+
+  // ---------- 卡牌只浮在PS之上（0909，苹果式开关；主进程 fgwatch 据 ui.psOnlyTop 起停前台助手） ----------
+  const swPsTop = $('swPsTop');
+  let psOnlyTop = false;
+  function syncPsTop() { swPsTop.classList.toggle('on', psOnlyTop); }
+  swPsTop.addEventListener('click', () => {
+    psOnlyTop = !psOnlyTop;
+    syncPsTop();
+    save({ psOnlyTop });
+  });
+  // PS 弹窗/浮动面板压在卡牌上（0910 子开关，默认开）
+  const swPsDlg = $('swPsDlg');
+  let psDialogTop = true;
+  function syncPsDlg() { swPsDlg.classList.toggle('on', psDialogTop); }
+  swPsDlg.addEventListener('click', () => {
+    psDialogTop = !psDialogTop;
+    syncPsDlg();
+    save({ psDialogTop });
+  });
+
+  // ---------- 生图提示音：开关/音量/自定义音效（音频文件放文档目录来福/sounds） ----------
+  const swSound = $('swSound'), sndSel = $('sndSel');
+  let sndOn = true, sndVol = 60, sndFile = '', sndDir = '';
+  function playTest() {
+    if (!sndOn || sndVol <= 0) return;
+    if (sndFile && sndDir) {
+      try {
+        const a = new Audio('file:///' + (sndDir + '/' + sndFile).replace(/\\/g, '/'));
+        a.volume = Math.max(0, Math.min(1, sndVol / 100));
+        a.play().catch(() => {});
+      } catch (e) {}
+      return;
+    }
+    // 内置合成音试听（与生图卡同款上行双音）
+    try {
+      const ac = new AudioContext();
+      const t0 = ac.currentTime, peak = 0.32 * (sndVol / 100);
+      [[880, 0], [1318.5, 0.12]].forEach(([f, dt]) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = f; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, t0 + dt);
+        g.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), t0 + dt + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.35);
+        o.connect(g); g.connect(ac.destination);
+        o.start(t0 + dt); o.stop(t0 + dt + 0.4);
+      });
+      setTimeout(() => { try { ac.close(); } catch (e) {} }, 1200);
+    } catch (e) {}
+  }
+  async function refreshSndList() {
+    if (!window.orange.soundList) return;
+    const r = await window.orange.soundList();
+    sndDir = r.dir || '';
+    sndSel.innerHTML = '';
+    const o0 = document.createElement('option');
+    o0.value = ''; o0.textContent = '内置合成音';
+    sndSel.appendChild(o0);
+    (r.files || []).forEach((f) => {
+      const o = document.createElement('option');
+      o.value = f; o.textContent = f;
+      sndSel.appendChild(o);
+    });
+    sndSel.value = (r.files || []).includes(sndFile) ? sndFile : '';
+  }
+  function syncSound() { swSound.classList.toggle('on', sndOn); $('sndVolVal').textContent = sndVol + '%'; $('sndVol').value = sndVol; }
+  swSound.addEventListener('click', () => {
+    sndOn = !sndOn;
+    syncSound();
+    window.orange.setConfig({ gen: { sound: sndOn } });
+    if (sndOn) playTest();
+  });
+  $('sndVol').addEventListener('input', () => {
+    sndVol = Number($('sndVol').value);
+    $('sndVolVal').textContent = sndVol + '%';
+    window.orange.setConfig({ gen: { soundVol: sndVol } });
+  });
+  $('sndVol').addEventListener('change', () => playTest());   // 松手试听
+  $('sndVol').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    sndVol = Math.max(0, Math.min(100, sndVol + (e.deltaY > 0 ? -2 : 2)));
+    $('sndVolVal').textContent = sndVol + '%'; $('sndVol').value = sndVol;
+    window.orange.setConfig({ gen: { soundVol: sndVol } });
+  });
+  sndSel.addEventListener('pointerdown', () => refreshSndList());   // 点开下拉时刷新（新丢的文件即时可见）
+  sndSel.addEventListener('change', () => {
+    sndFile = sndSel.value;
+    window.orange.setConfig({ gen: { soundFile: sndFile } });
+    playTest();
+  });
+  $('btnSndFolder').setAttribute('data-pass', '');
+  $('btnSndFolder').addEventListener('click', async () => {
+    await window.orange.soundOpenFolder();
+    setTimeout(refreshSndList, 600);
+  });
+
+  // ---------- PS插件重装 ----------
+  const btnBridge = $('btnBridge');
+  btnBridge.setAttribute('data-pass', '');
+  btnBridge.addEventListener('click', async () => {
+    btnBridge.disabled = true;
+    btnBridge.textContent = '安装中…';
+    const r = await window.orange.bridgeReinstall();
+    $('bridgeStat').textContent = r.ok
+      ? '✓ ' + r.detail + '（重启PS后生效）'
+      : '✗ ' + (r.detail || r.error || '安装失败');
+    btnBridge.disabled = false;
+    btnBridge.textContent = '重新安装PS插件';
+  });
+
+  // ---------- 初始化 ----------
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    const ui = Object.assign({}, DEFAULTS, cfg.ui || {});
+    syncModeBtns(ui.uiMode === 'blind' ? 'blind' : 'novice');
+    syncBallBtns(BALL_ACTS.includes(ui.ballMiddle) ? ui.ballMiddle : 'layout');
+    bgFile = typeof ui.bgFile === 'string' ? ui.bgFile : '';
+    syncBg();
+    syncBgOp(ui.bgOpacity != null ? Number(ui.bgOpacity) : DEFAULTS.bgOpacity);
+    noSelFull = !!(cfg.gen && cfg.gen.noSelFull);
+    syncNoSel();
+    psOnlyTop = !!ui.psOnlyTop;
+    syncPsTop();
+    psDialogTop = ui.psDialogTop !== false;
+    syncPsDlg();
+    sndOn = !(cfg.gen && cfg.gen.sound === false);
+    sndVol = (cfg.gen && cfg.gen.soundVol != null) ? Number(cfg.gen.soundVol) : 60;
+    sndFile = (cfg.gen && cfg.gen.soundFile) || '';
+    syncSound();
+    refreshSndList();
+    const hsv = hexToHsv(/^#[0-9a-f]{6}$/i.test(ui.accent) ? ui.accent : DEFAULTS.accent);
+    H = hsv.h; S = hsv.s; V = hsv.v;
+    hue.value = H;
+    renderSV();
+    $('hex').textContent = ui.accent.toUpperCase();
+    $('preview').style.background = ui.accent;
+    syncTint(ui.tint);
+    syncFont(Number(ui.fontScale) || 100);
+  })();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

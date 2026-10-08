@@ -1,0 +1,309 @@
+{
+  "id": "013-freq-3",
+  "label": "三频分离",
+  "group": "皮肤",
+  "icon": "qp-freq3",
+  "desc": "低频（大模糊）/ 中频（小模糊减低频）/ 高频（原图减小模糊），三层线性光打组，精修用。",
+  "params": {
+    "low": 16,
+    "mid": 4
+  },
+  "names": [
+    "三频",
+    "低频",
+    "中频",
+    "高频"
+  ],
+  "steps": [
+    {
+      "_obj": "duplicate",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "name": "低频·{{n}}",
+      "version": 5
+    },
+    {
+      "_obj": "duplicate",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "name": "中频·{{n}}",
+      "version": 5
+    },
+    {
+      "_obj": "duplicate",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "name": "高频·{{n}}",
+      "version": 5
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "低频·{{n}}"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "gaussianBlur",
+      "radius": {
+        "_unit": "pixelsUnit",
+        "_value": "{{low}}"
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "中频·{{n}}"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "gaussianBlur",
+      "radius": {
+        "_unit": "pixelsUnit",
+        "_value": "{{mid}}"
+      }
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "name": "中频·{{n}}"
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "高频·{{n}}"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "applyImageEvent",
+      "with": {
+        "_obj": "calculation",
+        "to": {
+          "_ref": [
+            {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "RGB"
+            },
+            {
+              "_ref": "layer",
+              "_name": "中频·{{n}}"
+            }
+          ]
+        },
+        "calculation": {
+          "_enum": "calculationType",
+          "_value": "subtract"
+        },
+        "scale": 2,
+        "offset": 128
+      },
+      "_when": "depth8"
+    },
+    {
+      "_obj": "applyImageEvent",
+      "with": {
+        "_obj": "calculation",
+        "to": {
+          "_ref": [
+            {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "RGB"
+            },
+            {
+              "_ref": "layer",
+              "_name": "中频·{{n}}"
+            }
+          ]
+        },
+        "invert": true,
+        "calculation": {
+          "_enum": "calculationType",
+          "_value": "add"
+        },
+        "scale": 2,
+        "offset": 0
+      },
+      "_when": "depth16"
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "mode": {
+          "_enum": "blendMode",
+          "_value": "linearLight"
+        }
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "中频·{{n}}"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "applyImageEvent",
+      "with": {
+        "_obj": "calculation",
+        "to": {
+          "_ref": [
+            {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "RGB"
+            },
+            {
+              "_ref": "layer",
+              "_name": "低频·{{n}}"
+            }
+          ]
+        },
+        "calculation": {
+          "_enum": "calculationType",
+          "_value": "subtract"
+        },
+        "scale": 2,
+        "offset": 128
+      },
+      "_when": "depth8"
+    },
+    {
+      "_obj": "applyImageEvent",
+      "with": {
+        "_obj": "calculation",
+        "to": {
+          "_ref": [
+            {
+              "_ref": "channel",
+              "_enum": "channel",
+              "_value": "RGB"
+            },
+            {
+              "_ref": "layer",
+              "_name": "低频·{{n}}"
+            }
+          ]
+        },
+        "invert": true,
+        "calculation": {
+          "_enum": "calculationType",
+          "_value": "add"
+        },
+        "scale": 2,
+        "offset": 0
+      },
+      "_when": "depth16"
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "mode": {
+          "_enum": "blendMode",
+          "_value": "linearLight"
+        }
+      }
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "高频·{{n}}"
+        }
+      ],
+      "selectionModifier": {
+        "_enum": "selectionModifierType",
+        "_value": "addToSelection"
+      },
+      "makeVisible": false
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_name": "低频·{{n}}"
+        }
+      ],
+      "selectionModifier": {
+        "_enum": "selectionModifierType",
+        "_value": "addToSelection"
+      },
+      "makeVisible": false
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layerSection"
+        }
+      ],
+      "from": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "targetEnum"
+      },
+      "using": {
+        "_obj": "layerSection",
+        "name": "三频·{{n}}"
+      },
+      "name": "三频·{{n}}"
+    }
+  ]
+}

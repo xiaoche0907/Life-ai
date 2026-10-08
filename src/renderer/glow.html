@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: nowrap; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+
+  /* 主体：左预览台（撑满）+ 右控制列（固定宽、可滚） */
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }   /* 等比铺满预览台（只限最大不放大=画布按 640 原尺寸缩在中间，验收截图实证） */
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+  #cmpTag { position: absolute; right: 8px; top: 6px; font-size: 10px; font-weight: 700; color: var(--accent-text); pointer-events: none; display: none; }
+  #stage.cmp #cmpTag { display: block; }
+
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: background 0.15s, opacity 0.15s; }
+  .abtn:hover { background: var(--btn-bg-hover); }
+  .abtn:active { transform: scale(0.97); }
+  .abtn svg { width: 16px; height: 16px; }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+
+  #ctrl { flex: 0 0 232px; width: 232px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; }
+  .grp .gt .sp { flex: 1; }
+  .srow { display: flex; flex-direction: column; gap: 1px; }
+  .srow .lab { display: flex; align-items: center; font-size: 10.5px; color: var(--text); cursor: default; }
+  .srow .lab .v { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 10px; }
+  .srow input[type="range"] { width: 100%; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .seg { display: flex; gap: 3px; }
+  .seg .s { flex: 1; text-align: center; font-size: 10px; padding: 4px 0; border-radius: 7px; background: var(--btn-bg); color: var(--text-dim); cursor: pointer; border: 1px solid transparent; }
+  .seg .s:hover { background: var(--btn-bg-hover); }
+  .seg .s.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .crow { display: flex; align-items: center; gap: 8px; font-size: 10.5px; }
+  .crow input[type="color"] { width: 34px; height: 22px; border: 1px solid var(--inset-border); border-radius: 6px; background: transparent; padding: 0; cursor: pointer; }
+  .crow input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+  .crow input[type="color"]::-webkit-color-swatch { border: none; border-radius: 4px; }
+
+  /* 预设 */
+  #presetRow { display: flex; gap: 4px; align-items: center; }
+  #presetSel { flex: 1; min-width: 0; height: 26px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 6px; outline: none; }
+  #presetSel option { background: var(--option-bg); color: #fff; }
+  .ibtn { width: 26px; height: 26px; flex: none; border-radius: 8px; background: var(--btn-bg); display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; }
+  .ibtn:hover { background: var(--btn-bg-hover); }
+  .ibtn svg { width: 14px; height: 14px; }
+  .ibtn.confirm { background: rgba(255, 80, 80, 0.35); color: #ff9a9a; }
+  #saveRow { display: none; gap: 4px; align-items: center; }
+  #saveRow.on { display: flex; }
+  #saveName { flex: 1; min-width: 0; height: 26px; border-radius: 8px; border: 1px solid var(--accent-border); background: var(--inset-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; user-select: text; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="glow-engine.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>辉光</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">点「读取画面」把 PS 当前画面拿进来<br>有选区=只取选区 · 无选区=整幅画布<br>之后拖任何滑杆都实时看到效果</div>
+        <div id="tag"></div>
+        <div id="cmpTag">原图</div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass title="读取 PS 当前画面（有选区取选区，无选区取整幅画布）"><span id="icoCap"></span>读取画面</button>
+        <button class="abtn" id="btnCmp" data-pass disabled title="按住看原图，松手回效果"><span id="icoCmp"></span>对比</button>
+        <button class="abtn acc" id="btnBake" data-pass disabled title="辉光作为独立图层「来福辉光」贴回原位置，原图不动"><span id="icoBake"></span>置入 PS</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">预设<span class="sp"></span></div>
+        <div id="presetRow">
+          <select id="presetSel" data-pass title="选一套预设，参数立即套用"></select>
+          <div class="ibtn" id="btnSave" data-pass title="把当前参数存成预设"><span id="icoSave"></span></div>
+          <div class="ibtn" id="btnDel" data-pass title="删除当前选中的用户预设（出厂预设不能删）"><span id="icoDel"></span></div>
+          <div class="ibtn" id="btnFolder" data-pass title="打开预设文件夹"><span id="icoFolder"></span></div>
+        </div>
+        <div id="saveRow">
+          <input id="saveName" data-pass placeholder="预设名，回车保存" maxlength="40" />
+          <div class="ibtn" id="btnSaveOk" data-pass title="保存"><span id="icoOk"></span></div>
+        </div>
+      </div>
+      <div class="grp" id="gBloom"></div>
+      <div class="grp" id="gStreak"></div>
+      <div class="grp" id="gLens"></div>
+      <div class="grp" id="gColor"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const I = window.ORANGE_ICONS || {};
+  const GE = window.GlowEngine;
+  $('ico').innerHTML = I.glow || '';
+  const SVG = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+  $('icoCap').innerHTML = SVG('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>');
+  $('icoCmp').innerHTML = SVG('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>');
+  $('icoBake').innerHTML = SVG('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+  $('icoSave').innerHTML = SVG('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>');
+  $('icoDel').innerHTML = SVG('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>');
+  $('icoFolder').innerHTML = SVG('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>');
+  $('icoOk').innerHTML = SVG('<polyline points="20 6 9 17 4 12"/>');
+
+  const PREVIEW_LONG = 640;   // 预览工作分辨率长边（全算一帧 ≈ 60ms，拖滑杆跟手）
+  const st = { p: Object.assign({}, GE.DEFAULTS), pctx: null, orig: null, pipe: null, out: null, cmp: false, busy: false, presets: [] };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[glow] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+
+  // ---------- 控件定义 ----------
+  // inv=true：滑杆按 1−值 显示/操作（阈值：用户裁定"往右=更亮更多发光"，引擎里仍存 thr，老预设不动）
+  const SLIDERS = {
+    gBloom: { title: '漫射辉光', rows: [
+      { k: 'thr', lab: '阈值', min: 0, max: 1, step: 0.01, inv: true, tip: '越大=发光范围越大越亮，拉到最左全灭', fmt: (v) => Math.round(v * 100) + '%' },
+      { k: 'bloom', lab: '强度', min: 0, max: 12, step: 0.05, fmt: (v) => v.toFixed(2) },
+      { k: 'radius', lab: '半径', min: 0.5, max: 25, step: 0.1, fmt: (v) => v.toFixed(1) + '%' },
+      { k: 'soft', lab: '柔和', min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%' },
+      { k: 'bloomCA', lab: '色散', min: 0, max: 1, step: 0.01, tip: '三色半径分离：光晕边缘红外圈、蓝内圈', fmt: (v) => Math.round(v * 100) + '%' },
+    ] },
+    gStreak: { title: '星芒条纹', seg: { k: 'streaks', opts: [[0, '关'], [2, '2'], [4, '4'], [6, '6'], [8, '8']] }, rows: [
+      { k: 'slen', lab: '长度', min: 1, max: 40, step: 0.5, fmt: (v) => v.toFixed(1) + '%' },
+      { k: 'sangle', lab: '角度', min: 0, max: 180, step: 1, fmt: (v) => Math.round(v) + '°' },
+      { k: 'sgain', lab: '强度', min: 0, max: 20, step: 0.1, fmt: (v) => v.toFixed(1) },
+      { k: 'streakCA', lab: '色散', min: 0, max: 1, step: 0.01, tip: '三色条纹长度分离：星芒尾端红蓝分叉', fmt: (v) => Math.round(v * 100) + '%' },
+    ] },
+    gLens: { title: '镜头色散', rows: [
+      { k: 'lensCA', lab: '位移', min: 0, max: 1, step: 0.01, tip: '整幅画面三色径向错位（红外扩、蓝内缩），越靠边越明显；置入时与辉光合成同一层', fmt: (v) => Math.round(v * 100) + '%' },
+      { k: 'lensFall', lab: '边缘集中', min: 0, max: 1, step: 0.01, tip: '低=全画面均匀带一点，高=只有四角明显', fmt: (v) => Math.round(v * 100) + '%' },
+      { k: 'fringe', lab: '紫边', min: 0, max: 1, step: 0.01, tip: '过曝区外沿一圈紫红晕（逆光树枝、发丝边那种）', fmt: (v) => Math.round(v * 100) + '%' },
+    ] },
+    gColor: { title: '着色与混合', color: true, rows: [
+      { k: 'tintAmt', lab: '着色量', min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%' },
+      { k: 'opacity', lab: '不透明度', min: 0, max: 100, step: 1, fmt: (v) => Math.round(v) + '%' },
+    ], seg: { k: 'blend', opts: [['screen', '滤色'], ['linearDodge', '线性减淡'], ['lighten', '变亮']] } },
+  };
+  const inputs = {};
+  function buildGroup(id, def) {
+    const g = $(id);
+    g.innerHTML = '<div class="gt">' + def.title + '<span class="sp"></span></div>';
+    if (def.seg && id === 'gStreak') g.appendChild(buildSeg(def.seg));
+    if (def.color) {
+      const row = document.createElement('div'); row.className = 'crow';
+      row.innerHTML = '<input type="color" id="tintPick" data-pass title="辉光的颜色" /><span>光色</span><span class="sp" style="flex:1"></span><span id="tintHex" style="color:var(--text-dim);font-size:10px"></span>';
+      g.appendChild(row);
+    }
+    for (const r of def.rows) {
+      const row = document.createElement('div'); row.className = 'srow';
+      row.innerHTML = '<div class="lab" data-k="' + r.k + '" title="' + (r.tip ? r.tip + '；' : '') + '双击恢复默认">' + r.lab + '<span class="v"></span></div>'
+        + '<input type="range" data-k="' + r.k + '" min="' + r.min + '" max="' + r.max + '" step="' + r.step + '" data-pass />';
+      g.appendChild(row);
+      inputs[r.k] = { el: row.querySelector('input'), v: row.querySelector('.v'), fmt: r.fmt, inv: !!r.inv };
+    }
+    if (def.seg && id === 'gColor') g.appendChild(buildSeg(def.seg));
+  }
+  function buildSeg(seg) {
+    const d = document.createElement('div'); d.className = 'seg'; d.dataset.k = seg.k;
+    d.innerHTML = seg.opts.map((o) => '<div class="s" data-pass data-val="' + o[0] + '">' + o[1] + '</div>').join('');
+    return d;
+  }
+  for (const id in SLIDERS) buildGroup(id, SLIDERS[id]);
+
+  // 存储值 ⇄ 滑杆显示值（inv 的滑杆按 1−值）
+  const toUI = (k, v) => (inputs[k].inv ? 1 - v : v);
+  const fromUI = (k, v) => (inputs[k].inv ? 1 - v : v);
+  function syncUI() {
+    for (const k in inputs) { const ui = toUI(k, Number(st.p[k])); inputs[k].el.value = ui; inputs[k].v.textContent = inputs[k].fmt(ui); }
+    document.querySelectorAll('.seg').forEach((seg) => {
+      const k = seg.dataset.k;
+      seg.querySelectorAll('.s').forEach((s) => s.classList.toggle('on', String(s.dataset.val) === String(st.p[k])));
+    });
+    $('tintPick').value = st.p.tint; $('tintHex').textContent = st.p.tint;
+  }
+  // 滑杆：input 事件即渲染（rAF 合并）；标签双击=恢复该项默认
+  document.getElementById('ctrl').addEventListener('input', (e) => {
+    const el = e.target;
+    if (el.matches('input[type="range"]')) { const k = el.dataset.k, ui = Number(el.value); st.p[k] = fromUI(k, ui); inputs[k].v.textContent = inputs[k].fmt(ui); schedule(); }
+    else if (el.id === 'tintPick') { st.p.tint = el.value; $('tintHex').textContent = el.value; schedule(); }
+  });
+  document.getElementById('ctrl').addEventListener('click', (e) => {
+    const s = e.target.closest('.seg .s');
+    if (s) {
+      const k = s.parentElement.dataset.k;
+      st.p[k] = k === 'blend' ? s.dataset.val : Number(s.dataset.val);
+      syncUI(); schedule();
+    }
+  });
+  document.getElementById('ctrl').addEventListener('dblclick', (e) => {
+    const lab = e.target.closest('.lab[data-k]');
+    if (lab) { st.p[lab.dataset.k] = GE.DEFAULTS[lab.dataset.k]; syncUI(); schedule(); }
+  });
+
+  // ---------- 渲染（rAF 合并；对比态画原图） ----------
+  let raf = 0;
+  function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+  function render() {
+    if (!st.pipe) return;
+    const cv = $('cv'), g = cv.getContext('2d');
+    if (st.cmp) { g.putImageData(st.orig.preview, 0, 0); return; }
+    const r = st.pipe.render(st.p);
+    st.out = r;
+    g.putImageData(new ImageData(r.view, r.width, r.height), 0, 0);
+    $('tag').textContent = st.pctx ? ((st.pctx.fullMode ? '全图 ' : '选区 ') + st.orig.w + '×' + st.orig.h + ' · 预览 ' + r.width + '×' + r.height + ' · ' + r.ms + 'ms') : '';
+  }
+
+  // ---------- 读取画面 ----------
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('读取 PS 画面…');
+    try {
+      const r = await window.orange.glow('capture');
+      if (!r.ok) { stat(r.error || '读取失败', 'err'); return; }
+      const img = await loadImg('data:' + (r.mime || 'image/jpeg') + ';base64,' + img64(r.image));
+      const W = img.naturalWidth, H = img.naturalHeight;
+      const sc = Math.min(1, PREVIEW_LONG / Math.max(W, H));
+      const pw = Math.max(1, Math.round(W * sc)), ph = Math.max(1, Math.round(H * sc));
+      const c = document.createElement('canvas'); c.width = pw; c.height = ph;
+      const cg = c.getContext('2d', { willReadFrequently: true });
+      cg.drawImage(img, 0, 0, pw, ph);
+      const preview = cg.getImageData(0, 0, pw, ph);
+      st.orig = { img, w: W, h: H, preview };
+      st.pctx = { docId: r.docId, selection: r.selection, fullMode: r.fullMode };
+      st.pipe = GE.createPipeline(preview.data, pw, ph);
+      const cv = $('cv'); cv.width = pw; cv.height = ph;
+      $('hint').classList.add('off');
+      $('btnCmp').disabled = false; $('btnBake').disabled = false;
+      stat((r.fullMode ? '已读取整幅画布' : '已读取选区') + ' ' + W + '×' + H + (r.note && !r.fullMode ? ' · ' + r.note : ''), 'ok');
+      render();
+    } catch (e) { stat('读取失败: ' + (e.message || e), 'err'); glog('capture 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); }
+  }
+  const img64 = (s) => (s && s.indexOf(',') !== -1) ? s.split(',')[1] : s;
+  $('btnCap').addEventListener('click', capture);
+
+  // ---------- 对比（按住看原图） ----------
+  const cmpOn = () => { if (!st.pipe) return; st.cmp = true; $('stage').classList.add('cmp'); render(); };
+  const cmpOff = () => { if (!st.cmp) return; st.cmp = false; $('stage').classList.remove('cmp'); render(); };
+  $('btnCmp').addEventListener('mousedown', cmpOn);
+  window.addEventListener('mouseup', cmpOff);
+  window.addEventListener('blur', cmpOff);
+  $('btnCmp').addEventListener('mouseleave', cmpOff);
+
+  // ---------- 置入 PS：全分辨率重算 → 黑底辉光层 PNG → 主进程贴回 ----------
+  async function bake() {
+    if (!st.orig || !st.pctx || st.busy) return;
+    st.busy = true; $('btnBake').classList.add('busy'); stat('全分辨率烘焙中…');
+    try {
+      await new Promise((r) => setTimeout(r, 30));   // 让状态字先画出来
+      const W = st.orig.w, H = st.orig.h;
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(st.orig.img, 0, 0, W, H);
+      const full = GE.createPipeline(g.getImageData(0, 0, W, H).data, W, H);
+      const r = full.render(st.p);
+      // 镜头色散开着：**合成一层**再贴（0916 用户裁定：只要一个图层，且色散不许丢像素）。
+      // 原来贴两层（色散正常/100% 在下 + 辉光滤色在上），现在软件里先把辉光焊进色散图，贴回只有一个「来福辉光」。
+      // 等价性由引擎 merge() 保证（黑底辉光在滤色下对底色恒等，提前算好而已），不是近似。
+      const merged = (r.lensActive && r.lensLayer) ? full.merge(st.p) : null;
+      g.putImageData(new ImageData(merged || r.layer, W, H), 0, 0);
+      const dataUrl = c.toDataURL('image/png');
+      stat('置入 PS 中…（' + W + '×' + H + ' · 算 ' + r.ms + 'ms' + (merged ? ' · 色散已合并' : '') + '）');
+      const res = await window.orange.glow('bake', { dataUrl, pctx: st.pctx, params: st.p, lensMerged: !!merged });
+      if (!res.ok) { stat(res.error || '置入失败', 'err'); return; }
+      stat('✓ 已置入「来福辉光」' + (res.warn ? '（' + res.warn + '）' : ''), 'ok');
+      flashRing();
+    } catch (e) { stat('烘焙失败: ' + (e.message || e), 'err'); glog('bake 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnBake').classList.remove('busy'); }
+  }
+  $('btnBake').addEventListener('click', bake);
+  // 置入成功闪一下边框：光环是 .lg 里的子元素（glass.js 释放归位同款）。
+  // ⚠第一版把 glowring 类直接加在 #card 根元素上 → 该类自带 opacity:0 + pointer-events:none → 整张卡当场隐身（0912 用户实报"辉光点了不出现"）
+  function flashRing() {
+    const c = $('card');
+    let ring = c.querySelector(':scope > .glowring');
+    if (!ring) { ring = document.createElement('div'); ring.className = 'glowring'; c.appendChild(ring); }
+    ring.classList.remove('once'); void ring.offsetWidth; ring.classList.add('once');
+  }
+
+  // ---------- 预设 ----------
+  function fillPresets(list, selId) {
+    st.presets = list || [];
+    const sel = $('presetSel');
+    sel.innerHTML = '<option value="">— 自定义 —</option>' + st.presets.map((p) => '<option value="' + p.id + '">' + (p.factory ? '★ ' : '') + p.name + '</option>').join('');
+    sel.value = selId || '';
+    if (sel.value !== (selId || '')) sel.value = '';
+  }
+  async function loadPresets(selId) {
+    const r = await window.orange.glow('presets');
+    if (r && r.ok) fillPresets(r.presets, selId);
+  }
+  $('presetSel').addEventListener('change', () => {
+    const p = st.presets.find((x) => x.id === $('presetSel').value);
+    if (!p) return;
+    st.p = Object.assign({}, GE.DEFAULTS, p.params);
+    syncUI(); schedule(); stat('已套用预设「' + p.name + '」', 'ok');
+  });
+  $('btnSave').addEventListener('click', () => { $('saveRow').classList.toggle('on'); if ($('saveRow').classList.contains('on')) { $('saveName').focus(); } });
+  async function doSave() {
+    const name = $('saveName').value.trim();
+    if (!name) { stat('预设名为空', 'err'); return; }
+    const r = await window.orange.glow('preset-save', { name, params: st.p });
+    if (!r.ok) { stat(r.error || '保存失败', 'err'); return; }
+    fillPresets(r.presets, r.id); $('saveRow').classList.remove('on'); $('saveName').value = '';
+    stat('✓ 预设「' + name + '」已保存', 'ok');
+  }
+  $('btnSaveOk').addEventListener('click', doSave);
+  $('saveName').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); if (e.key === 'Escape') $('saveRow').classList.remove('on'); });
+  // 删除：二段确认（原生 confirm 禁用）
+  let delArm = 0;
+  $('btnDel').addEventListener('click', async () => {
+    const id = $('presetSel').value;
+    const p = st.presets.find((x) => x.id === id);
+    if (!p) { stat('先在下拉里选一个用户预设', 'err'); return; }
+    if (p.factory) { stat('出厂预设不能删', 'err'); return; }
+    if (Date.now() - delArm > 2500) { delArm = Date.now(); $('btnDel').classList.add('confirm'); stat('再点一次确认删除「' + p.name + '」'); setTimeout(() => $('btnDel').classList.remove('confirm'), 2500); return; }
+    delArm = 0; $('btnDel').classList.remove('confirm');
+    const r = await window.orange.glow('preset-delete', { id });
+    if (!r.ok) { stat(r.error || '删除失败', 'err'); return; }
+    fillPresets(r.presets, ''); stat('已删除「' + p.name + '」', 'ok');
+  });
+  $('btnFolder').addEventListener('click', () => window.orange.glow('open-folder'));
+
+  syncUI();
+  loadPresets('');
+  window.__glowState = st;   // 机测探针
+  window.__glowRender = render;
+  window.__glowFlash = flashRing;
+  window.__glowSetParams = (p) => { st.p = Object.assign({}, GE.DEFAULTS, p || {}); syncUI(); schedule(); };   // 机测/热重载回填参数
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

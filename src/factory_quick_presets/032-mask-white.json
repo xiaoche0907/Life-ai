@@ -1,0 +1,26 @@
+{
+  "id": "032-mask-white",
+  "label": "白蒙版",
+  "group": "图层",
+  "icon": "qp-mask-white",
+  "desc": "给当前层加\"显示全部\"蒙版。",
+  "params": {},
+  "names": [],
+  "steps": [
+    {
+      "_obj": "make",
+      "new": {
+        "_class": "channel"
+      },
+      "at": {
+        "_ref": "channel",
+        "_enum": "channel",
+        "_value": "mask"
+      },
+      "using": {
+        "_enum": "userMaskEnabled",
+        "_value": "revealAll"
+      }
+    }
+  ]
+}

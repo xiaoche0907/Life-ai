@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<style>
+  /* 看图层（0913）：整屏窗口。底=屏幕快照多级缩放模糊+压暗（画进 canvas，零 CSS filter——透明窗铁律1）；
+     中=当前图（两张 img 交替淡入淡出）；角=计数胶囊。点图=贴回，点空白/右键=关闭，滚轮=切图。 */
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; cursor: default; }
+  /* 主题色：本页不载 theme.css（不需要玻璃底），只要这一个色，由主进程随数据下发覆写；dim 由它派生 */
+  :root { --vw-accent: #19b5bc; --vw-accent-dim: color-mix(in srgb, var(--vw-accent) 45%, transparent); }
+  #bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 180ms ease-out; }
+  body.on #bg { opacity: 1; }
+  body.dimonly #bg { background: rgba(0, 0, 0, 0.62); }
+  #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .pic {
+    position: absolute; max-width: 86vw; max-height: 86vh;
+    border-radius: 10px; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+    opacity: 0; transition: opacity 120ms ease-out, transform 120ms ease-out;
+    cursor: pointer; background: rgba(0, 0, 0, 0.4);
+  }
+  .pic.show { opacity: 1; }
+  .pic.show.placed { opacity: 0.45; }
+  body.busy .pic { cursor: progress; }
+  /* 贴回反馈（0913用户要求）：成功=图片边框跑一圈主题色光环（两轮 840ms）后才变暗；
+     进行中=边框慢呼吸，让"点了正在办"看得见。用 box-shadow 沿 border-radius 走，不用 filter（透明窗铁律1）。 */
+  .pic.waiting { animation: picWait 900ms ease-in-out infinite; }
+  .pic.lit { animation: picLit 520ms ease-out 1; }
+  @keyframes picWait {
+    0%   { box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 2px var(--vw-accent-dim), 0 0 10px 2px var(--vw-accent-dim); }
+    50%  { box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 2px var(--vw-accent), 0 0 22px 6px var(--vw-accent-dim); }
+    100% { box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 2px var(--vw-accent-dim), 0 0 10px 2px var(--vw-accent-dim); }
+  }
+  /* 闪一次、给足亮度：白色内边压住图片边缘 → 主题色实边 → 大范围外扩光晕，峰值停在 30% 让"亮"看得清 */
+  @keyframes picLit {
+    0%   { box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 0 rgba(255,255,255,0.9), 0 0 0 3px var(--vw-accent), 0 0 12px 4px var(--vw-accent); }
+    30%  { box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 3px rgba(255,255,255,0.95), 0 0 0 8px var(--vw-accent), 0 0 90px 30px var(--vw-accent); }
+    60%  { box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 2px rgba(255,255,255,0.5), 0 0 0 6px var(--vw-accent), 0 0 70px 22px var(--vw-accent-dim); }
+    100% { box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(255,255,255,0); }
+  }
+  .pill {
+    position: absolute; padding: 6px 12px; border-radius: 999px;
+    background: rgba(20, 20, 24, 0.72); color: #fff; font-size: 13px; letter-spacing: 0.5px;
+    border: 1px solid rgba(255, 255, 255, 0.14); pointer-events: none;
+    opacity: 0; transition: opacity 180ms ease-out;
+  }
+  body.on .pill { opacity: 1; }
+  #cnt { top: 22px; right: 26px; }
+  #tip { bottom: 26px; left: 50%; transform: translateX(-50%); white-space: nowrap; max-width: 80vw; overflow: hidden; text-overflow: ellipsis; }
+  #tip.ok { color: #7CFF9B; }
+  #tip.err { color: #ff8a80; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="stage">
+  <img class="pic" id="picA" draggable="false" />
+  <img class="pic" id="picB" draggable="false" />
+</div>
+<div class="pill" id="cnt">– / –</div>
+<div class="pill" id="tip"></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const bg = $('bg'), pics = [$('picA'), $('picB')];
+  let items = [], index = -1, front = 0, hasSnap = false, busy = false, tipTimer = null, wheelAt = 0, snapMean = 0;
+  const cache = new Map();   // url -> Image（已解码），最多留 6 张
+  const log = (m) => { try { window.orange.glassLog('[viewer] ' + m); } catch (e) {} };
+
+  // ---------- 底图：快照 → 1/4 → 1/16 → 回 1/4 → 铺满（多级缩放=近似高斯模糊，纯位图零 filter） ----------
+  function paintBg(dataUrl, dispW, dispH) {
+    const W = Math.max(1, Math.round(innerWidth || dispW)), H = Math.max(1, Math.round(innerHeight || dispH));
+    bg.width = W; bg.height = H;
+    const g = bg.getContext('2d');
+    document.body.classList.toggle('dimonly', !dataUrl);
+    hasSnap = false;
+    if (!dataUrl) { g.clearRect(0, 0, W, H); document.body.classList.add('on'); return; }
+    const im = new Image();
+    im.onload = () => {
+      const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+      const w1 = im.naturalWidth, h1 = im.naturalHeight;
+      const c4 = mk(Math.max(1, w1 >> 2), Math.max(1, h1 >> 2));
+      const c16 = mk(Math.max(1, w1 >> 4), Math.max(1, h1 >> 4));
+      const x4 = c4.getContext('2d'), x16 = c16.getContext('2d');
+      x4.imageSmoothingEnabled = true; x16.imageSmoothingEnabled = true;
+      x4.drawImage(im, 0, 0, c4.width, c4.height);
+      x16.drawImage(c4, 0, 0, c16.width, c16.height);
+      x4.clearRect(0, 0, c4.width, c4.height);
+      x4.drawImage(c16, 0, 0, c4.width, c4.height);
+      x16.clearRect(0, 0, c16.width, c16.height);
+      x16.drawImage(c4, 0, 0, c16.width, c16.height);   // 第二轮：更柔
+      // 自检：底图平均亮度（压暗前）——全黑=快照拍坏了（alpha/预乘口径错），smoke 断言 >1
+      try { const d = x16.getImageData(0, 0, c16.width, c16.height).data; let s = 0; for (let p = 0; p < d.length; p += 4) s += d[p] + d[p + 1] + d[p + 2]; snapMean = s / (d.length / 4) / 3; } catch (e) { snapMean = -1; }
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.clearRect(0, 0, W, H);
+      g.drawImage(c16, 0, 0, W, H);
+      g.fillStyle = 'rgba(0,0,0,0.58)';
+      g.fillRect(0, 0, W, H);
+      hasSnap = true;
+      document.body.classList.add('on');
+    };
+    im.onerror = () => { document.body.classList.add('dimonly', 'on'); };
+    im.src = dataUrl;
+  }
+
+  // ---------- 图片：中号预览优先（滚轮流畅），缺失退回原图；邻图预解码 ----------
+  const srcOf = (it) => (it && (it.mid || it.file)) || '';
+  function preload(i) {
+    const it = items[i]; if (!it) return null;
+    const url = srcOf(it); if (!url) return null;
+    let im = cache.get(url);
+    if (!im) {
+      im = new Image(); im.src = url;
+      try { im.decode().catch(() => {}); } catch (e) {}
+      cache.set(url, im);
+      if (cache.size > 6) { const k = cache.keys().next().value; cache.delete(k); }
+    }
+    return im;
+  }
+  function show(i, instant) {
+    if (i < 0 || i >= items.length) return;
+    index = i;
+    const it = items[i];
+    const back = pics[front], fr = pics[1 - front];
+    front = 1 - front;
+    fr.src = srcOf(it);
+    fr.classList.toggle('placed', it.status === 'placed');
+    fr.title = it.status === 'placed' ? '已贴入 · 点击再次贴回原选区' : '点击贴入原选区';
+    const go = () => { fr.classList.add('show'); back.classList.remove('show'); };
+    if (instant || fr.complete) go(); else { fr.onload = go; setTimeout(go, 200); }
+    $('cnt').textContent = (i + 1) + ' / ' + items.length;
+    preload(i + 1); preload(i - 1);
+  }
+  function step(d) {
+    const n = index + d;
+    if (n < 0 || n >= items.length) {   // 到头：轻微顶一下
+      const fr = pics[front];
+      fr.style.transform = 'translateY(' + (d > 0 ? 6 : -6) + 'px)';
+      setTimeout(() => { fr.style.transform = ''; }, 120);
+      return;
+    }
+    show(n);
+  }
+  function tip(text, cls, ms) {
+    const t = $('tip');
+    t.textContent = text; t.className = 'pill' + (cls ? ' ' + cls : '');
+    clearTimeout(tipTimer);
+    if (ms) tipTimer = setTimeout(() => { t.textContent = ''; }, ms);
+  }
+  // 贴回成功的边框光环：重放要先摘类再强制回流，否则同一张图第二次贴回不会再亮（动画不重启）
+  function lit(el) {
+    el.classList.remove('lit');
+    void el.offsetWidth;
+    el.classList.add('lit');
+  }
+
+  // ---------- 输入 ----------
+  document.addEventListener('wheel', (e) => {
+    e.preventDefault();   // 连 Ctrl+滚轮的 Chromium 缩放一起拦掉
+    const now = Date.now();
+    if (now - wheelAt < 150) return;   // 高精度滚轮一次喷十几个事件（坑98）
+    wheelAt = now;
+    step(e.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+  document.addEventListener('contextmenu', (e) => { e.preventDefault(); close('右键'); });
+  document.addEventListener('mousedown', (e) => {
+    if (e.button === 2) return;   // 右键交给 contextmenu 关
+    if (e.button !== 0) return;
+    if (e.target.classList && e.target.classList.contains('pic')) { place(); return; }
+    close('点空白');
+  });
+  let closeTimer = null;
+  function close(why) {
+    if (closeTimer) return;
+    document.body.classList.remove('on');
+    pics.forEach((p) => p.classList.remove('show'));
+    log('关闭 · ' + why);
+    closeTimer = setTimeout(() => { closeTimer = null; window.orange.viewerClose(); }, 170);   // 留一拍淡出再藏窗
+  }
+  async function place() {
+    const it = items[index];
+    if (!it || busy) return;
+    const el = pics[front];
+    busy = true; document.body.classList.add('busy');
+    el.classList.remove('lit', 'placed');
+    el.classList.add('waiting');   // 贴回中：边框慢呼吸
+    tip('贴回中…');
+    log('点图贴回 ' + it.id);
+    window.orange.taskAction(it.id, 'placed');
+    let r = null;
+    try { r = await window.orange.placeInPS(it.path, { docId: it.docId, selection: it.selection, antiMode: it.antiMode || 0 }); }
+    catch (e) { r = { ok: false, error: e && e.message }; }
+    busy = false; document.body.classList.remove('busy');
+    el.classList.remove('waiting');
+    if (r && r.ok) {
+      it.status = 'placed';
+      lit(el);                                     // 成功：边框光环两轮
+      tip('已贴回 PS 原选区', 'ok', 1600);
+      // 变暗（已贴标记）等光环放完再加，否则 0.45 透明度把光环一起压淡
+      setTimeout(() => { if (items[index] && items[index].id === it.id) el.classList.add('placed'); }, 540);
+    } else { window.orange.taskAction(it.id, 'restore'); tip('贴回失败：' + ((r && r.error) || '未知错误'), 'err', 2600); }
+  }
+
+  // ---------- 数据 ----------
+  window.orange.onViewerData((d) => {
+    clearTimeout(closeTimer); closeTimer = null;
+    if (d.accent) { try { document.documentElement.style.setProperty('--vw-accent', d.accent); } catch (e) {} }   // 光环跟主题色
+    items = d.items || [];
+    cache.clear();
+    pics.forEach((p) => { p.classList.remove('show', 'placed'); p.removeAttribute('src'); });
+    $('tip').textContent = '';
+    document.body.classList.remove('on');
+    paintBg(d.snap, d.disp && d.disp.w, d.disp && d.disp.h);   // 底图解码完才加 on（淡入），无快照时立即加
+    show(Math.max(0, Math.min(items.length - 1, d.index | 0)), true);
+  });
+  // 任务状态更新（别处贴回/新图完成）：按 id 对齐，当前张保持不动
+  window.orange.onViewerItems((d) => {
+    const cur = items[index] && items[index].id;
+    items = d.items || [];
+    let i = items.findIndex((x) => x.id === cur);
+    if (i < 0) i = Math.max(0, Math.min(items.length - 1, index));
+    if (!items.length) { close('列表空了'); return; }
+    index = i;
+    const it = items[i];
+    pics[front].classList.toggle('placed', it.status === 'placed');
+    $('cnt').textContent = (i + 1) + ' / ' + items.length;
+  });
+  window.__viewerReady = true;
+  window.__viewerState = () => ({ index, count: items.length, hasSnap, snapMean: Math.round(snapMean * 10) / 10, curId: items[index] && items[index].id, on: document.body.classList.contains('on'), dimonly: document.body.classList.contains('dimonly'), front: pics[front].src });
+</script>
+</body>
+</html>

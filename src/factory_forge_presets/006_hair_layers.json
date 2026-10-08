@@ -1,0 +1,23 @@
+{
+  "id": "ocg_hair_layers",
+  "name": "1橙毛发层次",
+  "displayName": "橙毛发层次",
+  "category": "hair",
+  "data": {
+    "model": "xxmix9realistic_v40.safetensors",
+    "lora": "橙毛发层次",
+    "loraWeight": "0.6",
+    "redrawAmount": "0.38",
+    "imageCount": "3",
+    "resolution": "1536",
+    "positivePrompt": "HD hair texture, visible strands, deep saturated hair color, (strong light and shadow on hair:0.85), deep shadows between hair strands, soft specular highlights, smooth shading transitions, 8k RAW, best quality, ultra high res, sharp focus, (photorealistic:1.4), masterpiece,",
+    "negativePrompt": "(stray hairs:1.2), (messy flyaway hair:1.2), (harsh light edges:1.3), hard shadow banding, paintings, sketches, (worst quality:2), (low quality:2), (normal quality:2), lowres, ((monochrome)), ((grayscale)), (desaturated colors:1.3), washed out, flat lighting, anime, skin spots, acnes, skin blemishes, watermark, username, signature, text",
+    "selectedControlNetModule": "canny",
+    "controlNetModel": "control_v11p_sd15_canny [d14c016b]",
+    "controlNetWeight": "1.0",
+    "step": "22",
+    "selectedName": "DPM++ 2M",
+    "selectedScheduler": "karras"
+  },
+  "_isFactory": true
+}

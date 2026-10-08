@@ -1,0 +1,23 @@
+{
+  "id": "ocg_g3_full",
+  "name": "0橙CG修脸G3全",
+  "displayName": "橙CG修脸-G3·全",
+  "category": "head",
+  "data": {
+    "model": "XXMix_9realisticSDXL_v1.safetensors",
+    "lora": "orangefaceCG_G2",
+    "loraWeight": "0.9",
+    "redrawAmount": "0.55",
+    "imageCount": "3",
+    "resolution": "1024",
+    "positivePrompt": "fakecg, masterpiece, best quality, ultra-detailed, 1girl, solo, portrait, delicate features, delicate makeup, detailed eyes, long eyelashes, glossy lips,",
+    "negativePrompt": "paintings, sketches, (worst quality:2), (low quality:2), lowres, monochrome, grayscale, skin spots, acnes, skin blemishes, age spot, overexposed, washed out colors, watermark, username, signature, text",
+    "selectedControlNetModule": "tile_resample",
+    "controlNetModel": "controlnet-union-sdxl-promax",
+    "controlNetWeight": "0.55",
+    "step": "26",
+    "selectedName": "DPM++ 2M",
+    "selectedScheduler": "karras"
+  },
+  "_isFactory": true
+}

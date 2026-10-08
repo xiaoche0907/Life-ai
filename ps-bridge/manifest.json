@@ -1,0 +1,45 @@
+{
+  "id": "com.orange.bridge",
+  "name": "橙子桥接",
+  "version": "1.0.58",
+  "main": "index.html",
+  "manifestVersion": 6,
+  "host": {
+    "app": "PS",
+    "minVersion": "23.3.0",
+    "data": {
+      "loadEvent": "startup"
+    }
+  },
+  "requiredPermissions": {
+    "network": {
+      "domains": "all"
+    },
+    "localFileSystem": "fullAccess"
+  },
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "orangeBridgePanel",
+      "label": {
+        "default": "橙子桥接"
+      },
+      "minimumSize": {
+        "width": 200,
+        "height": 100
+      },
+      "maximumSize": {
+        "width": 400,
+        "height": 300
+      },
+      "preferredDockedSize": {
+        "width": 220,
+        "height": 120
+      },
+      "preferredFloatingSize": {
+        "width": 220,
+        "height": 120
+      }
+    }
+  ]
+}

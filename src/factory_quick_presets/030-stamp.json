@@ -1,0 +1,49 @@
+{
+  "id": "030-stamp",
+  "label": "盖印可见层",
+  "group": "图层",
+  "icon": "qp-stamp",
+  "desc": "所有可见层合并成一个新层放最顶（原层不动），自动编号。",
+  "params": {},
+  "names": [
+    "盖印"
+  ],
+  "steps": [
+    {
+      "_obj": "mergeVisible",
+      "duplicate": true
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "name": "盖印·{{n}}"
+      }
+    }
+  ],
+  "after": [
+    {
+      "_obj": "move",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "front"
+      },
+      "_note": "移到最顶"
+    }
+  ]
+}

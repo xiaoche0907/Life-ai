@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn {
+    -webkit-app-region: no-drag;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+
+  #body { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; }
+  #prompt {
+    flex: 1; width: 100%; resize: none; min-height: 60px;
+    border: 1px solid var(--inset-border);
+    border-radius: 14px;
+    background: var(--inset-bg);
+    color: var(--text); font-size: 13px; line-height: 1.55;
+    padding: 10px 12px; outline: none;
+    user-select: text;
+  }
+  #prompt:focus { border-color: var(--accent-border); }
+  #foot { display: flex; align-items: center; gap: 8px; }
+  #count { font-size: 10.5px; color: var(--text-dim); }
+  .sp { flex: 1; }
+  /* 转JSON/清空图标化（0904用户裁定：按钮一律线描logo不用文字/emoji） */
+  #btnClear {
+    width: 26px; height: 26px; padding: 0; flex: none;
+    border: none; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text);
+    cursor: pointer;
+  }
+  #btnClear:hover { background: var(--btn-bg-hover); color: var(--err); }
+  #btnClear svg { width: 13px; height: 13px; }
+  #btnJson {
+    width: 26px; height: 26px; padding: 0; flex: none;
+    border: none; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent); color: #fff;
+    cursor: pointer;
+    transition: filter 0.15s, opacity 0.15s;
+  }
+  #btnJson svg { width: 14px; height: 14px; }
+  #btnJson:hover { filter: brightness(1.15); }
+  #btnJson.busy { opacity: 0.55; cursor: default; }
+  #btnJson.busy svg { animation: jsonSpin 0.9s linear infinite; }
+  @keyframes jsonSpin { to { transform: rotate(360deg); } }
+  #btnSwap {
+    display: none;
+    height: 26px; padding: 0 12px;
+    border: 1px solid var(--accent-border); border-radius: 9px;
+    background: var(--accent-soft); color: var(--accent-text);
+    font-size: 11px; cursor: pointer;
+  }
+  #btnSwap.on { display: inline-block; }
+  #btnSwap:hover { background: var(--accent); color: #fff; }
+  #jstat { font-size: 10px; color: var(--text-dim); }
+  #jstat.err { color: #ff9a9a; }
+  #jstat.ok { color: var(--accent-text); }
+
+  /* ---------- 翻牌：正面=提示词编辑，背面=滑块/填空控件（提示词带正则控件时可翻） ----------
+     ⚠不用3D翻转：透明窗口上常驻preserve-3d双合成层会持续闪烁+吃满GPU（实测卡死电脑），
+     改用瞬时2D压扁-弹开动效，动完隐藏面display:none，稳态就是普通单层页面 */
+  #flip { flex: 1; min-height: 0; position: relative; }
+  .face {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .face.hidden { display: none; }
+  .face.flipin { animation: flipin 0.22s ease-out; }
+  @keyframes flipin {
+    0% { transform: scaleX(0.06); opacity: 0.4; }
+    100% { transform: scaleX(1); opacity: 1; }
+  }
+  #pcTitle { font-size: 10.5px; color: var(--text-dim); letter-spacing: 1px; padding: 0 2px; }
+  #pcTitle .cnt { color: var(--accent-text); }
+  #pcList { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: min-content; gap: 6px; }
+  #pcList::-webkit-scrollbar { width: 6px; }
+  #pcList::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+  /* 翻转钮：检测到控件才现身；在背面时点亮主题色 */
+  #btnFlip { display: none; }
+  #btnFlip.on { display: flex; }
+  #btnFlip svg { width: 14px; height: 14px; }
+  #btnFlip.back { background: var(--accent-soft); color: var(--accent-text); }
+  /* 控件面右下：清除键（0906用户裁定：正则提示词翻卡后可一键清掉并翻回正面） */
+  #pcFoot { display: flex; align-items: center; flex-shrink: 0; }
+  #pcClear {
+    width: 26px; height: 26px; padding: 0; flex: none;
+    border: none; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text);
+    cursor: pointer;
+  }
+  #pcClear:hover { background: var(--btn-bg-hover); color: var(--err); }
+  #pcClear svg { width: 13px; height: 13px; }
+  #btnSave svg { width: 13px; height: 13px; }
+  #btnSave.back { background: var(--accent-soft); color: var(--accent-text); }
+
+  /* ---------- 保存面（第三面）：命名 + 点分组logo归类 + 确定入库（0906用户裁定：保存=卡牌翻面） ----------
+     紧凑版（0906二审）：无标题无预览，分组格auto-fit自适应铺满剩余空间——卡拉多大格子跟着多大，全部按钮永远可见不滚动 */
+  #svName {
+    width: 100%; height: 30px; flex: none;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 12px; padding: 0 10px; outline: none; user-select: text;
+  }
+  #svName:focus { border-color: var(--accent-border); }
+  #svGroups {
+    flex: 1; min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+    grid-auto-rows: 1fr;
+    gap: 6px;
+  }
+  .gpick {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 4px 2px;
+    border-radius: 10px; background: var(--btn-bg);
+    border: 1px solid transparent; cursor: pointer; min-width: 0; min-height: 0;
+  }
+  .gpick:hover { background: var(--btn-bg-hover); }
+  .gpick.cur { background: var(--accent-soft); border-color: var(--accent-border); }
+  /* logo随格子长大：百分比宽+等比高，卡拉大按钮跟着大 */
+  .gpick svg { width: 42%; max-width: 34px; min-width: 15px; height: auto; aspect-ratio: 1/1; color: var(--text); flex-shrink: 0; }
+  .gpick.cur svg, .gpick.cur .gplab { color: var(--accent-text); }
+  .gplab { font-size: 8.5px; color: var(--text-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #svBtns { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-shrink: 0; }
+  #svHint { font-size: 10px; color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .svbtn {
+    height: 28px; padding: 0 14px;
+    border: none; border-radius: 10px;
+    background: var(--btn-bg); color: var(--text);
+    font-size: 11.5px; cursor: pointer; flex: none;
+  }
+  .svbtn:hover { background: var(--btn-bg-hover); }
+  .svbtn.accent { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
+  .svbtn.accent:hover { background: var(--accent); color: #fff; }
+</style>
+</head>
+<body data-arm-id="prompt-box">
+<script src="icons.js"></script>
+<script src="param-controls.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>提示词</span>
+    <div class="sp"></div>
+    <div class="hbtn" id="btnCopy" data-pass tabindex="-1" title="一键复制当前提示词"></div>
+    <div class="hbtn" id="btnSave" data-pass tabindex="-1" title="保存提示词：翻面命名+选分组，存进提示词库"></div>
+    <div class="hbtn" id="btnFlip" data-pass title="翻牌：提示词 ⇄ 滑块控件"></div>
+  </div>
+  <div id="body">
+    <div id="flip">
+        <div class="face" id="faceF">
+          <textarea id="prompt" placeholder="描述你想生成的画面…（自动保存，生成时AI生图卡片会读取这里的内容）"></textarea>
+          <div id="foot">
+            <span id="count">0 字</span>
+            <span id="jstat"></span>
+            <span class="sp"></span>
+            <button id="btnSwap" tabindex="-1" title="在转换前的原文和转换后的JSON之间切换（两边都可编辑，各自记住）"></button>
+            <button id="btnJson" tabindex="-1" title="转JSON：把上面的自然语言需求转成JSON格式提示词（用AI对话配置的模型+内置语料工法）"></button>
+            <button id="btnClear" tabindex="-1" title="清空提示词"></button>
+          </div>
+        </div>
+        <div class="face hidden" id="faceB">
+          <div id="pcTitle">控件 <span class="cnt" id="pcCnt"></span> · 右上⇄翻回提示词</div>
+          <div id="pcList"></div>
+          <div id="pcFoot">
+            <span class="sp"></span>
+            <button id="pcClear" data-pass tabindex="-1" title="清除提示词并翻回正面"></button>
+          </div>
+        </div>
+        <div class="face hidden" id="faceS">
+          <input id="svName" data-nodrag placeholder="给它起个名字（留空=取内容前12字）" />
+          <div id="svGroups" data-pass></div>
+          <div id="svBtns">
+            <span id="svHint">保存提示词 · 点logo选分组</span>
+            <button class="svbtn" id="svCancel" data-pass tabindex="-1">取消</button>
+            <button class="svbtn accent" id="svOk" data-pass tabindex="-1">保存</button>
+          </div>
+        </div>
+    </div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS['prompt-box'];
+
+  const ta = $('prompt');
+  function updateCount() { $('count').textContent = ta.value.length + ' 字'; }
+
+  // ---------- 一键复制提示词（复制成功按钮短暂变√）----------
+  const btnCopy = $('btnCopy');
+  const I_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const I_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><polyline points="20 6 9 17 4 12"/></svg>';
+  btnCopy.innerHTML = I_COPY;
+  let copyBackTimer = null;
+  btnCopy.addEventListener('click', async () => {
+    const text = ta.value;
+    if (!text) { jmsg('提示词是空的', 'err'); setTimeout(() => jmsg(''), 1500); return; }
+    try { await navigator.clipboard.writeText(text); } catch (e) {
+      // 剪贴板API偶发被焦点策略拒绝：退回execCommand老路
+      try { ta.select(); document.execCommand('copy'); window.getSelection().removeAllRanges(); } catch (_) {}
+    }
+    btnCopy.innerHTML = I_CHECK;
+    clearTimeout(copyBackTimer);
+    copyBackTimer = setTimeout(() => { btnCopy.innerHTML = I_COPY; }, 1200);
+  });
+
+  // ---------- 翻牌控件面：@param滑块/【填空】在本卡背面（Beta反馈P1第6条+翻牌交互） ----------
+  // 与独立滑块卡写的是同一份config.gen.ctl（两卡同开时后写者胜）
+  const pcList = $('pcList'), pcCnt = $('pcCnt');
+  const flip = $('flip'), btnFlip = $('btnFlip');
+  btnFlip.innerHTML = window.ORANGE_ICONS.params;
+  let pcCtl = { params: {}, blanks: {} };
+  let pcSig = null;
+  let pcCount = 0;
+  let pcSaveTimer = null;
+  function pcSave() {
+    clearTimeout(pcSaveTimer);
+    pcSaveTimer = setTimeout(() => window.orange.setConfig({ gen: { ctl: pcCtl } }), 300);
+  }
+  let flipped = false;
+  function setFlipped(on) {
+    on = !!on && pcCount > 0;
+    if (on === flipped && !svOpen) return;
+    flipped = on;
+    btnFlip.classList.toggle('back', on);
+    if (svOpen) { svOpen = false; btnSaveEl.classList.remove('back'); }   // 控件翻面顶掉保存面
+    const showEl = on ? $('faceB') : $('faceF');
+    showFace(showEl);
+    if (on) ta.blur();   // 翻到背面时正面输入框不能还握着焦点（不然打字打进看不见的框）
+  }
+  btnFlip.addEventListener('click', () => { if (!flipped) closeSaveFace(); setFlipped(!flipped); });
+
+  // ---------- 保存面：命名+分组入库（复用压扁-弹开翻面；分组logo与提示词库同一套PLIB_ICONS） ----------
+  const btnSaveEl = $('btnSave');
+  btnSaveEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
+  const PI = window.PLIB_ICONS || {};
+  let svOpen = false, svGid = null, svGroupsCache = [];
+  function faceEl() { return svOpen ? $('faceS') : (flipped ? $('faceB') : $('faceF')); }
+  function showFace(el) {
+    for (const f of [$('faceF'), $('faceB'), $('faceS')]) if (f !== el) f.classList.add('hidden');
+    el.classList.remove('hidden');
+    el.classList.remove('flipin');
+    void el.offsetWidth;
+    el.classList.add('flipin');
+  }
+  function groupIconOf(grp) {
+    if (grp.icon && PI[grp.icon]) return PI[grp.icon];
+    if (grp.id === 'factory') return window.ORANGE_ICONS.orange;
+    return PI.tag || '';
+  }
+  function renderSvGroups() {
+    const box = $('svGroups');
+    box.innerHTML = '';
+    svGroupsCache.forEach((grp) => {
+      const el = document.createElement('div');
+      el.className = 'gpick' + (svGid === grp.id ? ' cur' : '');
+      el.setAttribute('data-pass', '');
+      el.setAttribute('data-nodrag', '');
+      el.innerHTML = groupIconOf(grp) + '<span class="gplab"></span>';
+      el.querySelector('.gplab').textContent = grp.name || grp.id;
+      el.title = grp.name || grp.id;
+      el.addEventListener('click', () => { svGid = grp.id; renderSvGroups(); });
+      box.appendChild(el);
+    });
+  }
+  async function openSaveFace() {
+    const text = ta.value.trim();
+    if (!text) { jmsg('提示词是空的，没东西可存', 'err'); setTimeout(() => jmsg(''), 2000); return; }
+    const lib = await window.orange.plibGet();
+    svGroupsCache = (lib.groups || []).filter((g) => g.id !== 'forge');   // F组=Forge预设专属，普通词条不进
+    if (!svGroupsCache.length) svGroupsCache = [{ id: 'other', name: '其他', icon: 'other' }];
+    if (!svGid || !svGroupsCache.find((g) => g.id === svGid)) svGid = (svGroupsCache.find((g) => g.id === 'other') || svGroupsCache[0]).id;
+    $('svName').value = '';
+    svOpen = true;
+    btnSaveEl.classList.add('back');
+    renderSvGroups();
+    showFace($('faceS'));
+    ta.blur();
+    $('svName').focus();
+  }
+  function closeSaveFace() {
+    if (!svOpen) return;
+    svOpen = false;
+    btnSaveEl.classList.remove('back');
+    showFace(flipped && pcCount > 0 ? $('faceB') : $('faceF'));
+  }
+  btnSaveEl.addEventListener('click', () => { svOpen ? closeSaveFace() : openSaveFace(); });
+  $('svCancel').addEventListener('click', closeSaveFace);
+  $('svName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('svOk').click(); });
+  $('svOk').addEventListener('click', async () => {
+    const text = ta.value.trim();
+    if (!text) { closeSaveFace(); return; }
+    // 取最新库再写（plibSet=整库替换，拿旧快照写会吞掉别的卡刚保存的词条）
+    const lib = await window.orange.plibGet();
+    const gid = lib.groups.find((g) => g.id === svGid) ? svGid : 'other';
+    lib.prompts.push({
+      id: 'p' + Date.now(),
+      name: $('svName').value.trim() || text.slice(0, 12),
+      text, group: gid, fav: false, ts: Date.now(),
+    });
+    await window.orange.plibSet(lib);
+    const gname = (lib.groups.find((g) => g.id === gid) || {}).name || gid;
+    closeSaveFace();
+    jmsg('✓ 已存入「' + gname + '」', 'ok');
+    setTimeout(() => jmsg(''), 3000);
+    try {
+      const lg = document.querySelector('.lg');
+      let ring = lg.querySelector(':scope > .glowring:not(.loop)');
+      if (!ring) { ring = document.createElement('div'); ring.className = 'glowring'; lg.appendChild(ring); }
+      ring.classList.remove('once'); void ring.offsetWidth; ring.classList.add('once');
+    } catch (_) {}
+  });
+  // autoFlip=true：外部填入带控件的提示词时自动翻到控件面（正在打字时不抢）
+  function renderControls(text, autoFlip) {
+    const sig = window.ORANGE_PARAM_CTL.signature(text);
+    if (sig !== pcSig) {
+      pcSig = sig;
+      pcCount = window.ORANGE_PARAM_CTL.render(pcList, text, pcCtl, pcSave).count;
+      btnFlip.classList.toggle('on', pcCount > 0);
+      pcCnt.textContent = pcCount ? pcCount + '个' : '';
+      if (!pcCount) setFlipped(false);
+    }
+    if (autoFlip && pcCount > 0 && !(document.hasFocus() && document.activeElement === ta)) setFlipped(true);
+  }
+
+  // 输入防抖自动保存到 config.gen.prompt（AI生图卡生成时实时读取）
+  let saveTimer = null;
+  ta.addEventListener('input', () => {
+    updateCount();
+    renderControls(ta.value);   // 控件集合变了才重建（签名跳过）
+    if (pair) pair[pmode] = ta.value;   // 编辑同步进当前显示的那个版本
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      window.orange.setConfig({ gen: { prompt: ta.value } });
+      if (pair) savePair();
+    }, 300);
+  });
+
+  $('btnClear').addEventListener('click', () => {
+    ta.value = '';
+    updateCount();
+    renderControls('');
+    window.orange.setConfig({ gen: { prompt: '' } });
+    clearPair();
+  });
+
+  // 控件面右下的清除键：清提示词+翻回正面（正则/滑块预设用完一键收场，0906用户裁定）
+  $('pcClear').innerHTML = window.ORANGE_ICONS.trash;
+  $('pcClear').addEventListener('click', () => {
+    ta.value = '';
+    updateCount();
+    renderControls('');   // 控件清零→setFlipped(false)在renderControls里自动翻回正面
+    window.orange.setConfig({ gen: { prompt: '' } });
+    clearPair();
+  });
+
+  // ---------- 转JSON：框里的自然语言→语料工法JSON提示词→原地替换（走AI对话配置的渠道模型） ----------
+  // 转换后保留"原文↔JSON"双版本，⇄按钮快速切换，两边各自可编辑各自记住
+  const btnJson = $('btnJson'), btnSwap = $('btnSwap'), jstat = $('jstat');
+  // 按钮图标化（0904用户裁定）：转JSON=花括号，转换中=旋转弧；清空=垃圾桶
+  const I_JSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>';
+  const I_SPIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg>';
+  btnJson.innerHTML = I_JSON;
+  $('btnClear').innerHTML = window.ORANGE_ICONS.trash;
+  let pair = null;      // {src:原文, json:成品}
+  let pmode = 'json';   // 当前显示的是哪一边
+  function jmsg(text, cls) {
+    jstat.textContent = text || '';
+    jstat.className = cls || '';
+  }
+  function syncSwapBtn() {
+    btnSwap.classList.toggle('on', !!pair);
+    if (pair) btnSwap.textContent = pmode === 'json' ? '⇄ 原文' : '⇄ JSON';
+  }
+  function savePair() {
+    window.orange.setConfig({ gen: { jsonPair: pair ? { src: pair.src, json: pair.json, mode: pmode } : null } });
+  }
+  function clearPair() {
+    pair = null;
+    syncSwapBtn();
+    savePair();
+  }
+  btnSwap.addEventListener('click', () => {
+    try { window.orange.glassLog('[jswap] 点击 pair=' + !!pair + ' pmode=' + pmode); } catch (_) {}
+    if (!pair) return;
+    pmode = pmode === 'json' ? 'src' : 'json';
+    ta.value = pair[pmode];
+    updateCount();
+    renderControls(ta.value);
+    window.orange.setConfig({ gen: { prompt: ta.value } });   // 显示哪边，生成就用哪边
+    syncSwapBtn();
+    savePair();
+  });
+  btnJson.addEventListener('click', async () => {
+    if (btnJson.classList.contains('busy')) return;
+    const raw = ta.value.trim();
+    if (!raw) { jmsg('先写一句自然语言需求', 'err'); setTimeout(() => jmsg(''), 2500); return; }
+    btnJson.classList.add('busy');
+    btnJson.innerHTML = I_SPIN;
+    jmsg('按语料工法转换中，稍等…');
+    try {
+      const r = await window.orange.chatToJson(raw);
+      if (r.ok && r.prompt) {
+        pair = { src: raw, json: r.prompt };
+        pmode = 'json';
+        ta.value = r.prompt;
+        updateCount();
+        renderControls(r.prompt, true);   // 转出的JSON带控件→自动翻到控件面
+        window.orange.setConfig({ gen: { prompt: r.prompt } });
+        syncSwapBtn();
+        savePair();
+        jmsg('✓ 转换完成（' + r.prompt.length + '字）', 'ok');
+        setTimeout(() => jmsg(''), 4000);
+      } else {
+        jmsg('✗ ' + (r.error || '转换失败'), 'err');
+      }
+    } catch (e) {
+      jmsg('✗ ' + (e.message || String(e)), 'err');
+    } finally {
+      btnJson.classList.remove('busy');
+      btnJson.innerHTML = I_JSON;
+    }
+  });
+
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    ta.value = (cfg.gen && cfg.gen.prompt) || '';
+    updateCount();
+    // 内联控件：已调值从config恢复后首渲
+    pcCtl = (cfg.gen && cfg.gen.ctl) || { params: {}, blanks: {} };
+    if (!pcCtl.params) pcCtl.params = {};
+    if (!pcCtl.blanks) pcCtl.blanks = {};
+    renderControls(ta.value, true);   // 启动时提示词已带控件→直接亮控件面
+    // 恢复上次的原文↔JSON双版本
+    const jp = cfg.gen && cfg.gen.jsonPair;
+    if (jp && jp.src != null && jp.json != null) {
+      pair = { src: jp.src, json: jp.json };
+      pmode = (jp.mode === 'src') ? 'src' : 'json';
+      // 当前内容和记录的哪边都对不上=已被外部改写，双版本作废
+      if (ta.value !== pair.src && ta.value !== pair.json) pair = null;
+      syncSwapBtn();
+    }
+  })();
+
+  // 提示词库来源标记（0904机制）：库里点击的填入，带控件就优先翻到滑块/正则面
+  let libFillAt = 0;
+  if (window.orange.onPromptLibFill) window.orange.onPromptLibFill(() => { libFillAt = Date.now(); });
+
+  // 进度卡/提示词库/甄选"点击填入"等外部改动实时同步进来
+  // 注意：activeElement在窗口失焦后仍指向输入框，必须配合hasFocus判断，否则同步被永久跳过
+  if (window.orange.onGenVars) {
+    window.orange.onGenVars((g) => {
+      if (g && typeof g.prompt === 'string' && g.prompt !== ta.value
+          && !(document.hasFocus() && document.activeElement === ta)) {
+        ta.value = g.prompt;
+        updateCount();
+        // 提示词库点击（0904用户裁定）：带滑块/正则控件的预设优先翻控件面直接调参；
+        // 其他外部来源（进度卡/聊天贴回/甄选）维持坑49裁定停正面，看得见"到货"
+        const fromLib = Date.now() - libFillAt < 1500;
+        libFillAt = 0;
+        renderControls(g.prompt, fromLib);
+        if (!fromLib) setFlipped(false);
+        try {
+          const lg = document.querySelector('.lg');
+          let ring = lg.querySelector(':scope > .glowring:not(.loop)');
+          if (!ring) { ring = document.createElement('div'); ring.className = 'glowring'; lg.appendChild(ring); }
+          ring.classList.remove('once'); void ring.offsetWidth; ring.classList.add('once');
+        } catch (_) {}
+        // 外部填入（提示词库/聊天贴回等）：与双版本任一边都不同=换了内容，双版本作废
+        if (pair) {
+          if (g.prompt === pair.src) { pmode = 'src'; syncSwapBtn(); }
+          else if (g.prompt === pair.json) { pmode = 'json'; syncSwapBtn(); }
+          else clearPair();
+        }
+      }
+      // 独立滑块卡也在写ctl：不在本卡输入时跟随最新值（自己写入的回声无害——对象内容一致）
+      if (g && g.ctl && !(document.hasFocus() && pcList.contains(document.activeElement))) {
+        pcCtl = g.ctl;
+        if (!pcCtl.params) pcCtl.params = {};
+        if (!pcCtl.blanks) pcCtl.blanks = {};
+        pcSig = null;   // 强制重渲，控件值刷新为最新
+        renderControls(ta.value);
+      }
+    });
+  }
+
+  // 0919 进度卡/聊天等"点击填入提示词"专用强制信号：无视焦点状态、无视门禁，直接覆盖
+  // （用户主动点击=明确意图，优先级最高；修复"打开别的图时点进度卡提示词填不进去"）
+  if (window.orange.onPromptForceFill) {
+    window.orange.onPromptForceFill((txt) => {
+      if (typeof txt === 'string' && txt !== ta.value) {
+        ta.value = txt;
+        updateCount();
+        renderControls(txt, false);   // 不翻控件面，停正面看"到货"
+        setFlipped(false);
+        try {
+          const lg = document.querySelector('.lg');
+          let ring = lg.querySelector(':scope > .glowring:not(.loop)');
+          if (!ring) { ring = document.createElement('div'); ring.className = 'glowring'; lg.appendChild(ring); }
+          ring.classList.remove('once'); void ring.offsetWidth; ring.classList.add('once');
+        } catch (_) {}
+        if (pair) {
+          if (txt === pair.src) { pmode = 'src'; syncSwapBtn(); }
+          else if (txt === pair.json) { pmode = 'json'; syncSwapBtn(); }
+          else clearPair();
+        }
+        // 强制填入也要写回 config，保持账实一致（进度卡已写过一次，这里再写无害——对象内容相同）
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          window.orange.setConfig({ gen: { prompt: txt } });
+          if (pair) savePair();
+        }, 300);
+      }
+    });
+  }
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 24px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 16px 10px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #modelChip {
+    font-size: 10px; color: var(--text-dim);
+    padding: 2px 8px; border-radius: 8px;
+    background: var(--inset-bg); border: 1px solid var(--inset-border);
+    max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #head .sp { flex: 1; }
+  .hbtn {
+    -webkit-app-region: no-drag;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+  /* 清空按钮二段确认态 */
+  .hbtn.confirm {
+    width: auto; padding: 0 10px; border-radius: 13px;
+    background: rgba(255, 80, 80, 0.25);
+    color: #ff9a9a; font-size: 11px;
+  }
+
+  #body {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    padding: 0 14px 12px;
+    gap: 10px;
+  }
+
+  #messages {
+    flex: 1; min-height: 0;
+    position: relative;   /* 锚定滚动要用offsetTop */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 10px;
+    border-radius: 16px;
+    background: var(--inset-bg);
+    border: 1px solid var(--inset-border);
+  }
+  #messages::-webkit-scrollbar { width: 6px; }
+  #messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+  #messages::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
+
+  .msg { display: flex; gap: 8px; margin-bottom: 12px; }
+  .msg:last-child { margin-bottom: 0; }
+  /* 只有新消息做入场动画，历史加载不做（noanim），避免整屏重排卡顿 */
+  .msg.anim { animation: msgIn 0.18s ease-out; }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { flex-direction: row-reverse; }
+  .msg-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; flex-shrink: 0; margin-top: 2px;
+  }
+  .msg.user .msg-avatar { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #000)); }
+  .msg.assistant .msg-avatar { background: linear-gradient(135deg, #4a9eff, #2d7dd2); }
+
+  .msg-wrap { max-width: 78%; display: flex; flex-direction: column; }
+  .msg.user .msg-wrap { align-items: flex-end; }
+
+  .msg-content {
+    padding: 8px 12px; border-radius: 14px;
+    font-size: 12px; line-height: 1.6;   /* 0908 对齐控制台字号档 */
+    word-wrap: break-word; white-space: pre-wrap;
+    user-select: text; cursor: text;
+  }
+  .msg.user .msg-content {
+    background: color-mix(in srgb, var(--accent) 28%, rgba(255,255,255,0.08));
+    color: #fff;
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-bottom-right-radius: 5px;
+  }
+  .msg.assistant .msg-content {
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-bottom-left-radius: 5px;
+  }
+  .msg.error .msg-content {
+    background: rgba(255, 80, 80, 0.12);
+    color: #ffb3b3;
+    border: 1px solid rgba(255, 80, 80, 0.3);
+  }
+
+  .msg-time { font-size: 9px; color: var(--text-dim); margin-top: 3px; opacity: 0.6; }
+
+  /* AI正在输入指示器 */
+  #typing { display: none; gap: 8px; margin-bottom: 12px; }
+  #typing.on { display: flex; }
+  #typing .dots {
+    display: flex; align-items: center; gap: 4px;
+    padding: 11px 14px; border-radius: 14px; border-bottom-left-radius: 5px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  }
+  #typing .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-text); opacity: 0.4;
+    animation: dotPulse 1.2s ease-in-out infinite;
+  }
+  #typing .dot:nth-child(2) { animation-delay: 0.2s; }
+  #typing .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotPulse {
+    0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
+  }
+
+  /* 新消息提示（用户正翻旧消息时不强拽，浮出按钮） */
+  #newMsgTip {
+    position: absolute; right: 26px; bottom: 74px;
+    display: none; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 14px;
+    background: var(--accent); color: #fff;
+    font-size: 11px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    z-index: 5;
+  }
+  #newMsgTip.on { display: flex; animation: msgIn 0.18s ease-out; }
+
+  /* 长消息折叠（JSON提示词很长）：默认收起+底部渐隐，点击展开 */
+  .msg-content.clipped { max-height: 170px; overflow: hidden; position: relative; }
+  .msg-content.clipped::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 46px;
+    background: linear-gradient(to bottom, rgba(24,24,30,0), rgba(24,24,30,0.94));
+    pointer-events: none;
+  }
+  .expander {
+    font-size: 10.5px; color: var(--accent-text);
+    cursor: pointer; margin-top: 4px; user-select: none;
+  }
+  .expander:hover { text-decoration: underline; }
+
+  /* 消息里的图片缩略图（PS选区截图） */
+  .mimg {
+    display: block; max-width: 100%; max-height: 180px;
+    border-radius: 10px; margin-bottom: 6px;
+    border: 1px solid var(--inset-border);
+  }
+
+  /* 待发送图片预览条 */
+  #imgPrev {
+    display: none; align-items: center; gap: 9px;
+    padding: 6px 10px; border-radius: 12px;
+    background: var(--inset-bg); border: 1px solid var(--accent-border);
+  }
+  #imgPrev.on { display: flex; }
+  #imgPrev img { height: 44px; border-radius: 8px; }
+  #imgPrev .lbl { flex: 1; font-size: 11px; color: var(--accent-text); }
+  #imgPrev .rm {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); font-size: 11px; cursor: pointer;
+  }
+  #imgPrev .rm:hover { background: rgba(255,80,80,0.3); color: #ff9a9a; }
+
+  /* 抓取PS选区按钮 */
+  #btnCap {
+    width: 38px; height: 38px;
+    border: 1px solid var(--inset-border); border-radius: 13px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  #btnCap:hover { border-color: var(--accent-border); color: var(--accent-text); }
+  #btnCap.busy { opacity: 0.5; cursor: default; }
+  #btnCap.offline { opacity: 0.35; filter: grayscale(1); }
+
+  /* 回复消息动作行：复制 / 贴回生成 */
+  .mact { display: flex; gap: 6px; margin-top: 5px; }
+  .mact .mbtn {
+    font-size: 10.5px; padding: 3px 11px; border-radius: 8px;
+    background: var(--btn-bg); color: var(--text);
+    border: 1px solid var(--inset-border); cursor: pointer;
+  }
+  .mact .mbtn:hover { background: var(--btn-bg-hover); color: var(--accent-text); }
+
+  #inputArea { display: flex; gap: 8px; align-items: flex-end; }
+  #input {
+    flex: 1;
+    min-height: 38px; max-height: 100px;
+    resize: none;
+    padding: 10px 12px;
+    border-radius: 13px;
+    border: 1px solid var(--inset-border);
+    background: var(--inset-bg);
+    color: var(--text); font-size: 12px; line-height: 1.5;   /* 0908 对齐控制台字号档 */
+    outline: none; user-select: text;
+    transition: border-color 0.15s;
+  }
+  #input:focus { border-color: var(--accent-border); }
+  #input::-webkit-scrollbar { width: 0; }
+
+  #btnSend {
+    width: 38px; height: 38px;
+    border: none; border-radius: 13px;
+    background: var(--accent); color: #fff;
+    font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.12s, filter 0.12s, opacity 0.15s;
+  }
+  #btnSend:hover { filter: brightness(1.15); }
+  #btnSend:active { transform: scale(0.92); }
+  #btnSend.busy { opacity: 0.45; cursor: default; }
+  #btnSend.busy:hover { filter: none; }
+  /* 等待时变成停止感知的沙漏，一眼可见状态 */
+  #btnSend svg { width: 17px; height: 17px; }
+
+  .empty-hint {
+    height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px;
+    color: var(--text-dim); font-size: 12px; opacity: 0.7;
+  }
+  .empty-hint svg { width: 46px; height: 46px; opacity: 0.4; }
+
+  /* ---------- 页内设置视图（学AI生图：同窗切换，不弹独立卡） ---------- */
+  #viewSet {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    display: none; flex-direction: column; gap: 15px;
+    padding: 4px 4px 8px;
+  }
+  #viewSet::-webkit-scrollbar { width: 6px; }
+  #viewSet::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+  body.setmode #messages, body.setmode #inputArea, body.setmode #newMsgTip { display: none !important; }
+  body.setmode #viewSet { display: flex; }
+  .slabel { font-size: 11px; color: #fff; opacity: 0.82; letter-spacing: 1px; margin-bottom: 7px; }
+  #viewSet select, #viewSet input[type="text"] {
+    width: 100%; height: 34px; padding: 0 11px;
+    border-radius: 11px; border: 1px solid var(--inset-border);
+    background: var(--inset-bg); color: var(--text); font-size: 12.5px; outline: none;
+  }
+  #viewSet select:focus, #viewSet input:focus { border-color: var(--accent-border); }
+  #viewSet select option { background: #222; }
+  #viewSet textarea {
+    width: 100%; min-height: 120px; padding: 10px 12px;
+    border-radius: 11px; border: 1px solid var(--inset-border);
+    background: var(--inset-bg); color: var(--text);
+    font-size: 12px; line-height: 1.6; outline: none; resize: vertical; user-select: text;
+  }
+  #viewSet textarea[readonly] { opacity: 0.72; }
+  .srow { display: flex; align-items: center; gap: 8px; }
+  .rpill {
+    height: 30px; padding: 0 13px; margin: 3px 0;
+    border-radius: 10px; border: 1px solid var(--inset-border);
+    background: var(--inset-bg); color: var(--text); font-size: 12px;
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+  }
+  .rpill:hover { background: var(--btn-bg-hover); }
+  .rpill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .rpill .bstar { font-size: 10px; opacity: 0.85; }
+  .shint { font-size: 10px; color: var(--text-dim); opacity: 0.75; line-height: 1.5; }
+  #btnAddRole {
+    height: 34px; padding: 0 14px; border: none; border-radius: 11px;
+    background: var(--accent); color: #fff; font-size: 11px; cursor: pointer;
+  }
+  /* 0908 对话渠道表：内置 AJI/GRS（名字/地址只读）+ 自定义 cc_*（可改名/地址/删）；每行 Key 即时落库 */
+  .cprow {
+    border: 1px solid var(--inset-border); border-radius: 11px; background: var(--inset-bg);
+    padding: 8px 10px; margin-bottom: 7px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .cprow .cphead { display: flex; align-items: center; gap: 8px; }
+  .cprow .cpname { flex: 1; min-width: 0; font-size: 12px; color: #fff; }
+  #viewSet .cprow input[type="text"] { height: 30px; font-size: 12px; border-radius: 9px; background: rgba(0,0,0,0.18); user-select: text; }
+  #viewSet .cprow input.masked { color: #7fe0a3; letter-spacing: 1px; }
+  .cprow .cpname input[type="text"] { height: 28px; padding: 0 8px; }
+  .cprow .cpx { font-size: 11px; opacity: 0.7; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+  .cprow .cpx:hover { opacity: 1; background: var(--btn-bg-hover); }
+  .cprow .cpbadge { font-size: 10px; opacity: 0.7; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--inset-border); }
+  .cprow .cpok { color: #7fe0a3; }
+  .cpadd {
+    width: 100%; height: 32px; border: 1px dashed var(--inset-border); border-radius: 11px;
+    background: transparent; color: var(--text); font-size: 11px; cursor: pointer; opacity: 0.85;
+  }
+  .cpadd:hover { background: var(--btn-bg-hover); opacity: 1; }
+  .hbtn.on { background: var(--accent); color: #fff; }
+  /* 按钮图标化：线描SVG统一尺寸（0903用户裁定不用emoji） */
+  .hbtn svg { width: 14px; height: 14px; }
+  #btnCap svg { width: 17px; height: 17px; }
+  .msg-avatar svg { width: 14px; height: 14px; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>AI对话</span>
+    <span id="modelChip" data-pass title="当前对话模型（点击打开设置）"></span>
+    <div class="sp"></div>
+    <div class="hbtn" id="btnSettings" title="对话设置"></div>
+    <div class="hbtn" id="btnClear" title="清空对话历史"></div>
+  </div>
+
+  <div id="body">
+    <div id="messages">
+      <div id="typing"><div class="msg-avatar" style="background: linear-gradient(135deg, #4a9eff, #2d7dd2);"></div><div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+      <div id="tail"></div>
+    </div>
+    <div id="newMsgTip" data-pass>↓ 新消息</div>
+    <div id="imgPrev">
+      <img id="imgPrevPic" alt="">
+      <span class="lbl">已抓取PS选区 · 将随下一条消息发给AI</span>
+      <div class="rm" id="imgPrevRm" title="移除图片">✕</div>
+    </div>
+    <div id="inputArea">
+      <button id="btnCap" title="抓取PS选区作为图片（需在PS里先框选）"></button>
+      <textarea id="input" placeholder="输入消息，Enter发送，Shift+Enter换行" rows="1"></textarea>
+      <button id="btnSend" title="发送(Enter)"></button>
+    </div>
+
+    <div id="viewSet">
+      <div>
+        <div class="slabel">默认渠道 / 模型</div>
+        <div class="srow">
+          <select id="provider" style="flex:0 0 38%"></select>
+          <select id="model" style="flex:1"></select>
+          <button id="btnRefreshM" class="hbtn" style="width:34px;height:34px;border:none;flex:none" title="拉取模型列表（自定义渠道）"></button>
+        </div>
+        <div class="shint" style="margin-top:5px">对话渠道与生图渠道互不相干；角色可各自指定模型，未指定的角色用这里的默认</div>
+      </div>
+      <div>
+        <div class="slabel">渠道配置</div>
+        <div id="cpList"></div>
+        <button id="btnAddCp" class="cpadd">＋ 新增自定义渠道</button>
+      </div>
+      <div>
+        <div class="slabel">角色</div>
+        <div class="srow" id="roleRow" style="flex-wrap: wrap;"></div>
+        <div class="srow" style="margin-top: 8px;">
+          <input type="text" id="roleName" placeholder="新角色名称" style="flex:1">
+          <button id="btnAddRole">添加</button>
+        </div>
+        <div class="shint" id="roleHint" style="display:none; color:#ff9a9a; margin-top:5px;"></div>
+      </div>
+      <div>
+        <div class="slabel">角色专属模型</div>
+        <div class="srow">
+          <select id="roleProv" style="flex:0 0 38%"></select>
+          <select id="roleModel" style="flex:1"></select>
+        </div>
+        <div class="shint" style="margin-top:5px" id="roleModelHint">选「跟随默认」=用上面的默认渠道/模型</div>
+      </div>
+      <div>
+        <div class="slabel">系统提示词</div>
+        <textarea id="sysPrompt" placeholder="描述角色的行为与风格；内置角色只读，想改可另存为自定义角色"></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ICO = window.ORANGE_ICONS;
+  $('ico').innerHTML = ICO['chat'];
+  // 按钮图标化（0903用户裁定：全部按钮用线描logo，不用emoji）
+  $('btnSettings').innerHTML = ICO.settings;
+  $('btnClear').innerHTML = ICO.trash;
+  $('btnCap').innerHTML = ICO.camera;
+  $('btnSend').innerHTML = ICO.send;
+  $('btnRefreshM').innerHTML = ICO.refresh;
+  document.querySelector('#typing .msg-avatar').innerHTML = ICO.orange;
+
+  const msgs = $('messages');
+  const typing = $('typing');
+  const input = $('input');
+  const btnSend = $('btnSend');
+  const newMsgTip = $('newMsgTip');
+  const modelChip = $('modelChip');
+
+  let sending = false;
+  // 广播去重：主进程给每条assistant消息发唯一id；invoke返回和广播是同一条，按id只渲染一次
+  const rendered = new Set();
+  const msgKey = (m) => m.id || (m.role + '|' + (m.ts || '') + '|' + String(m.content).slice(0, 60));
+
+  function formatTime(ts) {
+    const d = new Date(ts);
+    return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+  }
+
+  // ---------- 锚定滚动：正常向下排列，但每次发新对话把它顶到可视区最上方 ----------
+  // 旧消息滑上去（向上翻可见），新消息下方留白等回复——发一条"翻一页"
+  const tail = $('tail');
+  let lastAnchor = 0;      // 当前锚定的scrollTop
+  let latestNode = null;   // 最新一条消息节点
+  function nearAnchor() {
+    return msgs.scrollTop > lastAnchor - 130;
+  }
+  function anchorTo(node, instant) {
+    if (!node) return;
+    // 尾部留白撑出滚动空间，让最新消息能顶到可视区顶部
+    tail.style.height = Math.max(0, msgs.clientHeight - 70) + 'px';
+    lastAnchor = Math.max(0, node.offsetTop - 10);
+    msgs.scrollTo({ top: lastAnchor, behavior: instant ? 'auto' : 'smooth' });
+    newMsgTip.classList.remove('on');
+  }
+  msgs.addEventListener('scroll', () => {
+    if (nearAnchor()) newMsgTip.classList.remove('on');
+  });
+  newMsgTip.addEventListener('click', () => anchorTo(latestNode, false));
+
+  // 从回复里提取提示词成品（优先取代码块内容，没有代码块就取全文）
+  function extractPrompt(text) {
+    const m = String(text).match(/```[a-zA-Z]*\s*\n?([\s\S]*?)```/);
+    return m ? m[1].trim() : String(text).trim();
+  }
+
+  // ---------- 消息渲染 ----------
+  function buildMsg(role, content, ts, anim, img) {
+    const msg = document.createElement('div');
+    msg.className = 'msg ' + role + (anim ? ' anim' : '');
+
+    const avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    avatar.innerHTML = role === 'user' ? ICO.user : ICO.orange;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-wrap';
+    const body = document.createElement('div');
+    body.className = 'msg-content';
+    if (img) {
+      const im = document.createElement('img');
+      im.className = 'mimg';
+      im.src = 'file:///' + String(img).replace(/\\/g, '/');
+      body.appendChild(im);
+    }
+    body.appendChild(document.createTextNode(content));
+    wrap.appendChild(body);
+
+    // 长消息默认折叠（JSON提示词动辄几千字）
+    if (String(content).length > 420) {
+      body.classList.add('clipped');
+      const ex = document.createElement('div');
+      ex.className = 'expander';
+      ex.textContent = '▾ 展开全文（' + String(content).length + '字）';
+      ex.addEventListener('click', () => {
+        const on = body.classList.toggle('clipped');
+        ex.textContent = on ? ('▾ 展开全文（' + String(content).length + '字）') : '▴ 收起';
+      });
+      wrap.appendChild(ex);
+    }
+
+    // AI回复：快速复制 / 快速贴回生成（优先取代码块内容）
+    if (role.indexOf('assistant') === 0 && role.indexOf('error') === -1) {
+      const act = document.createElement('div');
+      act.className = 'mact';
+      act.setAttribute('data-nodrag', '');
+      act.setAttribute('data-pass', '');
+      const bC = document.createElement('div');
+      bC.className = 'mbtn'; bC.textContent = '复制';
+      bC.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(extractPrompt(content));
+          bC.textContent = '已复制✓';
+          setTimeout(() => { bC.textContent = '复制'; }, 1200);
+        } catch (e) {}
+      });
+      const bP = document.createElement('div');
+      bP.className = 'mbtn'; bP.textContent = '贴回生成';
+      bP.title = '填入提示词卡并武装，总控▶直接可跑';
+      bP.addEventListener('click', () => {
+        window.orange.setConfig({ gen: { prompt: extractPrompt(content) } });
+        if (window.orange.armModule) window.orange.armModule('prompt-box');
+        if (window.orange.showCard) window.orange.showCard('prompt-box');
+        bP.textContent = '已贴回✓';
+        setTimeout(() => { bP.textContent = '贴回生成'; }, 1200);
+      });
+      act.appendChild(bC);
+      act.appendChild(bP);
+      wrap.appendChild(act);
+    }
+
+    const time = document.createElement('div');
+    time.className = 'msg-time';
+    time.textContent = formatTime(ts || Date.now());
+    wrap.appendChild(time);
+
+    msg.appendChild(avatar);
+    msg.appendChild(wrap);
+    return msg;
+  }
+
+  function addMessage(role, content, ts, opts) {
+    const o = opts || {};
+    const empty = msgs.querySelector('.empty-hint');
+    if (empty) empty.remove();
+
+    const wasNear = nearAnchor();
+    const node = buildMsg(o.error ? role + ' error' : role, content, ts, !o.noAnim, o.img);
+    msgs.insertBefore(node, typing);   // 按时间正序排在末尾（typing指示器之前）
+    latestNode = node;
+
+    if (o.anchor) {
+      anchorTo(node, !!o.instant);      // 发送的消息顶到可视区最上方
+    } else if (!wasNear) {
+      newMsgTip.classList.add('on');    // 用户正翻旧消息，不打断
+    }
+    // 回复落在锚定消息下方，本来就在视野里，无需滚动
+  }
+
+  function showEmpty() {
+    if (!msgs.querySelector('.msg') && !msgs.querySelector('.empty-hint')) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-hint';
+      empty.innerHTML = window.ORANGE_ICONS['chat'] + '<div>开始和AI对话吧～</div>';
+      msgs.insertBefore(empty, typing);
+      tail.style.height = '0px';
+    }
+  }
+
+  function setTyping(on) {
+    typing.classList.toggle('on', on);
+  }
+
+  // ---------- 发送：输入框永不禁用，边等回复边打下一条 ----------
+  function autoGrow() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  }
+
+  // ---------- 抓取PS选区作为图片 ----------
+  let pendingImg = null;
+  const btnCap = $('btnCap');
+  function setPendingImg(file) {
+    pendingImg = file || null;
+    $('imgPrev').classList.toggle('on', !!file);
+    if (file) $('imgPrevPic').src = 'file:///' + String(file).replace(/\\/g, '/');
+  }
+  $('imgPrevRm').addEventListener('click', () => setPendingImg(null));
+  // PS连接感知：没连桥接件时按钮变灰示警（一眼知道能不能抓）
+  function capOnline(on) {
+    btnCap.classList.toggle('offline', !on);
+    if (!btnCap.classList.contains('busy')) {
+      btnCap.title = on ? '抓取PS选区作为图片（需在PS里先框选）' : 'PS未连接——请启动PS（插件已随软件自动安装）';
+    }
+  }
+  if (window.orange.isPSConnected) window.orange.isPSConnected().then(capOnline);
+  if (window.orange.onPSStatus) window.orange.onPSStatus((s) => capOnline(!!(s && s.connected)));
+  btnCap.addEventListener('click', async () => {
+    if (btnCap.classList.contains('busy')) return;
+    btnCap.classList.add('busy');
+    btnCap.textContent = '…';
+    try {
+      const r = await window.orange.captureRef();
+      try { window.orange.glassLog('[chatCap] ' + JSON.stringify(r).slice(0, 300)); } catch (e2) {}
+      if (r.ok && r.file) {
+        setPendingImg(r.file);
+      } else {
+        // 失败原因直接在聊天里说清楚（按钮闪✕太隐蔽）
+        addMessage('assistant', '抓取选区失败：' + (r.error || '未知原因') + '\n（需要PS已连接桥接件、且画布上有一个选区）', Date.now(), { error: true, anchor: true });
+      }
+    } catch (e) {
+      addMessage('assistant', '抓取选区异常：' + (e.message || String(e)), Date.now(), { error: true, anchor: true });
+    }
+    btnCap.innerHTML = ICO.camera;
+    btnCap.classList.remove('busy');
+  });
+
+  async function send() {
+    const text = input.value.trim();
+    if ((!text && !pendingImg) || sending) return;
+    sending = true;
+    btnSend.classList.add('busy');
+    btnSend.textContent = '…';
+
+    const uts = Date.now();
+    const img = pendingImg;
+    setPendingImg(null);
+    rendered.add(msgKey({ role: 'user', content: text || '[图片]', ts: uts }));
+    addMessage('user', text || '[图片]', uts, { anchor: true, img });
+    input.value = '';
+    autoGrow();
+    input.focus();   // 不禁用输入框：立即可打下一条
+    setTyping(true);
+
+    try {
+      const result = await window.orange.chatSend(text, img);
+      setTyping(false);
+      if (result.ok) {
+        const m = { role: 'assistant', content: result.reply, ts: result.ts || Date.now(), id: result.id };
+        rendered.add(msgKey(m));
+        addMessage('assistant', m.content, m.ts);
+      } else {
+        addMessage('assistant', (result.error || '发送失败'), Date.now(), { error: true });
+      }
+    } catch (e) {
+      setTyping(false);
+      addMessage('assistant', '发送失败: ' + (e.message || String(e)), Date.now(), { error: true });
+    } finally {
+      sending = false;
+      btnSend.classList.remove('busy');
+      btnSend.innerHTML = ICO.send;
+    }
+  }
+
+  btnSend.addEventListener('click', send);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+  input.addEventListener('input', autoGrow);
+
+  // ---------- 清空：二段确认（原生confirm会卡死透明窗口渲染，禁用） ----------
+  const btnClear = $('btnClear');
+  let clearArmed = null;
+  btnClear.addEventListener('click', async () => {
+    if (!clearArmed) {
+      btnClear.classList.add('confirm');
+      btnClear.textContent = '确认清空?';
+      clearArmed = setTimeout(() => {
+        btnClear.classList.remove('confirm');
+        btnClear.innerHTML = ICO.trash;
+        clearArmed = null;
+      }, 3000);
+      return;
+    }
+    clearTimeout(clearArmed);
+    clearArmed = null;
+    btnClear.classList.remove('confirm');
+    btnClear.innerHTML = ICO.trash;
+    await window.orange.chatClear();
+    msgs.querySelectorAll('.msg').forEach((n) => n.remove());
+    rendered.clear();
+    showEmpty();
+  });
+
+  // ---------- 页内设置切换（齿轮↔对话气泡，独立设置卡已收编） ----------
+  const btnSettings = $('btnSettings');
+  function setMode(on) {
+    document.body.classList.toggle('setmode', on);
+    btnSettings.classList.toggle('on', on);
+    btnSettings.innerHTML = on ? ICO.chat : ICO.settings;
+    btnSettings.title = on ? '返回对话' : '对话设置';
+  }
+  btnSettings.addEventListener('click', () => setMode(!document.body.classList.contains('setmode')));
+  modelChip.addEventListener('click', () => setMode(true));
+  // 卡片被收起/隐藏时自动退回对话页（学AI生图）
+  document.addEventListener('visibilitychange', () => { if (document.hidden) setMode(false); });
+
+  // ---------- 设置视图：对话渠道表（0908 与生图解耦）/默认模型/角色（内置+自定义）/角色专属模型/系统提示词 ----------
+  const providerSel = $('provider'), modelSel = $('model'), sysTa = $('sysPrompt');
+  const roleProvSel = $('roleProv'), roleModelSel = $('roleModel');
+  let CP = {};           // chatProviders 表 {id:{label,base,hasKey,builtin,models:[{id,name,dead}]}}
+  let roleModels = {};   // config.chat.roleModels
+  let builtins = [];     // 内置角色 [{id,name,prompt}]
+  let customs = [];      // 自定义角色 config.chat.presets
+  let currentRole = '';
+
+  function isBuiltinId(x) { return builtins.some((b) => b.id === x); }
+  let hintTimer = null;
+  function roleHint(msg) {
+    const h = $('roleHint');
+    h.textContent = msg; h.style.display = 'block';
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { h.style.display = 'none'; }, 2500);
+  }
+  async function reloadCP() {
+    const d = await window.orange.chatProviders();
+    CP = (d && d.conf) || {};
+    roleModels = (d && d.roleModels) || {};
+    return d;
+  }
+  function fillProvSelect(sel, withFollow) {
+    const prev = sel.value;
+    sel.innerHTML = '';
+    if (withFollow) { const o = document.createElement('option'); o.value = ''; o.textContent = '跟随默认'; sel.appendChild(o); }
+    for (const k of Object.keys(CP)) {
+      const o = document.createElement('option');
+      o.value = k; o.textContent = CP[k].label + (CP[k].hasKey ? '' : '（未填Key）');
+      sel.appendChild(o);
+    }
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  }
+  // 模型下拉：内置渠道列静态表（dead 标灰不可选）；自定义渠道列拉取结果，空则提示先拉取
+  function fillModelSelect(sel, prov, want) {
+    sel.innerHTML = '';
+    const list = (CP[prov] && CP[prov].models) || [];
+    if (!list.length) {
+      const o = document.createElement('option'); o.value = ''; o.textContent = prov ? '(暂无模型，点右侧拉取)' : '—';
+      sel.appendChild(o); return '';
+    }
+    for (const m of list) {
+      const o = document.createElement('option');
+      o.value = m.id; o.textContent = m.dead ? m.name + '（渠道已下架）' : m.name;
+      if (m.dead) o.disabled = true;
+      sel.appendChild(o);
+    }
+    const alive = list.filter((m) => !m.dead).map((m) => m.id);
+    const pick = (want && alive.includes(want)) ? want : (alive[0] || '');
+    sel.value = pick;
+    return pick;
+  }
+
+  // ---- 默认渠道/模型 ----
+  function renderDefault(cfgChat) {
+    fillProvSelect(providerSel, false);
+    const prov = (cfgChat && cfgChat.provider && CP[cfgChat.provider]) ? cfgChat.provider : (Object.keys(CP)[0] || '');
+    providerSel.value = prov;
+    const picked = fillModelSelect(modelSel, prov, cfgChat && cfgChat.model);
+    if (picked && picked !== (cfgChat && cfgChat.model)) window.orange.setConfig({ chat: { model: picked } });
+    $('btnRefreshM').style.visibility = (CP[prov] && !CP[prov].builtin) ? 'visible' : 'hidden';
+  }
+  providerSel.addEventListener('change', () => {
+    const prov = providerSel.value;
+    const picked = fillModelSelect(modelSel, prov, '');
+    window.orange.setConfig({ chat: { provider: prov, model: picked } });
+    $('btnRefreshM').style.visibility = (CP[prov] && !CP[prov].builtin) ? 'visible' : 'hidden';
+  });
+  modelSel.addEventListener('change', () => window.orange.setConfig({ chat: { model: modelSel.value } }));
+  $('btnRefreshM').addEventListener('click', async () => {
+    const r = await window.orange.chatModelsFetch(providerSel.value);
+    if (!r.ok) { roleHint(r.error || '拉取失败'); return; }
+    await reloadCP();
+    const c = await window.orange.getConfig();
+    renderDefault(c.chat); renderRoleModel();
+    roleHint('已拉取 ' + r.models.length + ' 个对话模型' + ((r.total || 0) > r.models.length ? '（另 ' + (r.total - r.models.length) + ' 个生图/音频等非对话模型已排除）' : ''));
+  });
+
+  // ---- 渠道配置列表（内置两条固定 + 自定义 cc_* 增删改；Key/地址/名字 400ms 防抖落库）----
+  // ⚠落库后不重建列表（0908用户实测"Key 粘贴上去就消失"=防抖回调整表重渲染把输入框连值一起换掉了）：
+  //   只原地刷新该行的徽标/掩码，输入框与焦点原样保留
+  const cpList = $('cpList');
+  const cpTimers = {};
+  function cpSave(id, patch) {
+    clearTimeout(cpTimers[id]);
+    cpTimers[id] = setTimeout(async () => {
+      await window.orange.setConfig({ chatProviders: { [id]: patch } });
+      await reloadCP();
+      const c = await window.orange.getConfig();
+      fillProvSelect(providerSel, false); providerSel.value = c.chat.provider;
+      fillProvSelect(roleProvSel, true); roleProvSel.value = (roleModels[currentRole] && roleModels[currentRole].provider) || '';
+      updateCpRow(id);
+    }, 400);
+  }
+  function badgeText(c) { return c.builtin ? (c.hasKey ? '内置 · 已填Key' : '内置 · 未填Key') : (c.hasKey ? '自定义 · 已填Key' : '自定义 · 未填Key'); }
+  function updateCpRow(id) {
+    const c = CP[id]; if (!c) return;
+    const row = cpList.querySelector('[data-cp="' + id + '"]'); if (!row) return;
+    const badge = row.querySelector('.cpbadge'); if (badge) { badge.textContent = badgeText(c); badge.classList.toggle('cpok', !!c.hasKey); }
+    const ki = row.querySelector('[data-cpf="' + id + ':key"]');
+    if (ki && document.activeElement !== ki) showKeyMask(ki, c);
+    else if (ki) ki.placeholder = c.hasKey ? '已保存 ' + c.keyMask + ' · 粘贴新 Key 可替换' : '粘贴该渠道的 API Key';
+  }
+  // Key 框显示规则：未聚焦时显示掩码（首3+尾4）表示"已存"；聚焦即清空供粘贴新值；粘贴后 400ms 落库→失焦回到新掩码
+  function showKeyMask(ki, c) {
+    ki.value = c.hasKey ? c.keyMask : '';
+    ki.dataset.masked = c.hasKey ? '1' : '';
+    ki.placeholder = c.hasKey ? '' : '粘贴该渠道的 API Key';
+    ki.classList.toggle('masked', !!c.hasKey);
+  }
+  let cpDelArm = null;
+  function renderCpList() {
+    cpList.innerHTML = '';
+    for (const id of Object.keys(CP)) {
+      const c = CP[id];
+      const row = document.createElement('div'); row.className = 'cprow'; row.dataset.cp = id;
+      const head = document.createElement('div'); head.className = 'cphead';
+      const nm = document.createElement('div'); nm.className = 'cpname';
+      if (c.builtin) nm.textContent = c.label;
+      else {
+        const ni = document.createElement('input'); ni.type = 'text'; ni.value = c.label; ni.placeholder = '渠道名称'; ni.dataset.cpf = id + ':label';
+        ni.addEventListener('input', () => cpSave(id, { label: ni.value.trim() || id }));
+        nm.appendChild(ni);
+      }
+      head.appendChild(nm);
+      const badge = document.createElement('span'); badge.className = 'cpbadge' + (c.hasKey ? ' cpok' : '');
+      badge.textContent = badgeText(c);
+      head.appendChild(badge);
+      if (!c.builtin) {
+        const x = document.createElement('span'); x.className = 'cpx'; x.textContent = '✕'; x.title = '删除该渠道';
+        x.addEventListener('click', async () => {
+          if (!cpDelArm || cpDelArm.id !== id) {
+            if (cpDelArm) clearTimeout(cpDelArm.t);
+            x.textContent = '确认删除'; x.style.color = '#ff9a9a';
+            cpDelArm = { id, t: setTimeout(() => { cpDelArm = null; renderCpList(); }, 3000) };
+            return;
+          }
+          clearTimeout(cpDelArm.t); cpDelArm = null;
+          await window.orange.setConfig({ chatProviders: { [id]: null } });
+          await reloadCP();
+          const cc = await window.orange.getConfig();
+          renderDefault(cc.chat); renderCpList(); renderRoleModel();
+        });
+        head.appendChild(x);
+      }
+      row.appendChild(head);
+      if (!c.builtin) {
+        const bi = document.createElement('input'); bi.type = 'text'; bi.value = c.base; bi.placeholder = '接口地址 base，如 https://api.example.com（Gemini/OpenAI 兼容网关）'; bi.dataset.cpf = id + ':base';
+        bi.addEventListener('input', () => cpSave(id, { base: bi.value.trim() }));
+        row.appendChild(bi);
+      }
+      const ki = document.createElement('input'); ki.type = 'text'; ki.dataset.cpf = id + ':key'; ki.spellcheck = false;
+      showKeyMask(ki, c);
+      ki.addEventListener('focus', () => { if (ki.dataset.masked) { ki.value = ''; ki.dataset.masked = ''; ki.classList.remove('masked'); ki.placeholder = '粘贴新 Key（留空=保留原 Key）'; } });
+      ki.addEventListener('input', () => { const v = ki.value.trim(); if (v) cpSave(id, { key: v }); });
+      ki.addEventListener('blur', () => { const cc = CP[id] || c; showKeyMask(ki, cc); });
+      row.appendChild(ki);
+      cpList.appendChild(row);
+    }
+  }
+  $('btnAddCp').addEventListener('click', async () => {
+    const id = 'cc_' + Math.random().toString(36).slice(2, 8);
+    const n = Object.keys(CP).filter((k) => !CP[k].builtin).length + 1;
+    await window.orange.setConfig({ chatProviders: { [id]: { label: '自定义' + n, base: '', key: '', models: [] } } });
+    await reloadCP();
+    const c = await window.orange.getConfig();
+    renderDefault(c.chat); renderCpList(); renderRoleModel();
+    const el = cpList.querySelector('[data-cpf="' + id + ':base"]'); if (el) el.focus();
+  });
+
+  // ---- 角色 ----
+  function renderRoles() {
+    const row = $('roleRow');
+    row.innerHTML = '';
+    builtins.forEach((b) => {
+      const p = document.createElement('div');
+      p.className = 'rpill' + (currentRole === b.id ? ' active' : '');
+      p.innerHTML = '<span class="bstar">★</span>';
+      p.appendChild(document.createTextNode(b.name));
+      p.title = '内置角色' + (b.id === 'b_orange' ? '（默认）' : '') + (roleModels[b.id] && roleModels[b.id].provider ? ' · 专属模型' : '');
+      p.addEventListener('click', () => selectRole(b.id));
+      row.appendChild(p);
+    });
+    customs.forEach((c) => {
+      const p = document.createElement('div');
+      p.className = 'rpill' + (currentRole === c.name ? ' active' : '');
+      const nm = document.createElement('span'); nm.textContent = c.name;
+      const del = document.createElement('span');
+      del.textContent = '✕';
+      del.style.cssText = 'opacity:.7;cursor:pointer;';
+      del.addEventListener('click', (e) => { e.stopPropagation(); delRole(c.name, del); });
+      p.appendChild(nm); p.appendChild(del);
+      p.title = roleModels[c.name] && roleModels[c.name].provider ? '专属模型' : '';
+      p.addEventListener('click', () => selectRole(c.name));
+      row.appendChild(p);
+    });
+  }
+  // 删除自定义角色：二段确认（✕变红"确认"再点才删）
+  let delArm = null;
+  function delRole(name, el) {
+    if (!delArm || delArm.name !== name) {
+      if (delArm) clearTimeout(delArm.t);
+      el.textContent = '确认'; el.style.color = '#ff9a9a'; el.style.opacity = '1';
+      delArm = { name, t: setTimeout(() => { delArm = null; renderRoles(); }, 3000) };
+      return;
+    }
+    clearTimeout(delArm.t); delArm = null;
+    customs = customs.filter((c) => c.name !== name);
+    if (roleModels[name]) { delete roleModels[name]; }
+    window.orange.setConfig({ chat: { presets: customs, roleModels } });
+    if (currentRole === name) selectRole('b_orange');
+    else renderRoles();
+  }
+  // 内置隐藏角色的提示词区留空（0903用户裁定：删掉面具文案和角色说明，不给beta用户漏工法底细）
+  const HIDDEN_MASK = '';
+  function selectRole(id) {
+    currentRole = id;
+    const b = builtins.find((x) => x.id === id);
+    if (b) {
+      // 内置角色：主进程发送时按currentPreset自行解析提示词，界面只做展示（hidden=面具）
+      sysTa.value = b.hidden ? HIDDEN_MASK : b.prompt;
+      sysTa.readOnly = true;
+      window.orange.setConfig({ chat: { currentPreset: id } });
+    } else {
+      const c = customs.find((x) => x.name === id);
+      sysTa.value = (c && c.prompt) || '';
+      sysTa.readOnly = false;
+      window.orange.setConfig({ chat: { systemPrompt: sysTa.value, currentPreset: id } });
+    }
+    renderRoles();
+    renderRoleModel();
+  }
+  $('btnAddRole').addEventListener('click', () => {
+    const name = $('roleName').value.trim();
+    if (!name) { roleHint('先输入角色名称'); return; }
+    if (builtins.some((b) => b.name === name || b.id === name) || customs.some((c) => c.name === name)) { roleHint('名称已存在'); return; }
+    customs.push({ name, prompt: sysTa.readOnly ? '' : sysTa.value });
+    window.orange.setConfig({ chat: { presets: customs } });
+    $('roleName').value = '';
+    selectRole(name);
+  });
+  let sysTimer = null;
+  sysTa.addEventListener('input', () => {
+    if (sysTa.readOnly) return;
+    clearTimeout(sysTimer);
+    sysTimer = setTimeout(() => {
+      const c = customs.find((x) => x.name === currentRole);
+      if (c) { c.prompt = sysTa.value; window.orange.setConfig({ chat: { systemPrompt: sysTa.value, presets: customs } }); }
+      else window.orange.setConfig({ chat: { systemPrompt: sysTa.value } });
+    }, 500);
+  });
+
+  // ---- 角色专属模型：roleModels[角色]={provider,model}；provider 空=跟随默认 ----
+  function renderRoleModel() {
+    fillProvSelect(roleProvSel, true);
+    const rm = roleModels[currentRole] || {};
+    const prov = (rm.provider && CP[rm.provider]) ? rm.provider : '';
+    roleProvSel.value = prov;
+    if (!prov) { roleModelSel.innerHTML = '<option value="">—</option>'; roleModelSel.disabled = true; }
+    else { roleModelSel.disabled = false; fillModelSelect(roleModelSel, prov, rm.model); }
+    $('roleModelHint').textContent = prov ? ('「' + roleLabel(currentRole) + '」固定用 ' + CP[prov].label + ' · ' + (roleModelSel.value || '未选模型')) : '选「跟随默认」=用上面的默认渠道/模型';
+  }
+  function roleLabel(id) { const b = builtins.find((x) => x.id === id); return b ? b.name : id; }
+  function saveRoleModel() {
+    const prov = roleProvSel.value;
+    if (!prov) delete roleModels[currentRole];
+    else roleModels[currentRole] = { provider: prov, model: roleModelSel.value };
+    window.orange.setConfig({ chat: { roleModels } });
+    renderRoles();
+    $('roleModelHint').textContent = prov ? ('「' + roleLabel(currentRole) + '」固定用 ' + CP[prov].label + ' · ' + (roleModelSel.value || '未选模型')) : '选「跟随默认」=用上面的默认渠道/模型';
+  }
+  roleProvSel.addEventListener('change', () => {
+    const prov = roleProvSel.value;
+    if (!prov) { roleModelSel.innerHTML = '<option value="">—</option>'; roleModelSel.disabled = true; }
+    else { roleModelSel.disabled = false; fillModelSelect(roleModelSel, prov, ''); }
+    saveRoleModel();
+  });
+  roleModelSel.addEventListener('change', saveRoleModel);
+
+  // 设置视图初始化：无角色记录→默认「来福」并落库
+  (async () => {
+    const [cfg, br] = await Promise.all([window.orange.getConfig(), window.orange.chatBuiltinRoles()]);
+    await reloadCP();
+    builtins = br || [];
+    customs = (cfg.chat && cfg.chat.presets) || [];
+    renderDefault(cfg.chat);
+    renderCpList();
+    const cp = (cfg.chat && cfg.chat.currentPreset) || '';
+    if (cp && (isBuiltinId(cp) || customs.some((c) => c.name === cp))) {
+      currentRole = cp;
+      const b = builtins.find((x) => x.id === cp);
+      sysTa.value = b ? (b.hidden ? HIDDEN_MASK : b.prompt)
+        : ((customs.find((c) => c.name === cp) || {}).prompt || (cfg.chat && cfg.chat.systemPrompt) || '');
+      sysTa.readOnly = !!b;
+      renderRoles();
+      renderRoleModel();
+    } else {
+      selectRole('b_orange');
+    }
+  })();
+
+  // ---------- 模型徽标：显示当前角色实际会用的渠道/模型（角色专属优先），设置改了实时跟 ----------
+  async function refreshChip() {
+    try {
+      const [cfg, d] = await Promise.all([window.orange.getConfig(), window.orange.chatProviders()]);
+      const c = cfg.chat || {};
+      const conf = (d && d.conf) || {};
+      const rm = ((d && d.roleModels) || {})[c.currentPreset || ''] || {};
+      const prov = (rm.provider && conf[rm.provider]) ? rm.provider : c.provider;
+      const mid = (rm.provider && conf[rm.provider]) ? rm.model : c.model;
+      const meta = conf[prov] || {};
+      const m = (meta.models || []).find((x) => x.id === mid);
+      modelChip.textContent = (meta.label || prov || '') + ' · ' + ((m && m.name) || mid || '未选模型') + (rm.provider ? ' ·角色专属' : '');
+    } catch {}
+  }
+  refreshChip();
+  // 设置卡改动即推送刷新（chat-vars广播），不再定时轮询
+  if (window.orange.onChatVars) window.orange.onChatVars(() => { refreshChip(); });
+
+  // ---------- 初始化：一次性组帧插入历史，瞬时定位到底部 ----------
+  (async () => {
+    const history = await window.orange.chatGetHistory();
+    if (history && history.length > 0) {
+      // 时间正序装入，最后一条锚定到可视区顶部（旧的向上翻）
+      const frag = document.createDocumentFragment();
+      let last = null;
+      for (const h of history) {
+        rendered.add(msgKey(h));
+        last = buildMsg(h.role, h.content, h.ts, false, h.img);
+        frag.appendChild(last);
+      }
+      msgs.insertBefore(frag, typing);
+      latestNode = last;
+      anchorTo(last, true);
+    } else {
+      showEmpty();
+    }
+  })();
+
+  // ---------- 广播兜底：别的窗口发起的对话也同步进来（去重后） ----------
+  if (window.orange.onChatMessage) {
+    window.orange.onChatMessage((m) => {
+      if (!m || m.role !== 'assistant') return;
+      const k = msgKey(m);
+      if (rendered.has(k)) return;
+      rendered.add(k);
+      addMessage('assistant', m.content, m.ts);
+    });
+  }
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

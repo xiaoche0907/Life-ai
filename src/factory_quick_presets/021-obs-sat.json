@@ -1,0 +1,96 @@
+{
+  "id": "021-obs-sat",
+  "label": "饱和度观察组",
+  "group": "观察",
+  "icon": "qp-obs-sat",
+  "desc": "饱和度 +100 打组置顶。看色斑、偏色、肤色不匀。",
+  "params": {
+    "sat": 100
+  },
+  "names": [
+    "观察组·饱和度"
+  ],
+  "steps": [
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer"
+        }
+      ],
+      "using": {
+        "_obj": "adjustmentLayer",
+        "name": "饱和",
+        "type": {
+          "_obj": "hueSaturation",
+          "presetKind": {
+            "_enum": "presetKindType",
+            "_value": "presetKindDefault"
+          },
+          "colorize": false
+        }
+      }
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "hueSaturation",
+        "presetKind": {
+          "_enum": "presetKindType",
+          "_value": "presetKindCustom"
+        },
+        "adjustment": [
+          {
+            "_obj": "hueSatAdjustmentV2",
+            "hue": 0,
+            "saturation": "{{sat}}",
+            "lightness": 0
+          }
+        ]
+      }
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layerSection"
+        }
+      ],
+      "from": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "targetEnum"
+      },
+      "using": {
+        "_obj": "layerSection",
+        "name": "观察组·饱和度·{{n}}"
+      },
+      "name": "观察组·饱和度·{{n}}"
+    }
+  ],
+  "after": [
+    {
+      "_obj": "move",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "front"
+      },
+      "_note": "移到最顶（已在顶时 PS 报\"不可用\"但结果已达成）"
+    }
+  ]
+}

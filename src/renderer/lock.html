@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #panel {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+
+  /* 标题栏平时隐藏（0908第24轮：与抗截断/校色同款留白）；堆牌被压时露出作为切牌条 */
+  #head {
+    display: none; align-items: center; gap: 8px;
+    padding: 0; height: 38px;
+    cursor: grab;
+  }
+  body.deckbehind #head { display: flex; }
+  #head:active { cursor: grabbing; }
+  #head .sp { flex: 1; }
+
+  /* 锁头按钮铺满内容区（flex:1）。留白/logo 屏幕像素下限公式与生成卡同款（0909：右键拖拽要有地方抓 + logo 大小参考生成按钮；见 gen.html 注释） */
+  #panel { --pad: max(10px, calc(8px * var(--zi, 1))); --logo: max(34px, calc(26px * var(--zi, 1))); }
+  #body { flex: 1; min-height: 0; display: flex; padding: var(--pad); }
+  .lock-btn {
+    flex: 1; min-width: 0; min-height: 0;
+    border-radius: 18px;
+    background: var(--btn-bg); border: 1px solid var(--glass-border);
+    color: var(--text-dim);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s, transform 0.15s cubic-bezier(0.34,1.56,0.64,1), color 0.25s;
+  }
+  .lock-btn svg { width: var(--logo) !important; height: var(--logo) !important; transition: filter 0.25s; }
+  /* 穿透开启：仅锁头logo点亮发光（无闪烁无圆形装饰） */
+  .lock-btn.active { color: var(--accent-text); }
+  .lock-btn.active svg { filter: drop-shadow(0 0 6px var(--accent)); }
+  .lock-btn:hover { background: var(--accent-soft); }
+  .lock-btn:active { transform: scale(0.97); }
+</style>
+</head>
+<body>
+<div id="panel" class="lg">
+  <div id="head"><div class="sp"></div></div>
+  <div id="body">
+    <div class="lock-btn" id="btnLock" title="点击开启穿透：观察AI生图的同时继续在PS里作业"></div>
+  </div>
+</div>
+
+<script src="icons.js"></script>
+<script src="glass.js"></script>
+<script>
+  const btnLock = document.getElementById('btnLock');
+  let locked = false;
+
+  function updateUI(isLocked) {
+    locked = isLocked;
+    btnLock.innerHTML = window.ORANGE_ICONS[locked ? 'lock' : 'lock-open'];
+    // 锁头=一键双锁：穿透（鼠标操作后方PS）+ 布局锁定（摆位冻结）同起同落
+    btnLock.title = locked
+      ? '锁定中：布局冻结 + 鼠标穿透到PS（按钮区域仍可点击）· 点击解锁'
+      : '点击上锁：冻结布局摆位 + 开启鼠标穿透（盯AI出图同时在PS里作业）';
+    btnLock.classList.toggle('active', locked);
+  }
+
+  btnLock.addEventListener('click', async () => {
+    await window.orange.setConfig({ locked: !locked });
+    const cfg = await window.orange.getConfig();
+    updateUI(cfg.locked);
+  });
+
+  window.orange.getConfig().then((cfg) => updateUI(cfg.locked));
+  window.orange.onLockState && window.orange.onLockState(({ locked: l }) => updateUI(l));
+</script>
+</body>
+</html>

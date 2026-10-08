@@ -1,0 +1,64 @@
+{
+  "id": "022-obs-invert",
+  "label": "反相观察组",
+  "group": "观察",
+  "icon": "qp-obs-inv",
+  "desc": "反相调整层打组置顶。亮斑、脏点在反相下特别扎眼。",
+  "params": {},
+  "names": [
+    "观察组·反相"
+  ],
+  "steps": [
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "adjustmentLayer"
+        }
+      ],
+      "using": {
+        "_obj": "adjustmentLayer",
+        "name": "反相",
+        "type": {
+          "_class": "invert"
+        }
+      }
+    },
+    {
+      "_obj": "make",
+      "_target": [
+        {
+          "_ref": "layerSection"
+        }
+      ],
+      "from": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "targetEnum"
+      },
+      "using": {
+        "_obj": "layerSection",
+        "name": "观察组·反相·{{n}}"
+      },
+      "name": "观察组·反相·{{n}}"
+    }
+  ],
+  "after": [
+    {
+      "_obj": "move",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_ref": "layer",
+        "_enum": "ordinal",
+        "_value": "front"
+      },
+      "_note": "移到最顶（已在顶时 PS 报\"不可用\"但结果已达成）"
+    }
+  ]
+}

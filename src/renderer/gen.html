@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  /* 标题栏平时隐藏（0908第24轮：与抗截断/校色同款留白）；堆牌被压时露出作为切牌条 */
+  #head { flex: none; display: none; height: 38px; cursor: grab; justify-content: flex-end; align-items: center; }
+  body.deckbehind #head { display: flex; }
+  #head:active { cursor: grabbing; }
+
+  /* 留白/logo 的屏幕像素下限（0909用户反馈"右键没法拖拽"）：五卡 CSS 同是 10px，但四张卡停在 zoom 0.45、生成卡 0.77，
+     渲染出来 4.5px 对 7.7px，外沿 22px 拉伸手柄再吃掉外圈=没地方抓。--zi=1/zoom：留白随卡缩放但不低于 8 屏幕像素（≈生成卡现值），
+     logo 不低于 26 屏幕像素（=生成卡 34px×0.77）。生成/对齐/锁定/抗截断/校色五卡同一公式。 */
+  #card { --pad: max(10px, calc(8px * var(--zi, 1))); --logo: max(34px, calc(26px * var(--zi, 1))); }
+  #body { flex: 1; display: flex; padding: var(--pad); }
+  #btnRun {
+    flex: 1;
+    border-radius: 18px;
+    background: var(--btn-bg); border: 1px solid var(--glass-border);
+    color: var(--accent-text);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  #btnRun:hover { background: var(--accent-soft); }
+  #btnRun:active { transform: scale(0.97); }
+  #btnRun svg { width: var(--logo); height: var(--logo); }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head"></div>
+  <div id="body">
+    <button id="btnRun" title="跑当前发光模块的提示词">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  // 当前武装来源放tooltip（不占界面）
+  function applyArmed(a) {
+    if (a && a.label) $('btnRun').title = '生成：' + a.label;
+  }
+  window.orange.getArmed().then(applyArmed);
+  window.orange.onArmed(applyArmed);
+
+  // 右键按住播放键=拖动整卡（与标题栏右键"单独摘走"同语义）——
+  // 这张卡整面都是按钮，不给按钮拖动权就只剩16px细把手可抓
+  const btnRunEl = $('btnRun');
+  btnRunEl.addEventListener('contextmenu', (e) => e.preventDefault());
+  btnRunEl.addEventListener('pointerdown', (e) => {
+    if (e.button !== 2) return;
+    e.preventDefault();
+    btnRunEl.setPointerCapture(e.pointerId);
+    window.orange.dragStart(true);
+    const end = () => {
+      window.orange.dragEnd();
+      btnRunEl.removeEventListener('pointerup', end);
+      btnRunEl.removeEventListener('pointercancel', end);
+    };
+    btnRunEl.addEventListener('pointerup', end);
+    btnRunEl.addEventListener('pointercancel', end);
+  });
+
+  // 数量在AI生图卡里设（config.gen.count），此处只跑
+  $('btnRun').addEventListener('click', async () => {
+    const btn = $('btnRun');
+    btn.classList.remove('blink1');
+    void btn.offsetWidth;
+    btn.classList.add('blink1');
+    const cfg = await window.orange.getConfig();
+    const count = Number(cfg.gen && cfg.gen.count) || 1;
+    await window.orange.fireArmed(count);
+  });
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

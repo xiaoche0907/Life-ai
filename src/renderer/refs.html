@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 20px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  /* 无标题极简头：悬浮在卡顶的窄条，只承载拖动和右上角关闭钮，不占布局高度 */
+  #head {
+    position: absolute; top: 4px; left: 8px; right: 8px;
+    height: 26px; z-index: 5;
+    display: flex; align-items: center; justify-content: flex-end; gap: 7px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .sp { flex: 1; }
+
+  /* 圆球整排绝对垂直居中；状态行贴底悬浮不参与排版 */
+  #body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 2px 13px; }
+
+  /* 圆球直径宽高双限制：跟宽度等比(7.3vw)，但卡片被压扁时按高度收缩——永远缩在玻璃框内不被裁 */
+  #refsRow { --d: min(7.3vw, calc(100vh - 58px)); display: flex; align-items: center; gap: 1.1vw; }
+  #btnAddRef {
+    width: var(--d); height: var(--d); border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--accent-text);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #btnAddRef:hover { background: var(--btn-bg-hover); }
+  #btnAddRef svg { width: calc(var(--d) * 0.58); height: calc(var(--d) * 0.58); }
+  #slots { display: flex; gap: 1.1vw; flex: 1; }
+  .slot { width: var(--d); height: var(--d); border-radius: 50%; background: var(--btn-bg); overflow: hidden; flex-shrink: 0; }
+  .slot img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+
+  #status {
+    position: absolute; left: 13px; right: 13px; bottom: 5px;
+    font-size: 10px; color: var(--text-dim); text-align: center;
+    pointer-events: none;
+  }
+  #status.ok { color: var(--ok); }
+
+  /* 悬停大图预览：允许铺出卡牌视觉范围（占满窗口），上限260px不过大 */
+  #refPrev {
+    display: none;
+    position: fixed; inset: 3px;
+    margin: auto;
+    max-width: min(97vw, 260px);
+    max-height: min(97vh, 260px);
+    object-fit: contain;
+    border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.6);
+    z-index: 50;
+    pointer-events: none;
+    background: rgba(0,0,0,0.45);
+  }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <div class="sp"></div>
+  </div>
+  <div id="body">
+    <div id="refsRow">
+      <div id="btnAddRef" title="抓取PS选区作为参考图（先在PS里框选）"></div>
+      <div id="slots"></div>
+    </div>
+    <div id="status"></div>
+  </div>
+  <img id="refPrev" />
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const MAX_SLOTS = 10;
+  const S24 = (p) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+  $('btnAddRef').innerHTML = S24('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>');
+
+  let refs = [];
+
+  function setStatus(t, cls) { const s = $('status'); s.className = cls || ''; s.textContent = t; }
+  function toast(t, cls) { setStatus(t, cls); setTimeout(() => { if ($('status').textContent === t) setStatus(''); }, 1600); }
+
+  // refs存config.gen.refs：全模块共享（AI生图/半合成/特效跑图都带上）
+  function save() { window.orange.setConfig({ gen: { refs: refs.slice() } }); }
+
+  // 有参考图时：卡牌边框红色警示爆闪（0904用户裁定，与批处理/抗截断同款warnring）——
+  // 参考图挂着会影响每一次生成，必须一眼看见
+  function updateEdgeBlink() {
+    const lg = document.getElementById('card');
+    let ring = lg.querySelector(':scope > .warnring');
+    if (refs.length > 0) {
+      if (!ring) {
+        ring = document.createElement('div');
+        ring.className = 'glowring warnring';
+        lg.appendChild(ring);
+      }
+    } else if (ring) {
+      ring.remove();
+    }
+  }
+
+  function renderSlots() {
+    updateEdgeBlink();
+    const box = $('slots');
+    box.innerHTML = '';
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const d = document.createElement('div');
+      d.className = 'slot';
+      if (refs[i]) {
+        const img = document.createElement('img');
+        img.src = 'file:///' + refs[i].replace(/\\/g, '/');
+        img.title = '点击移除 · 悬停看大图';
+        img.addEventListener('click', () => { refs.splice(i, 1); save(); renderSlots(); $('refPrev').style.display = 'none'; });
+        img.addEventListener('mouseenter', () => { $('refPrev').src = img.src; $('refPrev').style.display = 'block'; });
+        img.addEventListener('mouseleave', () => { $('refPrev').style.display = 'none'; });
+        d.appendChild(img);
+      }
+      box.appendChild(d);
+    }
+  }
+
+  $('btnAddRef').addEventListener('click', async () => {
+    if (refs.length >= MAX_SLOTS) { toast('参考图已满，点缩略图可删除'); return; }
+    setStatus('抓取选区中…');
+    const r = await window.orange.captureRef();
+    if (r.ok) { refs.push(r.file); save(); renderSlots(); toast('已添加选区参考图', 'ok'); }
+    else toast(r.error || '抓取失败');
+  });
+
+  // 外部改动（清缓存等）实时同步
+  if (window.orange.onGenVars) {
+    window.orange.onGenVars((g) => {
+      if (g && Array.isArray(g.refs) && JSON.stringify(g.refs) !== JSON.stringify(refs)) {
+        refs = g.refs.slice();
+        renderSlots();
+      }
+    });
+  }
+
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    refs = (cfg.gen && Array.isArray(cfg.gen.refs)) ? cfg.gen.refs.slice() : [];
+    renderSlots();
+  })();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

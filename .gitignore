@@ -1,0 +1,14 @@
+node_modules/
+dist/
+out/
+.cache/
+*.log
+*.bak
+*.asar
+.env
+.env.*
+!.env.example
+orange-config.json*
+life-config.json*
+Thumbs.db
+.DS_Store

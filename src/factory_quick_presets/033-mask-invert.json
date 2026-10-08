@@ -1,0 +1,36 @@
+{
+  "id": "033-mask-invert",
+  "label": "反相蒙版",
+  "group": "图层",
+  "icon": "qp-mask-inv",
+  "desc": "把当前层的蒙版反相（黑↔白）。",
+  "params": {},
+  "names": [],
+  "steps": [
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "channel",
+          "_enum": "channel",
+          "_value": "mask"
+        }
+      ],
+      "makeVisible": false
+    },
+    {
+      "_obj": "invert"
+    },
+    {
+      "_obj": "select",
+      "_target": [
+        {
+          "_ref": "channel",
+          "_enum": "channel",
+          "_value": "RGB"
+        }
+      ],
+      "makeVisible": false
+    }
+  ]
+}

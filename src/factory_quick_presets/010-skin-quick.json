@@ -1,0 +1,113 @@
+{
+  "id": "010-skin-quick",
+  "label": "快速磨皮",
+  "group": "皮肤",
+  "icon": "qp-skin",
+  "desc": "复制当前层 → 表面模糊保结构 → 不透明度 70% → 肤色自动蒙版（只作用于皮肤）。没有肤色时整层生效，自己画蒙版。",
+  "params": {
+    "radius": 12,
+    "threshold": 14,
+    "opacity": 70,
+    "fuzz": 40
+  },
+  "names": [
+    "磨皮"
+  ],
+  "steps": [
+    {
+      "_obj": "duplicate",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "name": "磨皮·{{n}}",
+      "version": 5
+    },
+    {
+      "_obj": "surfaceBlur",
+      "radius": {
+        "_unit": "pixelsUnit",
+        "_value": "{{radius}}"
+      },
+      "threshold": "{{threshold}}"
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "opacity": {
+          "_unit": "percentUnit",
+          "_value": "{{opacity}}"
+        }
+      }
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "layer",
+          "_enum": "ordinal",
+          "_value": "targetEnum"
+        }
+      ],
+      "to": {
+        "_obj": "layer",
+        "color": {
+          "_enum": "color",
+          "_value": "green"
+        }
+      }
+    }
+  ],
+  "after": [
+    {
+      "_obj": "colorRange",
+      "colors": {
+        "_enum": "colors",
+        "_value": "skinTone"
+      },
+      "fuzziness": "{{fuzz}}",
+      "detectFaces": true,
+      "_note": "肤色自动蒙版（画面里没有肤色/上面开着观察组时会失败，届时整层生效请手动画蒙版）"
+    },
+    {
+      "_obj": "make",
+      "new": {
+        "_class": "channel"
+      },
+      "at": {
+        "_ref": "channel",
+        "_enum": "channel",
+        "_value": "mask"
+      },
+      "using": {
+        "_enum": "userMaskEnabled",
+        "_value": "revealSelection"
+      },
+      "_note": "肤色蒙版"
+    },
+    {
+      "_obj": "set",
+      "_target": [
+        {
+          "_ref": "channel",
+          "_property": "selection"
+        }
+      ],
+      "to": {
+        "_enum": "ordinal",
+        "_value": "none"
+      }
+    }
+  ]
+}

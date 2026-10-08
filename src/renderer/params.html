@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 8px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn {
+    -webkit-app-region: no-drag;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; cursor: pointer;
+    background: var(--btn-bg);
+  }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+
+  #body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+  #body::-webkit-scrollbar { width: 6px; }
+  #body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+
+  /* 滑块行（紧凑双列：一横排两个，一屏见6个）：名字 + 滑轨 + 数值；档位说明只在悬停主标题显示 */
+  .prow {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 6px 9px; min-width: 0;
+    border-radius: 11px;
+    background: var(--inset-bg);
+    border: 1px solid var(--inset-border);
+  }
+  .prow.wide { grid-column: 1 / -1; }
+  .pname { font-size: 10.5px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pline { display: flex; align-items: center; gap: 6px; }
+  .pline input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); height: 14px; cursor: pointer; }
+  .pval {
+    min-width: 30px; text-align: right;
+    font-size: 10px; color: var(--accent-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 填空行 */
+  .prow input[type="text"] {
+    width: 100%; height: 30px; padding: 0 10px;
+    border-radius: 9px; border: 1px solid var(--inset-border);
+    background: rgba(0,0,0,0.22); color: var(--text);
+    font-size: 12px; outline: none; user-select: text;
+  }
+  .prow input[type="text"]:focus { border-color: var(--accent-border); }
+
+  #empty {
+    flex: 1; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    color: var(--text-dim); font-size: 12px; opacity: 0.75;
+    text-align: center; line-height: 1.8;
+  }
+  #empty.on { display: flex; }
+</style>
+</head>
+<body data-arm-id="prompt-box">
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>滑块</span>
+    <div class="sp"></div>
+    <div class="hbtn" id="btnReset" title="全部恢复为提示词里的默认值">↺</div>
+  </div>
+  <div id="body">
+    <div id="list" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;"></div>
+    <div id="empty" class="on">当前提示词中未检测到<br>@param滑块 或 【填空:】控件<br><span style="font-size:10px;opacity:0.7">在提示词卡粘入带正则控件的提示词后<br>这里会自动亮出对应控件</span></div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS['params'];
+
+  // 语料原典正则（不可改）：滑块 + 填空
+  const RE_PARAM = /@param:([^"\s:]+?)"\s*:\s*("[^"]*"|[-\d.]+)/g;
+  const RE_BLANK = /【填空:([^=】]+?)(?:=([^】]*))?】/g;
+
+  let lastPrompt = null;
+  let ctl = { params: {}, blanks: {} };   // 用户已调的值（按名存，同名同值天然去重）
+  let saveTimer = null;
+
+  function saveCtl() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => window.orange.setConfig({ gen: { ctl } }), 300);
+  }
+
+  function parse(text) {
+    const meta = {};   // name → {label, desc}
+    let m;
+    RE_PARAM.lastIndex = 0;
+    while ((m = RE_PARAM.exec(text))) {
+      const name = m[1], val = m[2];
+      const mm = name.match(/^(.*)_(label|desc|note|range)$/);
+      if (mm && val[0] === '"') (meta[mm[1]] = meta[mm[1]] || {})[mm[2]] = val.slice(1, -1);
+    }
+    const sliders = [], seen = new Set();
+    RE_PARAM.lastIndex = 0;
+    while ((m = RE_PARAM.exec(text))) {
+      const name = m[1], val = m[2];
+      if (/_(label|desc|note|range)$/.test(name)) continue;
+      if (val[0] === '"') continue;   // 文本值=写错的滑块，原典插件同样不渲染
+      if (seen.has(name)) continue;   // 同名只渲一个
+      seen.add(name);
+      sliders.push({
+        name,
+        label: (meta[name] && meta[name].label) || name,
+        desc: (meta[name] && meta[name].desc) || '',
+        def: Math.max(0, Math.min(1, parseFloat(val) || 0)),
+      });
+    }
+    const blanks = [], bseen = new Set();
+    RE_BLANK.lastIndex = 0;
+    while ((m = RE_BLANK.exec(text))) {
+      if (bseen.has(m[1])) continue;   // 同名同值：一个框注入全部
+      bseen.add(m[1]);
+      blanks.push({ name: m[1], def: m[2] || '' });
+    }
+    return { sliders, blanks };
+  }
+
+  function render(text) {
+    const { sliders, blanks } = parse(text || '');
+    const list = $('list');
+    list.innerHTML = '';
+    $('empty').classList.toggle('on', !sliders.length && !blanks.length);
+
+    for (const s of sliders) {
+      const cur = (ctl.params[s.name] != null) ? ctl.params[s.name] : s.def;
+      const row = document.createElement('div');
+      row.className = 'prow';
+      const name = document.createElement('div');
+      name.className = 'pname';
+      name.textContent = s.label;
+      if (s.desc) name.title = s.desc;   // 档位说明只在悬停主标题时显示
+      const line = document.createElement('div');
+      line.className = 'pline';
+      const inp = document.createElement('input');
+      inp.type = 'range'; inp.min = '0'; inp.max = '1'; inp.step = '0.01'; inp.value = cur;
+      const pv = document.createElement('span');
+      pv.className = 'pval'; pv.textContent = Number(cur).toFixed(2);
+      inp.addEventListener('input', () => {
+        ctl.params[s.name] = Number(inp.value);
+        pv.textContent = Number(inp.value).toFixed(2);
+        saveCtl();
+      });
+      // 滚轮微调±0.01
+      inp.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const nv = Math.max(0, Math.min(1, Number(inp.value) + (e.deltaY > 0 ? -0.01 : 0.01)));
+        inp.value = nv;
+        ctl.params[s.name] = nv;
+        pv.textContent = nv.toFixed(2);
+        saveCtl();
+      });
+      line.appendChild(inp); line.appendChild(pv);
+      row.appendChild(name); row.appendChild(line);
+      list.appendChild(row);
+    }
+
+    for (const b of blanks) {
+      const row = document.createElement('div');
+      row.className = 'prow wide';   // 填空独占整行
+      const name = document.createElement('div');
+      name.className = 'pname';
+      name.textContent = b.name;
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = (ctl.blanks[b.name] != null) ? ctl.blanks[b.name] : b.def;
+      inp.placeholder = b.def || '留空=空字符串注入';
+      inp.title = '同名填空全篇共用这一个框（填一次全部注入）';
+      inp.addEventListener('input', () => {
+        ctl.blanks[b.name] = inp.value;
+        saveCtl();
+      });
+      row.appendChild(name); row.appendChild(inp);
+      list.appendChild(row);
+    }
+  }
+
+  // 重置：清掉当前提示词涉及的已调值，回到提示词自带默认
+  $('btnReset').addEventListener('click', () => {
+    const { sliders, blanks } = parse(lastPrompt || '');
+    for (const s of sliders) delete ctl.params[s.name];
+    for (const b of blanks) delete ctl.blanks[b.name];
+    saveCtl();
+    render(lastPrompt);
+  });
+
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    ctl = (cfg.gen && cfg.gen.ctl) || { params: {}, blanks: {} };
+    if (!ctl.params) ctl.params = {};
+    if (!ctl.blanks) ctl.blanks = {};
+    lastPrompt = (cfg.gen && cfg.gen.prompt) || '';
+    render(lastPrompt);
+  })();
+
+  // 提示词卡内容一变，控件实时重建（自己存值的回声不触发重渲，保输入焦点）
+  if (window.orange.onGenVars) {
+    window.orange.onGenVars((g) => {
+      if (g && typeof g.prompt === 'string' && g.prompt !== lastPrompt) {
+        lastPrompt = g.prompt;
+        render(lastPrompt);
+      }
+    });
+  }
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

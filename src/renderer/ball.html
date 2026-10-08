@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #ball {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 72px; height: 72px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #ball svg { width: 34px; height: 34px; position: relative; z-index: 1; }
+  #ball:active { transform: translate(-50%, -50%) scale(0.88); }
+
+  /* 收纳/释放时球的呼吸脉冲 */
+  #ball.inhale { animation: inhale 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes inhale {
+    0% { transform: translate(-50%,-50%) scale(1); }
+    55% { transform: translate(-50%,-50%) scale(1.16); }
+    100% { transform: translate(-50%,-50%) scale(1); }
+  }
+  #ball.exhale { animation: exhale 0.45s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes exhale {
+    0% { transform: translate(-50%,-50%) scale(1); }
+    40% { transform: translate(-50%,-50%) scale(0.85); }
+    100% { transform: translate(-50%,-50%) scale(1); }
+  }
+  /* 释放涟漪光圈 */
+  #ripple {
+    position: absolute; left: 50%; top: 50%;
+    width: 72px; height: 72px; margin: -36px 0 0 -36px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    opacity: 0; pointer-events: none;
+  }
+  #ripple.go { animation: ripple 0.55s ease-out; }
+  @keyframes ripple {
+    0% { transform: scale(0.55); opacity: 0.9; }
+    100% { transform: scale(1.28); opacity: 0; }
+  }
+
+  /* ---------- 开机加载动效：球呼吸 + 外扩水波连发 + 发光描边进度环 ---------- */
+  #ball.bootpulse { animation: bootpulse 1.1s ease-in-out infinite; }
+  @keyframes bootpulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.055); }
+  }
+  /* 生图进度计数：跑图期间替换球logo（0/5 1/5…），批次完成后变回logo */
+  .genprog {
+    font-size: 17px; font-weight: 800; color: #fff;
+    letter-spacing: 0.5px; font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    display: inline-block;
+  }
+  /* logo⇄计数转场：旋出+Q弹入 */
+  #ballIco { display: flex; align-items: center; justify-content: center; }
+  #ballIco.swapout { animation: icoOut 0.16s ease-in forwards; }
+  #ballIco.swapin { animation: icoIn 0.26s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes icoOut { to { transform: scale(0.35) rotate(-24deg); opacity: 0; } }
+  @keyframes icoIn { from { transform: scale(0.35) rotate(18deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* 每完成一张：计数Q弹一下 */
+  .genprog.tick { animation: gtick 0.32s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes gtick { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  /* 生图中球体呼吸光；收尾一次爆闪 */
+  #genGlow {
+    position: absolute; inset: 0; border-radius: 50%;
+    pointer-events: none; opacity: 0;
+    box-shadow: 0 0 16px 3px var(--accent);
+  }
+  #genGlow.on { animation: gbreath 1.5s ease-in-out infinite; }
+  @keyframes gbreath { 0%, 100% { opacity: 0.22; } 50% { opacity: 0.85; } }
+  #genGlow.burst { animation: gburst 0.55s ease-out forwards; }
+  @keyframes gburst { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+
+  /* 外扩水波：主进程开机期把球窗扩到220，波纹能冲出气泡直径的2.8倍再消散 */
+  .bootwave {
+    position: absolute; left: 50%; top: 50%;
+    width: 72px; height: 72px; margin: -36px 0 0 -36px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    opacity: 0; pointer-events: none;
+    animation: bootwave 1.05s ease-out forwards;
+  }
+  @keyframes bootwave {
+    0% { transform: scale(0.6); opacity: 0.85; }
+    100% { transform: scale(2.85); opacity: 0; }
+  }
+  #bootFx {
+    position: absolute; left: 50%; top: 50%;
+    width: 84px; height: 84px; margin: -42px 0 0 -42px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s;
+  }
+  #bootFx.on { opacity: 1; }
+  #bootFx svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  /* 底环淡描边 + 进度环双层描边模拟发光（透明窗禁filter，不能用drop-shadow） */
+  #bootFx .track { fill: none; stroke: rgba(255,255,255,0.14); stroke-width: 2.5; }
+  #bootFx .glow  { fill: none; stroke: var(--accent); stroke-width: 6; opacity: 0.28; stroke-linecap: round; transition: stroke-dashoffset 0.25s; }
+  #bootFx .prog  { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; transition: stroke-dashoffset 0.25s; }
+
+  /* ---------- 全局快捷菜单（右键小球展开）：应用级功能的家 ---------- */
+  /* 窗口以球心对称扩到560×460（球在CSS里始终居中不动），菜单在球侧滑出 */
+  #bmenu {
+    position: absolute;
+    width: 216px;
+    display: none;
+    flex-direction: column; gap: 6px;
+  }
+  #bmenu.on { display: flex; animation: menuin 0.18s cubic-bezier(0.2, 0.8, 0.3, 1); }
+  @keyframes menuin {
+    0% { opacity: 0; transform: translateX(var(--mslide, 10px)) scale(0.97); }
+    100% { opacity: 1; transform: none; }
+  }
+  #bmenu.side-left  { right: calc(50% + 56px); --mslide: 10px; }
+  #bmenu.side-right { left: calc(50% + 56px); --mslide: -10px; }
+  #bmenu.below { top: calc(50% - 44px); }
+  #bmenu.above { bottom: calc(50% - 44px); }
+  /* 收起：滑回球侧淡出，动画走完再移除 */
+  #bmenu.out { animation: menuout 0.15s ease-in forwards; pointer-events: none; }
+  @keyframes menuout {
+    to { opacity: 0; transform: translateX(var(--mslide, 10px)) scale(0.96); }
+  }
+  /* 菜单条目跟随主题（0905用户裁定）：底色=主题瓦片色叠玻璃底，玻璃底浓淡随
+     「背景不透明度」滑杆(--mirror-tint)联动（+0.2打底：菜单浮在PS画布上不能全透明），
+     瓦片色随底板风格(data-style)换材质，主题色/红色全部走token */
+  .bmenu-item {
+    display: flex; align-items: center; gap: 10px;
+    height: 40px; padding: 0 14px;
+    border-radius: 13px;
+    background:
+      linear-gradient(0deg, var(--lg-tile-bg), var(--lg-tile-bg)),
+      linear-gradient(165deg, rgba(20, 20, 26, calc(var(--mirror-tint, 0.32) * 0.8 + 0.2)) 0%, rgba(8, 8, 12, calc(var(--mirror-tint, 0.32) * 0.8 + 0.2)) 100%);
+    color: var(--text, #fff); font-size: 12.5px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.12s;
+  }
+  .bmenu-item:hover {
+    background:
+      linear-gradient(0deg, var(--lg-tile-hover), var(--lg-tile-hover)),
+      linear-gradient(165deg, rgba(20, 20, 26, calc(var(--mirror-tint, 0.32) * 0.8 + 0.2)) 0%, rgba(8, 8, 12, calc(var(--mirror-tint, 0.32) * 0.8 + 0.2)) 100%);
+    transform: translateX(2px);
+  }
+  .bmenu-item:active { transform: scale(0.97); }
+  .bmenu-item svg { width: 16px; height: 16px; color: var(--accent-text); flex: none; }
+  .bmenu-item .bl { flex: 1; white-space: nowrap; }
+  /* 开关类条目的状态点：亮=开启 */
+  .bmenu-item .bdot {
+    width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: var(--btn-bg);
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .bmenu-item.on .bdot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .bmenu-item.on .bl { color: var(--accent-text); }
+  /* 退出条目：红色系走--err token + 二段确认态 */
+  .bmenu-item.quit svg { color: color-mix(in srgb, var(--err) 65%, #fff); }
+  .bmenu-item.quit:hover { background: color-mix(in srgb, var(--err) 24%, transparent); }
+  .bmenu-item.quit.confirm { background: color-mix(in srgb, var(--err) 32%, transparent); color: color-mix(in srgb, var(--err) 65%, #fff); }
+</style>
+</head>
+<body>
+  <div id="ball" class="lg-orb"><span id="ballIco"></span><div id="genGlow"></div></div>
+  <div id="ripple"></div>
+  <div id="bootFx"><svg viewBox="0 0 84 84">
+    <circle class="track" cx="42" cy="42" r="40" />
+    <circle class="glow" cx="42" cy="42" r="40" stroke-dasharray="251.3" stroke-dashoffset="251.3" />
+    <circle class="prog" cx="42" cy="42" r="40" stroke-dasharray="251.3" stroke-dashoffset="251.3" />
+  </svg></div>
+
+<script src="icons.js"></script>
+<script src="glass.js"></script>
+<script>
+  document.getElementById('ballIco').innerHTML = window.ORANGE_ICONS.orange;
+</script>
+<script>
+  const ball = document.getElementById('ball');
+
+  // 左键：按住拖动 / 短按 = 收纳/释放全部卡牌（固定）；中键短按 = 自定义动作（设置→小球中键）；右键：全局快捷菜单
+  let dragging = false, moved = 0, lastX = 0, lastY = 0;
+  let menuOpen = false;
+
+  ball.addEventListener('mousedown', (e) => {
+    if (e.button === 1) { e.preventDefault(); return; }   // 中键：不拖动、不触发系统自动滚动，动作在mouseup里发
+    if (e.button === 2) return;   // 右键不进入拖动
+    if (menuOpen) return;         // 菜单展开中球不拖动
+    dragging = true; moved = 0;
+    lastX = e.screenX; lastY = e.screenY;
+  });
+  ball.addEventListener('auxclick', (e) => {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    if (menuOpen) { window.orange.ballMenu(false); return; }
+    fireBallMiddle();
+  });
+  ball.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    window.orange.ballMenu(!menuOpen);
+  });
+  // 拖动只发起停信号，位移全程主进程采样（渲染端增量在双屏DPI不一致时坐标断层=乱跳）
+  let dragStarted = false;
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    moved += Math.abs(e.screenX - lastX) + Math.abs(e.screenY - lastY);
+    lastX = e.screenX; lastY = e.screenY;
+    if (!dragStarted && moved > 3) {
+      dragStarted = true;
+      window.orange.ballDragStart();
+    }
+  });
+  // 中键短按动作可自定义（设置→小球中键）：layout循环切布局(默认) / gather收纳释放 / hub开关控制台 / pass锁定开关
+  let ballMiddleAct = 'layout';
+  window.orange.getConfig().then((c) => { if (c.ui && c.ui.ballMiddle) ballMiddleAct = c.ui.ballMiddle; });
+  if (window.orange.onUIVars) window.orange.onUIVars((u) => { if (u && u.ballMiddle) ballMiddleAct = u.ballMiddle; });
+  function fireBallMiddle() {
+    if (ballMiddleAct === 'hub') window.orange.toggleHub();
+    else if (ballMiddleAct === 'layout') window.orange.layoutNext();
+    else if (ballMiddleAct === 'pass') window.orange.getConfig().then((c) => window.orange.setConfig({ locked: !c.locked }));
+    else window.orange.ballGather();
+  }
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 1) return;   // 中键动作走auxclick
+    if (dragStarted) window.orange.ballDragEnd();
+    else if (dragging && moved < 6) window.orange.ballGather();   // 左键短按固定=收纳/释放（用户裁定）
+    else if (e.button === 0 && window.orange.glassLog) {
+      // 左键松开却没触发任何动作（"点了球没反应"的偶发案）：落指纹，别哑巴
+      window.orange.glassLog('[ballpage] 左键松开未触发 dragging=' + dragging + ' moved=' + moved + ' menuOpen=' + menuOpen);
+    }
+    dragging = false; dragStarted = false;
+  });
+  window.addEventListener('blur', () => { dragging = false; dragStarted = false; });   // 焦点丢失=手势作废（坑57同族）
+  // 菜单展开中左键点球=收起菜单（不开关面板）
+  ball.addEventListener('click', (e) => {
+    if (menuOpen) { e.stopPropagation(); window.orange.ballMenu(false); }
+  }, true);
+
+  // ---------- 全局快捷菜单：条目渲染 + 状态同步 + 穿透热区上报 ----------
+  // 主进程扩窗后发来球心在窗口内的坐标(cx,cy)和菜单侧向；收起时窗口已复原
+  const MENU_ITEMS = [
+    { id: 'hub',     ico: 'orange',    label: '控制台',   act: () => window.orange.toggleHub() },
+    // 唯一的锁：锁定=布局冻结+鼠标穿透PS；未锁定=随时可拖动缩放（布局编辑模式已退役）
+    { id: 'pass',    ico: 'lock',      label: '锁定', toggle: true, act: () => window.orange.setConfig({ locked: !st.pass }) },
+    { id: 'settings', ico: 'settings', label: '设置',     act: () => { window.orange.openCard('settings'); window.orange.ballMenu(false); } },
+    // 面板沉到PS后面（系统压掉置顶）时的逃生口：硬重申全员置顶+堆序+铁序
+    { id: 'top',     ico: 'refresh',   label: '拉回最前', act: () => { window.orange.reassertTop(); window.orange.ballMenu(false); } },
+    { id: 'quit',    ico: 'power',     label: '退出来福', quit: true },
+  ];
+  const st = { pass: false };
+  let bmenu = null, quitArmTimer = null, rectTimer = null;
+
+  function reportMenuRects() {
+    if (!menuOpen || !window.orange.setPassRects) return;
+    const rects = [];
+    const br = ball.getBoundingClientRect();
+    rects.push({ x: br.x, y: br.y, w: br.width, h: br.height });
+    document.querySelectorAll('.bmenu-item').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0) rects.push({ x: r.x, y: r.y, w: r.width, h: r.height });
+    });
+    window.orange.setPassRects(rects);
+  }
+  function syncMenuStates() {
+    if (!bmenu) return;
+    bmenu.querySelector('[data-mid="pass"]').classList.toggle('on', st.pass);
+  }
+  function buildMenu(side, below) {
+    if (bmenu) bmenu.remove();
+    bmenu = document.createElement('div');
+    bmenu.id = 'bmenu';
+    bmenu.className = 'on side-' + side + ' ' + (below ? 'below' : 'above');
+    for (const it of MENU_ITEMS) {
+      const el = document.createElement('div');
+      el.className = 'bmenu-item' + (it.quit ? ' quit' : '');
+      el.setAttribute('data-mid', it.id);
+      el.innerHTML = (window.ORANGE_ICONS[it.ico] || '') + '<span class="bl">' + it.label + '</span>'
+        + (it.toggle ? '<span class="bdot"></span>' : '');
+      if (it.quit) {
+        // 退出：二段确认（原生confirm在透明窗会卡死，禁用）
+        el.addEventListener('click', () => {
+          if (el.classList.contains('confirm')) {
+            clearTimeout(quitArmTimer);
+            window.orange.quitApp();
+            return;
+          }
+          el.classList.add('confirm');
+          el.querySelector('.bl').textContent = '确认退出?';
+          quitArmTimer = setTimeout(() => {
+            el.classList.remove('confirm');
+            el.querySelector('.bl').textContent = it.label;
+          }, 3000);
+        });
+      } else {
+        el.addEventListener('click', () => it.act());
+      }
+      bmenu.appendChild(el);
+    }
+    document.body.appendChild(bmenu);
+    syncMenuStates();
+  }
+  if (window.orange.onBallMenuState) {
+    window.orange.onBallMenuState((s) => {
+      menuOpen = !!(s && s.open);
+      if (menuOpen) {
+        // 窗口以球心对称扩张，球在CSS里天然保持居中——不需要也不允许挪球（挪=闪跳）
+        buildMenu(s.side === 'left' ? 'left' : 'right', s.below !== false);
+        reportMenuRects();
+        clearInterval(rectTimer);
+        rectTimer = setInterval(reportMenuRects, 250);   // 布局微变跟随
+      } else {
+        if (bmenu) {
+          const m = bmenu;
+          bmenu = null;
+          m.classList.add('out');   // 滑出淡出，动画完再移除
+          setTimeout(() => m.remove(), 170);
+        }
+        clearInterval(rectTimer);
+        rectTimer = null;
+        clearTimeout(quitArmTimer);
+        if (window.orange.setPassRects) window.orange.setPassRects([]);
+      }
+    });
+  }
+  // 开关状态实时同步（初值 + 订阅广播）
+  window.orange.getConfig().then((c) => { st.pass = !!c.locked; syncMenuStates(); });
+  if (window.orange.onLockState) window.orange.onLockState((s) => { st.pass = !!(s && s.locked); syncMenuStates(); });
+
+  // （球右上角的PS连接状态点已于0906按用户要求移除；连接状态看控制台/日志卡）
+
+  // 尿尿提醒报时音：三问表式 叮-咚 高低双音钟声×3组（球窗口全局唯一，不会叠响）
+  if (window.orange.onPeeAlarm) {
+    window.orange.onPeeAlarm(async () => {
+      const cfg = await window.orange.getConfig();
+      const g = cfg.gen || {};
+      if (g.soundOn === false) return;
+      const vol = (Number(g.soundVol) >= 0 ? Number(g.soundVol) : 60) / 100 * 0.6;
+      if (!vol) return;
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        // 钟声：基频长衰减 + 金属泛音短衰减
+        const strike = (f, t) => {
+          [[1, 1, 1.6], [2.76, 0.22, 0.5], [5.4, 0.06, 0.16]].forEach(([m, a, d]) => {
+            const o = ac.createOscillator(), gn = ac.createGain();
+            o.type = 'sine'; o.frequency.value = f * m;
+            o.connect(gn); gn.connect(ac.destination);
+            const st = ac.currentTime + t;
+            gn.gain.setValueAtTime(0, st);
+            gn.gain.linearRampToValueAtTime(vol * a, st + 0.006);
+            gn.gain.exponentialRampToValueAtTime(0.0008, st + d);
+            o.start(st); o.stop(st + d + 0.05);
+          });
+        };
+        const HI = 1318.5, LO = 987.77;   // E6 / B5
+        [[HI, 0], [LO, 0.38], [HI, 0.95], [LO, 1.33], [HI, 1.9], [LO, 2.28]].forEach(([f, t]) => strike(f, t));
+        setTimeout(() => { try { ac.close(); } catch {} }, 4500);
+      } catch {}
+    });
+  }
+
+  // ---------- 开机加载动效：外扩水波连发 + 描边进度环；波纹陪跑到卡牌落位(finished)才熄灭 ----------
+  if (window.orange.onBootProgress) {
+    const bootFx = document.getElementById('bootFx');
+    const C = 251.3;   // 2πr, r=40
+    let bootRippleTimer = null;
+    function spawnWave() {
+      const w = document.createElement('div');
+      w.className = 'bootwave';
+      document.body.appendChild(w);
+      w.addEventListener('animationend', () => w.remove());
+    }
+    let bootDone = false;   // 熄灭后任何迟到的进度消息都不许复活动效
+    window.orange.onBootProgress((p) => {
+      if (p && p.finished) {
+        // 卡牌已落位：熄灭动效（主进程随后把球窗收回96）
+        bootDone = true;
+        bootFx.classList.remove('on');
+        ball.classList.remove('bootpulse');
+        clearInterval(bootRippleTimer);
+        bootRippleTimer = null;
+        document.querySelectorAll('.bootwave').forEach((el) => el.remove());
+        return;
+      }
+      if (bootDone) return;
+      bootFx.classList.add('on');
+      ball.classList.add('bootpulse');
+      const ratio = p && p.total > 0 ? Math.min(1, p.done / p.total) : 0;
+      const off = C * (1 - ratio);
+      bootFx.querySelector('.prog').style.strokeDashoffset = off;
+      bootFx.querySelector('.glow').style.strokeDashoffset = off;
+      if (!bootRippleTimer) {
+        spawnWave();
+        bootRippleTimer = setInterval(spawnWave, 450);   // 多圈叠发，波波相随
+      }
+    });
+  }
+
+  // ---------- 生图进度上球：logo换成计数(1/5…) + 描边进度环（复用开机环），批次完成收满后变回logo ----------
+  if (window.orange.onGenTasks) {
+    const gFx = document.getElementById('bootFx');
+    const gIco = document.getElementById('ballIco');
+    const gGlow = document.getElementById('genGlow');
+    const GC = 251.3;   // 2πr, r=40
+    let genShowing = false;
+    let genDoneTimer = null;
+    let lastTotal = 0, lastDone = -1;
+    function ringTo(ratio) {
+      const off = GC * (1 - Math.max(0, Math.min(1, ratio)));
+      gFx.querySelector('.prog').style.strokeDashoffset = off;
+      gFx.querySelector('.glow').style.strokeDashoffset = off;
+    }
+    // logo⇄计数转场：旋出→换内容→Q弹入
+    function swapIco(html) {
+      gIco.classList.remove('swapin');
+      gIco.classList.add('swapout');
+      setTimeout(() => {
+        gIco.innerHTML = html;
+        gIco.classList.remove('swapout');
+        void gIco.offsetWidth;
+        gIco.classList.add('swapin');
+      }, 150);
+    }
+    function setCount(done, total) {
+      const el = gIco.querySelector('.genprog');
+      if (!el) return;
+      el.textContent = done + '/' + total;
+      el.classList.remove('tick');
+      void el.offsetWidth;
+      el.classList.add('tick');   // 每张完成Q弹一下
+    }
+    function showGen(done, total) {
+      clearTimeout(genDoneTimer);
+      genDoneTimer = null;
+      lastTotal = total;
+      if (!genShowing) {
+        // 开场转场：logo旋出→计数弹入，环淡入，呼吸光起
+        genShowing = true;
+        lastDone = done;
+        swapIco('<span class="genprog">' + done + '/' + total + '</span>');
+        gFx.classList.add('on');
+        gGlow.classList.remove('burst');
+        gGlow.classList.add('on');
+        ringTo(total > 0 ? done / total : 0);
+        return;
+      }
+      if (done !== lastDone) { lastDone = done; setCount(done, total); }
+      ringTo(total > 0 ? done / total : 0);
+    }
+    function finishGen() {
+      if (!genShowing) return;
+      // 收尾转场：环收满+终值Q弹+呼吸光转爆闪，1秒后logo弹回、环淡出
+      setCount(lastTotal, lastTotal);
+      ringTo(1);
+      gGlow.classList.remove('on');
+      void gGlow.offsetWidth;
+      gGlow.classList.add('burst');
+      clearTimeout(genDoneTimer);
+      genDoneTimer = setTimeout(() => {
+        genShowing = false;
+        lastDone = -1;
+        gFx.classList.remove('on');   // opacity过渡淡出
+        gGlow.classList.remove('burst');
+        swapIco(window.ORANGE_ICONS.orange);
+      }, 1000);
+    }
+    function updateGen(tasks) {
+      if (!Array.isArray(tasks)) return;
+      if (ball.classList.contains('bootpulse')) return;   // 开机动效期间不抢环
+      const running = tasks.filter((t) => t.status === 'running');
+      if (!running.length) { finishGen(); return; }
+      // genTasks最新在前：取最新的运行中批次
+      const bid = running[0].batchId || running[0].id;
+      const batch = tasks.filter((t) => (t.batchId || t.id) === bid);
+      const done = batch.filter((t) => t.status !== 'running').length;
+      showGen(done, batch.length);
+    }
+    window.orange.onGenTasks(updateGen);
+    if (window.orange.getGenTasks) window.orange.getGenTasks().then(updateGen);
+
+    // ---------- Forge修图联动：同一套球面动效，计数换成百分比 ----------
+    if (window.orange.onForgeProgress) {
+      let forgeShowing = false;
+      let forgeIdleTimer = null;
+      window.orange.onForgeProgress((p) => {
+        if (ball.classList.contains('bootpulse')) return;
+        if (genShowing && !forgeShowing) return;   // AI批次占用球面时Forge不抢（先到先得）
+        if (p && p.done) {
+          if (!forgeShowing) return;
+          // 收尾：同款爆闪+回logo
+          const el = gIco.querySelector('.genprog');
+          if (el) { el.textContent = '100%'; el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick'); }
+          ringTo(1);
+          gGlow.classList.remove('on');
+          void gGlow.offsetWidth;
+          gGlow.classList.add('burst');
+          clearTimeout(forgeIdleTimer);
+          forgeIdleTimer = setTimeout(() => {
+            forgeShowing = false;
+            gFx.classList.remove('on');
+            gGlow.classList.remove('burst');
+            swapIco(window.ORANGE_ICONS.orange);
+          }, 1000);
+          return;
+        }
+        const ratio = Math.max(0, Math.min(1, Number(p && p.progress) || 0));
+        clearTimeout(forgeIdleTimer);
+        if (!forgeShowing) {
+          forgeShowing = true;
+          swapIco('<span class="genprog">' + Math.round(ratio * 100) + '%</span>');
+          gFx.classList.add('on');
+          gGlow.classList.remove('burst');
+          gGlow.classList.add('on');
+        } else {
+          const el = gIco.querySelector('.genprog');
+          if (el) el.textContent = Math.round(ratio * 100) + '%';
+        }
+        ringTo(ratio);
+        // 兜底：15秒没有新进度（Forge崩了/断连没发done）自动复原球面
+        forgeIdleTimer = setTimeout(() => {
+          forgeShowing = false;
+          gFx.classList.remove('on');
+          gGlow.classList.remove('on');
+          swapIco(window.ORANGE_ICONS.orange);
+        }, 15000);
+      });
+    }
+  }
+
+  // 收纳/释放特效：吸气/呼气脉冲 + 释放涟漪
+  if (window.orange.onBallFx) {
+    window.orange.onBallFx(({ mode }) => {
+      ball.classList.remove('inhale', 'exhale');
+      void ball.offsetWidth;
+      ball.classList.add(mode === 'inhale' ? 'inhale' : 'exhale');
+      if (mode === 'exhale') {
+        const rp = document.getElementById('ripple');
+        rp.classList.remove('go');
+        void rp.offsetWidth;
+        rp.classList.add('go');
+      }
+    });
+  }
+</script>
+</body>
+</html>

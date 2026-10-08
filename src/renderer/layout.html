@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 20px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 13px 6px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #fff; }
+  #head .title svg { color: var(--accent-text); }
+  #head .sp { flex: 1; }
+
+  #body { flex: 1; overflow-y: auto; padding: 2px 13px 13px; }
+  #body::-webkit-scrollbar { width: 0; }
+
+  #tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-content: start; }
+  .sq {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+    background: var(--inset-bg);
+    border: 1px solid var(--inset-border);
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .sq:hover { border-color: var(--accent-border); transform: translateY(-1px); }
+  .sq:active { transform: scale(0.95); }
+  .sq svg { width: 20px; height: 20px; color: var(--accent-text); }
+  .sq .nm { font-size: 10px; color: var(--text); max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sq.def svg { color: var(--accent-text); }
+  .sq .del {
+    position: absolute; top: 3px; right: 3px;
+    width: 15px; height: 15px; border-radius: 50%;
+    display: none; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text-dim);
+    font-size: 9px; cursor: pointer;
+  }
+  .sq:hover .del { display: flex; }
+  .sq .del:hover { color: var(--err); }
+
+  /* 命名弹层 */
+  #dlg { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.45); border-radius: 20px; align-items: center; justify-content: center; z-index: 20; }
+  #dlg.on { display: flex; }
+  #dlgBox { width: 84%; background: var(--lg-tile); border: 1px solid var(--inset-border); border-radius: 13px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  #dlgBox .t { font-size: 11.5px; font-weight: 700; color: #fff; }
+  #dlgBox input { width: 100%; height: 28px; border: 1px solid var(--inset-border); border-radius: 8px; background: var(--inset-bg); color: var(--text); font-size: 11.5px; padding: 0 9px; outline: none; user-select: text; }
+  #dlgBox input:focus { border-color: var(--accent-border); }
+  #dlgBox .btns { display: flex; gap: 7px; justify-content: flex-end; }
+  #dlgBox .b { padding: 5px 14px; border-radius: 8px; border: none; background: var(--btn-bg); color: var(--text); font-size: 11px; cursor: pointer; }
+  #dlgBox .b.acc { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>快速布局</span>
+    <div class="sp"></div>
+  </div>
+  <div id="body"><div id="tiles"></div></div>
+
+  <div id="dlg">
+    <div id="dlgBox">
+      <div class="t">保存当前布局</div>
+      <input id="nameIn" placeholder="布局名称（最多12字）" maxlength="12" />
+      <div class="btns">
+        <button class="b" id="dlgCancel">取消</button>
+        <button class="b acc" id="dlgOk">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const S24 = (p) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+  $('ico').innerHTML = window.ORANGE_ICONS.layout || '🧩';
+
+  const I_HOME = S24('<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>');
+  const I_GRID = S24('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>');
+  const I_PLUS = S24('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>');
+
+  let customs = [];
+  let hasDefault = true;
+
+  // 通用删除钮（默认布局与自定义同款：悬停现身、点击删除）
+  function delBtn(onDel, title) {
+    const del = document.createElement('span');
+    del.className = 'del';
+    del.textContent = '✕';
+    del.title = title;
+    del.addEventListener('click', async (e) => { e.stopPropagation(); await onDel(); });
+    return del;
+  }
+
+  function render() {
+    const box = $('tiles');
+    box.innerHTML = '';
+
+    // 默认布局（第21轮用户裁定：不再写死，可删；删了以后右键「存当前」可重新收录）
+    if (hasDefault) {
+      const def = document.createElement('div');
+      def.className = 'sq def';
+      def.innerHTML = I_HOME + '<span class="nm">默认布局</span>';
+      def.title = '点击=切到默认布局 · 右键=用当前排布重新收录默认';
+      def.addEventListener('click', () => window.orange.layoutApply('__default'));
+      def.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        window.orange.layoutSetDefault();
+      });
+      def.appendChild(delBtn(() => window.orange.layoutDelete('__default'), '删除默认布局'));
+      box.appendChild(def);
+    }
+
+    // 自定义布局
+    customs.forEach((name) => {
+      const t = document.createElement('div');
+      t.className = 'sq';
+      t.innerHTML = I_GRID;   // 图标=自家静态SVG
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = name;   // 用户输入永远当纯文本（0905审计采纳：根绝布局名HTML注入）
+      t.appendChild(nm);
+      t.title = '切换到布局「' + name + '」';
+      t.addEventListener('click', () => window.orange.layoutApply(name));
+      t.appendChild(delBtn(() => window.orange.layoutDelete(name), '删除该布局'));
+      box.appendChild(t);
+    });
+
+    // 保存当前布局（右键=收录为默认布局，默认被删后靠这个长回来）
+    const add = document.createElement('div');
+    add.className = 'sq';
+    add.innerHTML = I_PLUS + '<span class="nm">存当前</span>';
+    add.title = '点击=把当前排布保存为自定义布局 · 右键=收录为默认布局';
+    add.addEventListener('click', () => { $('nameIn').value = ''; $('dlg').classList.add('on'); $('nameIn').focus(); });
+    add.addEventListener('contextmenu', (e) => { e.preventDefault(); window.orange.layoutSetDefault(); });
+    box.appendChild(add);
+  }
+
+  $('dlgCancel').addEventListener('click', () => $('dlg').classList.remove('on'));
+  $('dlgOk').addEventListener('click', async () => {
+    const name = $('nameIn').value.trim();
+    if (!name) return;
+    $('dlg').classList.remove('on');
+    await window.orange.layoutSave(name);
+  });
+  $('nameIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('dlgOk').click(); });
+
+  async function refresh() {
+    const r = await window.orange.layoutList();
+    customs = r.custom || [];
+    hasDefault = !!r.hasDefault;
+    render();
+  }
+  refresh();
+  window.orange.onLayoutsChanged(refresh);
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

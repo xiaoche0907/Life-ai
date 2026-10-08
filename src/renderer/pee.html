@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 20px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 13px 4px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 15px; height: 15px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+
+  #body {
+    flex: 1; display: flex; align-items: center; gap: 7px;
+    padding: 2px 13px 12px;
+  }
+
+  /* 时分秒输入组 */
+  #setRow { flex: 1; display: flex; align-items: center; gap: 4px; }
+  #setRow input {
+    width: 100%; min-width: 0; flex: 1; height: 30px;
+    border: 1px solid var(--inset-border); border-radius: 9px;
+    background: var(--inset-bg); color: var(--text);
+    font-size: 12px; text-align: center; outline: none;   /* 0908 对齐控制台字号档 */
+    font-variant-numeric: tabular-nums;
+    user-select: text;
+  }
+  #setRow input:focus { border-color: var(--accent-border); }
+  #setRow input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  #setRow .u { flex: none; font-size: 10.5px; color: var(--text-dim); }
+
+  /* 倒计时显示（运行中替换输入组） */
+  #clock {
+    flex: 1; display: none;
+    align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 800; letter-spacing: 2px;
+    color: var(--accent-text); font-variant-numeric: tabular-nums;
+  }
+  #card.running #setRow { display: none; }
+  #card.running #clock { display: flex; }
+
+  /* 开始/停止：图标圆钮 */
+  #btnGo {
+    flex: none;
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-soft); color: var(--accent-text);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  #btnGo:hover { filter: brightness(1.25); }
+  #btnGo:active { transform: scale(0.94); }
+  #btnGo svg { width: 15px; height: 15px; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>尿尿提醒</span>
+    <div class="sp"></div>
+  </div>
+  <div id="body">
+    <div id="setRow">
+      <input type="number" id="h" min="0" max="12" value="0" title="小时 · 滚轮调节" /><span class="u">时</span>
+      <input type="number" id="m" min="0" max="59" value="45" title="分钟 · 滚轮调节" /><span class="u">分</span>
+      <input type="number" id="s" min="0" max="59" value="0" title="秒 · 滚轮调节" /><span class="u">秒</span>
+    </div>
+    <div id="clock">00:00</div>
+    <button id="btnGo" title="开始倒计时"></button>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.pee;
+
+  const I_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+  const I_STOP = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>';
+
+  let deadline = null;
+
+  function fmt(ms) {
+    const t = Math.max(0, Math.ceil(ms / 1000));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    const p = (n) => (n < 10 ? '0' : '') + n;
+    return h > 0 ? h + ':' + p(m) + ':' + p(s) : p(m) + ':' + p(s);
+  }
+  function render() {
+    const running = !!deadline;
+    document.getElementById('card').classList.toggle('running', running);
+    $('btnGo').innerHTML = running ? I_STOP : I_PLAY;
+    $('btnGo').title = running ? '取消倒计时' : '开始倒计时';
+    if (running) $('clock').textContent = fmt(deadline - Date.now());
+  }
+
+  $('btnGo').addEventListener('click', async () => {
+    if (deadline) {
+      await window.orange.peeStop();
+      deadline = null;
+    } else {
+      const secs = (Number($('h').value) || 0) * 3600 + (Number($('m').value) || 0) * 60 + (Number($('s').value) || 0);
+      if (secs < 1) return;
+      const r = await window.orange.peeStart(secs);
+      deadline = r.deadline;
+    }
+    render();
+  });
+
+  // 时分秒滚轮调节
+  [['h', 12], ['m', 59], ['s', 59]].forEach(([id, max]) => {
+    $(id).addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const v = Math.max(0, Math.min(max, (Number($(id).value) || 0) + (e.deltaY < 0 ? 1 : -1)));
+      $(id).value = v;
+    });
+  });
+
+  // 每500ms刷新显示（倒计时本体在主进程，卡片关了照样到点）
+  setInterval(() => { if (deadline) render(); }, 500);
+  (async () => {
+    const st = await window.orange.peeStatus();
+    deadline = st.deadline || null;
+    render();
+  })();
+  window.orange.onPeeAlarm(() => { deadline = null; setTimeout(render, 1200); });
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; pointer-events: none; }
+  canvas.g { position: absolute; left: 0; top: 0; will-change: transform, opacity; transform-origin: top left; }
+</style>
+</head>
+<body>
+<script>
+  // 释放飞行代理层（0905丝滑第4层）：真窗口藏着，这里用单表面GPU动画飞卡牌快照——
+  // rAF跟随显示器垂直同步+亚像素坐标，移动真窗口的合成错位/整数跳变全部消失
+  // 0906丝滑：快照在收纳时以原始位图(fly-prep)逐张到达，这里预热成canvas；释放(fly-data)只带坐标，
+  // 收到即起飞——不再有PNG解码等待，主进程也不再为编码PNG堵住吸入动画
+  const easeOutQuint = (t) => 1 - Math.pow(1 - t, 5);
+  const pool = new Map();   // 卡序号 -> 预热好的canvas
+
+  // BGRA原始位图 → RGBA ImageData。Chromium位图通常是预乘alpha：若全图没有任何"色值>alpha"的像素
+  // 就判定预乘并还原（不还原=半透明玻璃边缘发暗）；出现色值>alpha则一定是直alpha，原样用
+  function bitmapToCanvas(it) {
+    const c = document.createElement('canvas');
+    c.width = it.bw; c.height = it.bh;
+    c.className = 'g';
+    c.style.width = it.w + 'px';
+    c.style.height = it.h + 'px';
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(it.bw, it.bh);
+    const src = it.bmp, dst = img.data;
+    const n = Math.min(src.length, dst.length);
+    let straight = false;
+    for (let p = 0; p < n; p += 4) {
+      const b = src[p], g = src[p + 1], r = src[p + 2], a = src[p + 3];
+      dst[p] = r; dst[p + 1] = g; dst[p + 2] = b; dst[p + 3] = a;
+      if (!straight && a < 255 && (r > a || g > a || b > a)) straight = true;
+    }
+    if (!straight) {
+      for (let p = 0; p < n; p += 4) {
+        const a = dst[p + 3];
+        if (a === 0 || a === 255) continue;
+        const k = 255 / a;
+        dst[p] = Math.min(255, Math.round(dst[p] * k));
+        dst[p + 1] = Math.min(255, Math.round(dst[p + 1] * k));
+        dst[p + 2] = Math.min(255, Math.round(dst[p + 2] * k));
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  if (window.orange && window.orange.onFlyPrep) {
+    window.orange.onFlyPrep((it) => {
+      try { if (it && it.bmp && it.bw > 0 && it.bh > 0) pool.set(it.i, bitmapToCanvas(it)); } catch (e) {}
+    });
+  }
+  if (window.orange && window.orange.onFlyData) {
+    window.orange.onFlyData((d) => {
+      const items = [];
+      for (const it of (d.items || [])) {
+        const el = pool.get(it.i);
+        if (!el) continue;
+        el.style.transform = 'translate3d(' + it.x0 + 'px,' + it.y0 + 'px,0)';
+        el.style.opacity = '0.1';
+        document.body.appendChild(el);
+        items.push(Object.assign({ el }, it));
+      }
+      const t0 = performance.now();
+      const step = (now) => {
+        let t = (now - t0) / (d.dur || 320);
+        if (t > 1) t = 1;
+        const k = easeOutQuint(t);
+        for (const it of items) {
+          it.el.style.transform = 'translate3d(' + (it.x0 + (it.x1 - it.x0) * k) + 'px,' + (it.y0 + (it.y1 - it.y0) * k) + 'px,0)';
+          it.el.style.opacity = String(Math.min(1, 0.1 + 0.9 * Math.min(1, t * 1.6)));
+        }
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+</script>
+</body>
+</html>

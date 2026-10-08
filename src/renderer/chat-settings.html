@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 24px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  #head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 16px 10px;
+    cursor: grab;
+  }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+
+  #body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  #body::-webkit-scrollbar { width: 6px; }
+  #body::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+  }
+
+  .section { display: flex; flex-direction: column; gap: 10px; }
+  .label {
+    font-size: 11px;
+    color: #fff;
+    opacity: 0.82;
+    letter-spacing: 1px;
+  }
+
+  select, input[type="text"] {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid var(--inset-border);
+    background: var(--inset-bg);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+  }
+  select:focus, input[type="text"]:focus { border-color: var(--accent-border); }
+
+  textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--inset-border);
+    background: var(--inset-bg);
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.6;
+    outline: none;
+    resize: vertical;
+    user-select: text;
+  }
+  textarea:focus { border-color: var(--accent-border); }
+
+  .row { display: flex; align-items: center; gap: 10px; }
+  .pill {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid var(--inset-border);
+    background: var(--inset-bg);
+    color: var(--text);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .pill:hover { background: var(--btn-bg-hover); }
+  .pill.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    opacity: 0.7;
+    line-height: 1.5;
+  }
+
+  #btnRefresh {
+    height: 32px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--btn-bg);
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  #btnRefresh:hover { background: var(--btn-bg-hover); }
+  #btnRefresh:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>对话设置</span>
+    <div class="sp"></div>
+  </div>
+
+  <div id="body">
+    <div class="section">
+      <div class="label">渠道选择</div>
+      <select id="provider"></select>
+    </div>
+
+    <div class="section" id="customSection" style="display:none;">
+      <div class="label">自定义渠道</div>
+      <input type="text" id="customBase" placeholder="接口地址 base，如 https://api.example.com" />
+      <input type="text" id="customKey" placeholder="API Key" style="margin-top:6px;" />
+      <div class="hint">Gemini 兼容网关；地址+Key 填好后点下方「拉取模型」</div>
+    </div>
+
+    <div class="section">
+      <div class="label">模型选择</div>
+      <div class="row">
+        <select id="model" style="flex: 1;"></select>
+        <button id="btnRefresh" title="动态拉取模型列表（仅自定义渠道）">🔄</button>
+      </div>
+      <div class="hint">不同模型能力和价格不同</div>
+    </div>
+
+    <div class="section">
+      <div class="label">角色预设</div>
+      <div class="row" id="presetRow" style="flex-wrap: wrap; gap: 8px;"></div>
+      <div class="row" style="margin-top: 6px;">
+        <input type="text" id="presetName" placeholder="角色名称（如：PS助手）" style="flex: 1;">
+        <button id="btnAddPreset" style="height: 36px; padding: 0 12px; border: none; border-radius: 12px; background: var(--accent); color: #fff; font-size: 11px; cursor: pointer;">添加</button>
+      </div>
+      <div class="hint" id="presetHint" style="display: none; color: #ff9a9a;"></div>
+    </div>
+
+    <div class="section">
+      <div class="label">系统提示词</div>
+      <textarea id="systemPrompt" placeholder="描述角色的行为和风格，例如：你是一位专业的PS修图助手，请用简洁清晰的语言回答用户问题。"></textarea>
+      <div class="hint">修改后新对话生效</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS['chat-settings'];
+
+  const providerSel = $('provider');
+  const modelSel = $('model');
+  const systemPrompt = $('systemPrompt');
+  const btnRefresh = $('btnRefresh');
+  const presetName = $('presetName');
+  const btnAddPreset = $('btnAddPreset');
+
+  let providers = {};
+  let currentProvider = '';
+  let presets = [];
+  let currentPreset = '';
+
+  // 0907#5 自定义渠道（与生图解耦）：选中"自定义"时显示地址/Key输入，其余渠道隐藏
+  const customSection = $('customSection');
+  const customBase = $('customBase');
+  const customKey = $('customKey');
+  function toggleCustom(prov) { customSection.style.display = prov === 'custom' ? 'block' : 'none'; }
+
+  async function init() {
+    const cfg = await window.orange.getConfig();
+    const provData = await window.orange.getProviders();
+
+    providers = provData.conf || {};
+    const meta = provData.meta || {};
+
+    // 填充渠道下拉
+    providerSel.innerHTML = '';
+    for (const k in meta) {
+      if (k === 'momo') continue;
+      if (providers[k] && providers[k].hidden) continue;   // 生图卡小眼睛关掉的渠道，对话里也不列（0908）
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = (providers[k] && providers[k].label) || meta[k].label || k;   // cus_* 用用户起的名
+      providerSel.appendChild(opt);
+    }
+
+    currentProvider = cfg.chat.provider || provData.current || 'aji';
+    providerSel.value = currentProvider;
+    // 0907#5 自定义渠道：读回已存的地址/Key，落进 providers.custom（chat.js的custom分支读它）
+    const cc = (provData.conf && provData.conf.custom) || {};
+    customBase.value = cc.base || '';
+    customKey.value = cc.key || '';
+    toggleCustom(currentProvider);
+
+    updateModels();
+
+    // 角色预设
+    presets = cfg.chat.presets || [];
+    currentPreset = cfg.chat.currentPreset || '';
+    renderPresets();
+
+    systemPrompt.value = cfg.chat.systemPrompt || '';
+  }
+
+  const presetRow = $('presetRow');
+  const presetHint = $('presetHint');
+  let hintTimer = null;
+  function showHint(text) {
+    presetHint.textContent = text;
+    presetHint.style.display = 'block';
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { presetHint.style.display = 'none'; }, 2500);
+  }
+
+  function renderPresets() {
+    presetRow.innerHTML = '<div class="pill" data-preset="">默认</div>';
+    for (const p of presets) {
+      const pill = document.createElement('div');
+      pill.className = 'pill';
+      pill.dataset.preset = p.name;
+      const nm = document.createElement('span');
+      nm.textContent = p.name;
+      const del = document.createElement('span');
+      del.dataset.del = p.name;
+      del.textContent = '✕';
+      del.style.cssText = 'margin-left: 4px; cursor: pointer; opacity: 0.7;';
+      pill.appendChild(nm);
+      pill.appendChild(del);
+      presetRow.appendChild(pill);
+    }
+    presetRow.querySelectorAll('.pill').forEach((el) => {
+      el.classList.toggle('active', el.dataset.preset === currentPreset);
+    });
+  }
+
+  // 委托监听只挂一次（放renderPresets里会随重渲染叠加，点一下触发N次）
+  // 删除=二段确认：✕第一次点变红"确认"，3秒内再点才删（原生confirm会卡死透明窗口，禁用）
+  let delArm = null;   // { name, timer }
+  presetRow.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('[data-del]');
+    if (delBtn) {
+      const name = delBtn.dataset.del;
+      if (!delArm || delArm.name !== name) {
+        if (delArm) clearTimeout(delArm.timer);
+        delBtn.textContent = '确认';
+        delBtn.style.color = '#ff9a9a';
+        delBtn.style.opacity = '1';
+        delArm = { name, timer: setTimeout(() => { delArm = null; renderPresets(); }, 3000) };
+        return;
+      }
+      clearTimeout(delArm.timer);
+      delArm = null;
+      presets = presets.filter((p) => p.name !== name);
+      if (currentPreset === name) {
+        currentPreset = '';
+        systemPrompt.value = '';
+        saveCurrentPreset();
+        window.orange.setConfig({ chat: { systemPrompt: '' } });
+      }
+      savePresets();
+      renderPresets();
+      return;
+    }
+
+    const pill = e.target.closest('.pill');
+    if (!pill) return;
+    const presetId = pill.dataset.preset;
+    currentPreset = presetId;
+    if (presetId === '') {
+      systemPrompt.value = '';
+    } else {
+      const preset = presets.find((p) => p.name === presetId);
+      if (preset) systemPrompt.value = preset.prompt;
+    }
+    // 切换预设=系统提示词跟着换，要立刻落库让下一条对话生效
+    window.orange.setConfig({ chat: { systemPrompt: systemPrompt.value } });
+    saveCurrentPreset();
+    renderPresets();
+  });
+
+  function updateModels() {
+    const prov = providerSel.value;
+    const pc = providers[prov] || {};
+    const meta = (window.__providerMeta && window.__providerMeta[prov]) || {};
+
+    modelSel.innerHTML = '';
+
+    let models = [];
+    if (meta.chatModels && Object.keys(meta.chatModels).length > 0) {
+      models = Object.keys(meta.chatModels);
+    } else if (pc.models && pc.models.length > 0) {
+      models = pc.models;
+    } else if (meta.models && Object.keys(meta.models).length > 0) {
+      models = Object.keys(meta.models);
+    }
+
+    if (models.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(暂无模型，请先拉取或配置)';
+      modelSel.appendChild(opt);
+    } else {
+      for (const m of models) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        const cm = meta.chatModels && meta.chatModels[m];
+        const displayName = (cm && cm.name) || (meta.models && meta.models[m] && meta.models[m].name) || m;
+        // dead=渠道已下架（0908 AJI 语言模型全 503）：标灰不可选，免得用户选到一个必报错的
+        if (cm && cm.dead) { opt.disabled = true; opt.textContent = displayName + '（渠道已下架）'; }
+        else opt.textContent = displayName;
+        modelSel.appendChild(opt);
+      }
+    }
+
+    window.orange.getConfig().then((cfg) => {
+      const currentModel = cfg.chat.model || '';
+      const alive = models.filter((m) => !(meta.chatModels && meta.chatModels[m] && meta.chatModels[m].dead));
+      if (currentModel && alive.includes(currentModel)) {
+        modelSel.value = currentModel;
+      } else if (alive.length > 0) {
+        modelSel.value = alive[0];
+        saveModel(alive[0]);
+      } else if (models.length) {
+        // 全部下架：显示第一个灰项但不写库，提示换渠道
+        modelSel.value = models[0];
+        const h = $('presetHint'); if (h) { h.textContent = '该渠道的对话模型已全部下架，请切到 GRS（Gemini）'; h.style.display = 'block'; }
+      }
+    });
+  }
+
+  function saveProvider(prov) {
+    window.orange.setConfig({ chat: { provider: prov } });
+  }
+
+  function saveModel(model) {
+    window.orange.setConfig({ chat: { model } });
+  }
+
+  function saveSystemPrompt(text) {
+    window.orange.setConfig({ chat: { systemPrompt: text } });
+    // 同步更新当前预设
+    if (currentPreset !== '') {
+      const preset = presets.find((p) => p.name === currentPreset);
+      if (preset) {
+        preset.prompt = text;
+        savePresets();
+      }
+    }
+  }
+
+  function savePresets() {
+    window.orange.setConfig({ chat: { presets } });
+  }
+
+  function saveCurrentPreset() {
+    window.orange.setConfig({ chat: { currentPreset } });
+  }
+
+  providerSel.addEventListener('change', () => {
+    currentProvider = providerSel.value;
+    saveProvider(currentProvider);
+    toggleCustom(currentProvider);
+    updateModels();
+  });
+
+  modelSel.addEventListener('change', () => {
+    saveModel(modelSel.value);
+  });
+
+  // 0907#5 自定义渠道：地址/Key 实时保存到 providers.custom（chat.js的custom分支读它；不联动生图）
+  let customTimer = null;
+  function saveCustom() {
+    clearTimeout(customTimer);
+    customTimer = setTimeout(() => {
+      window.orange.setConfig({ providers: { custom: { base: customBase.value.trim(), key: customKey.value.trim() } } });
+    }, 400);
+  }
+  customBase.addEventListener('input', saveCustom);
+  customKey.addEventListener('input', saveCustom);
+
+  let promptTimer = null;
+  systemPrompt.addEventListener('input', () => {
+    clearTimeout(promptTimer);
+    promptTimer = setTimeout(() => saveSystemPrompt(systemPrompt.value), 500);
+  });
+
+  btnAddPreset.addEventListener('click', () => {
+    const name = presetName.value.trim();
+    if (!name) { showHint('先输入角色名称'); return; }
+    if (presets.find((p) => p.name === name)) { showHint('角色「' + name + '」已存在'); return; }
+    presets.push({ name, prompt: systemPrompt.value });
+    currentPreset = name;
+    savePresets();
+    saveCurrentPreset();
+    presetName.value = '';
+    renderPresets();
+  });
+
+  btnRefresh.addEventListener('click', async () => {
+    btnRefresh.disabled = true;
+    btnRefresh.textContent = '拉取中...';
+    try {
+      let result;
+      if (currentProvider === 'custom') {
+        // 0907#5 自定义渠道：用对话自己的地址/Key拉 /v1/models（不走生图渠道的ai-models）
+        const base = (customBase.value || '').trim().replace(/\/+$/, '');
+        const key = (customKey.value || '').replace(/\s+/g, '');   // 粘贴常带首尾空格/换行，静默清
+        // Key含中文/全角/不可见字符→请求头会抛ByteString天书，发之前先用人话拦（此处走渲染进程自己的fetch，罩不到主进程的体检）
+        let kbad = -1;
+        for (let i = 0; i < key.length; i++) if (key.charCodeAt(i) > 126) { kbad = i; break; }
+        if (!base || !key) { result = { ok: false, error: '请先填自定义渠道地址和Key' }; }
+        else if (kbad >= 0) { result = { ok: false, error: 'Key第' + (kbad + 1) + '位混进了中文/全角字符——删掉它，或重新复制粘贴整个Key' }; }
+        else {
+          try {
+            const resp = await fetch(base + '/v1/models', { headers: { 'Authorization': 'Bearer ' + key } });
+            if (!resp.ok) { result = { ok: false, error: 'HTTP ' + resp.status }; }
+            else {
+              const data = await resp.json();
+              const ids = (data.data || []).map((m) => m.id).filter(Boolean).sort();
+              window.orange.setConfig({ providers: { custom: { base, key, models: ids } } });
+              result = { ok: true, models: ids };
+            }
+          } catch (e) { result = { ok: false, error: e.message || String(e) }; }
+        }
+      } else {
+        result = await window.orange.aiModels();
+      }
+      if (result.ok) {
+        const provData = await window.orange.getProviders();
+        providers = provData.conf || {};
+        updateModels();
+        btnRefresh.textContent = '✓ 成功';
+      } else {
+        btnRefresh.textContent = '✗ ' + (result.error || '失败');
+      }
+    } catch (e) {
+      btnRefresh.textContent = '✗ 出错';
+    } finally {
+      setTimeout(() => {
+        btnRefresh.disabled = false;
+        btnRefresh.textContent = '🔄';
+      }, 2000);
+    }
+  });
+
+  window.orange.getProviders().then((d) => {
+    window.__providerMeta = d.meta;
+    init();
+  });
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

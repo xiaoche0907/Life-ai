@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 1 auto; min-height: 30px; overflow: hidden; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  .hbtn { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--btn-bg); flex: none; }
+  .hbtn:hover { background: var(--btn-bg-hover); }
+  .hbtn svg { width: 13px; height: 13px; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); flex: none; }
+  #dot.on { background: var(--ok); }
+  #ver { font-size: 9px; color: var(--text-dim); max-width: 90px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #top { flex: 0 0 auto; padding: 2px 14px 8px; display: flex; flex-direction: column; gap: 8px; }
+  #wfRow { display: flex; align-items: center; gap: 6px; }
+  #wfTrig { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--inset-border); border-radius: 10px; background: var(--inset-bg); cursor: pointer; font-size: 12px; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 8px; }
+  #wfTrig:hover { border-color: var(--accent-border); }
+  #wfList { display: none; position: absolute; z-index: 40; left: 14px; right: 14px; top: 84px; bottom: 10px; overflow-y: auto; background: rgba(24, 26, 34, 0.98); border: 1px solid var(--accent-border); border-radius: 12px; padding: 4px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55); }
+  #wfList.on { display: block; }
+  .fp-item { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 11.5px; color: var(--text); }
+  .fp-item:hover { background: var(--btn-bg-hover); }
+  .fp-item.cur { background: var(--accent-soft); color: var(--accent-text); }
+  .fp-item .lb { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .fp-item .tag { flex: none; font-size: 8.5px; padding: 1px 5px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-text); }
+  .fp-item.bad { color: var(--text-dim); }
+  .fp-item.bad .tag { background: rgba(200, 60, 60, 0.25); color: var(--err); }
+  #wfEmpty { padding: 14px 10px; font-size: 11px; line-height: 1.6; color: var(--text-dim); }
+
+  #body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 14px 8px; display: flex; flex-direction: column; gap: 8px; }
+  #body::-webkit-scrollbar { width: 0; }
+  .sec { font-size: 10.5px; font-weight: 700; color: #fff; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+  .sec > span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .sec .dim { font-weight: 400; color: var(--text-dim); font-size: 9px; }
+  textarea { width: 100%; min-height: 34px; max-height: 160px; resize: vertical; border: 1px solid var(--inset-border); border-radius: 9px; background: var(--inset-bg); color: var(--text); font-size: 10.5px; line-height: 1.45; padding: 6px 8px; outline: none; user-select: text; }
+  textarea:focus { border-color: var(--accent-border); }
+  .grid2 { display: flex; gap: 5px; flex-wrap: wrap; }
+  .grid2 > div { flex: 1; min-width: 60px; }
+  /* .seedRow 也要带上：种子那个 label 不在 .grid2 里，漏掉就继承 body 默认 16px，比同排「步数/CFG」大一号（0916 用户实报） */
+  .grid2 label, .seedRow label { display: block; font-size: 9px; color: var(--text-dim); margin-bottom: 2px; }
+  input[type="number"], input[type="text"].inp { width: 100%; height: 26px; border: 1px solid var(--inset-border); border-radius: 8px; background: var(--inset-bg); color: var(--text); font-size: 10.5px; padding: 0 6px; outline: none; user-select: text; }
+  input:focus { border-color: var(--accent-border); }
+  /* 下拉框：卡片是深色玻璃，原生 select 会整块白底浅字（0916 用户实报）。appearance:none + 自画箭头 */
+  select.inp { width: 100%; height: 26px; border: 1px solid var(--inset-border); border-radius: 8px; background-color: var(--inset-bg); color: var(--text); font-size: 10.5px; padding: 0 22px 0 6px; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 6px center; background-size: 11px; }
+  select.inp:hover, select.inp:focus { border-color: var(--accent-border); }
+  select.inp option { background: #1a1c22; color: var(--text); }
+  .seedRow { display: flex; gap: 4px; align-items: flex-end; }
+  .seedRow > div { flex: 1; min-width: 0; }
+  .sw { flex: none; height: 26px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--inset-bg); color: var(--text-dim); font-size: 9.5px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .sw.on { color: var(--accent-text); border-color: var(--accent-border); background: var(--accent-soft); }
+  .sw svg { width: 11px; height: 11px; }
+  /* 处理分辨率档位：胶囊横排（卡片窄，不用下拉） */
+  .tiers { display: flex; gap: 5px; }
+  .tier { flex: 1; height: 26px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--inset-bg); color: var(--text-dim); font-size: 10.5px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .tier:hover { border-color: var(--accent-border); color: var(--text); }
+  .tier.on { color: var(--accent-text); border-color: var(--accent-border); background: var(--accent-soft); }
+  #hint { font-size: 10px; line-height: 1.5; color: var(--text-dim); padding: 6px 8px; border: 1px dashed var(--inset-border); border-radius: 9px; }
+  #hint.warn { color: var(--err); border-color: rgba(200, 60, 60, 0.4); }
+
+  #foot { flex: none; margin-top: auto; display: flex; align-items: center; gap: 9px; padding: 6px 14px 14px; }
+  #foot label { font-size: 9px; color: var(--text-dim); }
+  #count { width: 52px; }
+  #stat { flex: 1; min-width: 0; font-size: 10px; color: var(--text-dim); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #ringSvg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 8; display: none; }
+  #ringSvg.on { display: block; }
+  #ringRect { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; filter: drop-shadow(0 0 6px var(--accent)); transition: stroke-dasharray 0.35s linear; }
+  #btnRun { margin-left: auto; width: 52px; height: 52px; border-radius: 16px; flex: none; background: var(--btn-bg); border: 1px solid var(--glass-border); color: var(--accent-text); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s, transform 0.15s cubic-bezier(0.34,1.56,0.64,1); }
+  #btnRun:hover { background: var(--accent-soft); }
+  #btnRun:active { transform: scale(0.97); }
+  #btnRun svg { width: 20px; height: 20px; }
+  #btnRun.off { border-color: var(--err); color: #fff; }
+  #btnRun.busy { color: var(--err); }
+
+  @media (max-height: 300px) { #foot { padding: 4px 12px 10px; } #btnRun { width: 40px; height: 40px; border-radius: 12px; } #btnRun svg { width: 16px; height: 16px; } }
+  @media (max-height: 190px) { #body { display: none; } #head { padding: 8px 14px 2px; } #top { padding: 0 14px 4px; } #wfList { top: 4px; bottom: 4px; left: 8px; right: 8px; } }
+  @media (max-height: 150px) { #head { display: none; } #top { position: absolute; left: 12px; right: 62px; bottom: 13px; height: 34px; padding: 0; z-index: 5; } #wfRow { height: 100%; } #wfTrig { height: 100%; } #wfRow .hbtn { display: none; } #stat, #foot label, #count { display: none; } }
+
+  #dlg { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.45); border-radius: 22px; align-items: center; justify-content: center; z-index: 50; }
+  #dlg.on { display: flex; }
+  #dlgBox { width: 84%; background: rgba(24, 26, 34, 0.98); border: 1px solid var(--accent-border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 9px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55); }
+  #dlgBox .t { font-size: 12px; font-weight: 700; color: #fff; }
+  #dlgBox input { width: 100%; height: 30px; border: 1px solid var(--inset-border); border-radius: 9px; background: var(--inset-bg); color: var(--text); font-size: 11.5px; padding: 0 10px; outline: none; user-select: text; }
+  #dlgBox .btns { display: flex; gap: 8px; justify-content: flex-end; }
+  #dlgBox .b { padding: 6px 16px; border-radius: 9px; border: none; background: var(--btn-bg); color: var(--text); font-size: 11.5px; cursor: pointer; }
+  #dlgBox .b.acc { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
+</style>
+</head>
+<body data-arm-id="comfy">
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>ComfyUI</span>
+    <span id="dot" data-pass title="连接状态 · 点击重连"></span>
+    <span id="ver"></span>
+    <div class="sp"></div>
+    <div class="hbtn" id="btnSettings" title="设置 ComfyUI 地址"></div>
+  </div>
+  <div id="top">
+    <div id="wfRow">
+      <div id="wfTrig" data-pass title="点击切换工作流 · 滚轮循环">选择工作流…</div>
+      <div class="hbtn" id="btnFolder" title="打开工作流文件夹（放 API 格式导出的 json）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+      <div class="hbtn" id="btnRefresh" title="刷新工作流列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></div>
+    </div>
+  </div>
+  <div id="wfList" data-pass></div><!-- 锁定穿透放行（铁律16）；绝对定位基准是#card，不放#body里（紧凑档#body会隐藏） -->
+  <div id="body">
+    <div id="hint">在 ComfyUI 里把工作流用「Save (API Format)」导出（设置里先开 Dev mode），放进工作流文件夹，点刷新。</div>
+    <div id="params"></div>
+  </div>
+  <div id="foot">
+    <span id="stat"></span>
+    <label>数量</label><input type="number" id="count" value="1" min="1" max="20" />
+    <button id="btnRun" title="生成（需先框选）"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg></button>
+  </div>
+  <svg id="ringSvg"><rect id="ringRect" pathLength="100" /></svg>
+  <div id="dlg">
+    <div id="dlgBox">
+      <div class="t">ComfyUI 地址</div>
+      <input id="urlIn" placeholder="http://127.0.0.1:8188" />
+      <div class="btns"><button class="b" id="dlgCancel">取消</button><button class="b acc" id="dlgOk">保存并连接</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = window.ORANGE_ICONS.comfy;
+  $('btnSettings').innerHTML = window.ORANGE_ICONS.settings;
+  const DICE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="16" cy="16" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>';
+
+  let comfyUrl = '', connected = false, running = false;
+  let list = [], curName = '', schema = null, seedRandom = true;
+  // 处理分辨率档位（跟 comfy.js 的 MEGAPIXEL_TIERS 一一对应，改一处要两处一起改）
+  const TIERS = [{ mp: 1, label: '1MP' }, { mp: 1.5, label: '1.5MP' }, { mp: 2, label: '2MP' }, { mp: 3, label: '3MP' }];
+
+  // ---------- 连接 ----------
+  function setDot(on) { connected = on; $('dot').classList.toggle('on', on); $('btnRun').classList.toggle('off', !on); }
+  // retry=true 表示这已经是自动重试那一次（ComfyUI 空闲后首次应答慢，真机实测首连常超时：失败先自动再试一次，还不行才报红）
+  let connecting = false;
+  async function connect(retry) {
+    if (!comfyUrl) { $('dlg').classList.add('on'); return; }
+    if (connecting) return;
+    connecting = true;
+    setStat(retry ? '再试一次…' : '连接中…');
+    const r = await window.orange.comfyTest(comfyUrl);
+    connecting = false;
+    setDot(!!r.ok);
+    $('ver').textContent = r.ok ? ((r.version ? 'v' + r.version : '已连接') + (r.device ? ' · ' + r.device.replace(/^cuda:\d+\s*/, '').slice(0, 24) : '')) : '';
+    $('ver').title = r.ok ? (r.version + ' ' + r.device) : (r.error || '');
+    if (r.ok) { setStat(''); return; }
+    if (!retry) { setStat('第一次没连上，3 秒后自动再试…'); setTimeout(() => connect(true), 3000); return; }
+    setStat('连不上 ComfyUI——错误已写进生图日志；先把 ComfyUI 跑起来，或点右上角齿轮改地址，点红点重连');
+  }
+  function setStat(s) { $('stat').textContent = s || ''; $('stat').title = s || ''; }
+  // 数量：滚轮加减（Shift×5），夹在 1-20。详细报错在「生图日志」里，状态行只留一句人话，别把行撑到看不见（0916 用户反馈）
+  const COUNT_MAX = 20;
+  function bumpCount(d) {
+    const n = Math.max(1, Math.min(COUNT_MAX, (parseInt($('count').value) || 1) + d));
+    $('count').value = n;
+    if (window.orange.armModule) window.orange.armModule('comfy');   // 调数量也算调参=武装（同卡上其它控件）
+  }
+  $('count').addEventListener('wheel', (e) => { e.preventDefault(); bumpCount(e.deltaY < 0 ? (e.shiftKey ? 5 : 1) : (e.shiftKey ? -5 : -1)); }, { passive: false });
+  $('dot').addEventListener('click', () => connect());
+  $('btnSettings').addEventListener('click', () => { $('urlIn').value = comfyUrl || 'http://127.0.0.1:8188'; $('dlg').classList.add('on'); $('urlIn').focus(); });
+  $('dlgCancel').addEventListener('click', () => $('dlg').classList.remove('on'));
+  $('dlgOk').addEventListener('click', async () => {
+    comfyUrl = $('urlIn').value.trim().replace(/\/+$/, '');
+    await window.orange.setConfig({ comfy: { url: comfyUrl } });
+    $('dlg').classList.remove('on');
+    connect();
+  });
+
+  // ---------- 工作流库 ----------
+  async function refreshList() {
+    const r = await window.orange.comfyWorkflows();
+    list = (r && r.list) || [];
+    renderList();
+    const h = $('hint');
+    if (!list.length) {
+      h.style.display = ''; h.className = '';
+      h.textContent = '工作流文件夹是空的：' + (r && r.dir) + '\n在 ComfyUI 里用「Save (API Format)」导出 json 放进去（设置里先开 Dev mode），再点刷新。';
+      return;
+    }
+    // 有文件了：以配置记的当前工作流为准（config.comfy.current 是唯一真账，卡上切换也是先写它），没载入就补载；
+    // 否则把"空的"提示收回（0916 真机实测：刷新后旧提示赖着不走）
+    const want = (r && r.current) || curName || '';
+    if (want && list.some((w) => w.name === want && !w.bad)) { if (want !== curName || !schema) await loadWorkflow(want); }
+    else { h.style.display = ''; h.className = ''; h.textContent = '点上面「选择工作流…」挑一个（' + list.length + ' 个可用）'; }
+  }
+  function renderList() {
+    const box = $('wfList');
+    box.innerHTML = '';
+    if (!list.length) { const d = document.createElement('div'); d.id = 'wfEmpty'; d.textContent = '还没有工作流——点文件夹图标打开目录，放入 API 格式导出的 json'; box.appendChild(d); return; }
+    list.forEach((w) => {
+      const it = document.createElement('div');
+      it.className = 'fp-item' + (w.name === curName ? ' cur' : '') + (w.bad ? ' bad' : '');
+      const lb = document.createElement('span'); lb.className = 'lb'; lb.textContent = w.name.replace(/\.json$/i, '');
+      const tg = document.createElement('span'); tg.className = 'tag';
+      if (w.bad) { tg.textContent = '不可用'; it.title = w.bad; }
+      else { tg.textContent = w.nodes + ' 节点' + (w.hasInput ? '' : ' · 无输入'); it.title = (w.hasInput ? '有 LoadImage 输入' : '⚠ 没有 LoadImage 节点，选区图没处喂') + ' · 文本 ' + w.texts + ' · 采样器 ' + w.samplers + ' · 输出 ' + w.outputs; }
+      it.append(lb, tg);
+      if (!w.bad) it.addEventListener('click', () => { pickWorkflow(w.name); $('wfList').classList.remove('on'); });
+      box.appendChild(it);
+    });
+  }
+  async function loadWorkflow(name) {
+    const r = await window.orange.comfyLoad(name);
+    if (!r || !r.ok) { $('hint').className = 'warn'; $('hint').id = 'hint'; $('hint').textContent = (r && r.error) || '加载失败'; return; }
+    curName = r.name; schema = r.schema; seedRandom = r.seedRandom !== false;
+    $('wfTrig').textContent = curName.replace(/\.json$/i, '');
+    // 回读参考图（千问 2.1）：从 saved 里拿 refs:1 ~ refs:5，读缩略图填进 refImages，
+    // 真正的画槽位在 renderParams() 里（槽位由 renderParams 创建，这里先摆数据再渲染）
+    for (let i = 1; i <= 5; i++) delete refImages[i];
+    const saved = r.saved || {};
+    for (let i = 1; i <= 5; i++) {
+      const raw = saved['refs:' + i];
+      if (!raw) continue;
+      const ps = /^ps:/.test(String(raw));
+      const path = String(raw).replace(/^ps:/, '');
+      const thumb = await window.orange.readImageThumb(path, 120);
+      if (thumb) refImages[i] = { path: raw, thumb, ps };
+    }
+    renderParams();
+    renderList();
+  }
+  // 用户手动切工作流=调参=武装（开机自动回载不算，别一开机就把武装抢走）
+  function pickWorkflow(name) { loadWorkflow(name); if (window.orange.armModule) window.orange.armModule('comfy'); }
+  function cycle(dir) {
+    const ok = list.filter((w) => !w.bad);
+    if (!ok.length) return;
+    let i = ok.findIndex((w) => w.name === curName);
+    i = (i === -1) ? (dir > 0 ? 0 : ok.length - 1) : ((i + dir + ok.length) % ok.length);
+    pickWorkflow(ok[i].name);
+  }
+  $('wfTrig').addEventListener('click', () => { $('wfList').classList.toggle('on'); renderList(); });
+  $('wfTrig').addEventListener('wheel', (e) => { e.preventDefault(); cycle(e.deltaY > 0 ? 1 : -1); });
+  $('btnFolder').addEventListener('click', () => window.orange.comfyOpenFolder());
+  $('btnRefresh').addEventListener('click', refreshList);
+  // 别处改了 config.comfy.current（机测/将来提示词库直达）时让卡按配置重载：卡开着不会自己感知配置变化
+  window.__comfyReload = async () => { curName = ''; schema = null; await refreshList(); return curName; };
+
+  // ---------- 快捷参数面板（按解析结果动态生成） ----------
+  function renderParams() {
+    const box = $('params');
+    box.innerHTML = '';
+    const h = $('hint');
+    if (!schema) { h.style.display = ''; return; }
+    if (!schema.input) { h.style.display = ''; h.className = 'warn'; h.textContent = '这个工作流没有 LoadImage 节点，选区图没处喂——在 ComfyUI 里加一个 LoadImage 接到你的图，再导出。'; }
+    else if (!schema.outputs) { h.style.display = ''; h.className = 'warn'; h.textContent = '这个工作流没有 SaveImage/PreviewImage 节点，跑完拿不到图。'; }
+    else { h.style.display = 'none'; h.className = ''; }
+    schema.texts.forEach((t) => {
+      const sec = document.createElement('div'); sec.className = 'sec';
+      sec.innerHTML = '<span></span><span class="dim">#' + t.id + '</span>';
+      sec.firstChild.textContent = t.label;
+      const ta = document.createElement('textarea'); ta.dataset.key = 't:' + t.id; ta.value = t.value || ''; ta.placeholder = t.label + '…';
+      ta.addEventListener('click', armOnClick);
+      box.append(sec, ta);
+      // 千问 2.1 同源节点：正负两个 prompt 在一个节点，卡上分两行编辑
+      if (t.hasNeg) {
+        const negSec = document.createElement('div'); negSec.className = 'sec';
+        negSec.innerHTML = '<span>反向提示词</span><span class="dim">#' + t.id + '</span>';
+        const negTa = document.createElement('textarea'); negTa.dataset.key = 't:' + t.id + ':neg'; negTa.value = t.negValue || ''; negTa.placeholder = '反向提示词（一般留空）';
+        negTa.addEventListener('click', armOnClick);
+        box.append(negSec, negTa);
+      }
+    });
+    schema.samplers.forEach((s) => {
+      const sec = document.createElement('div'); sec.className = 'sec';
+      sec.innerHTML = '<span></span><span class="dim">#' + s.id + '</span>';
+      sec.firstChild.textContent = '采样器（' + s.label + '）';   // 字段标题按标签字号显，别整行继承 body 的 16px（0916 用户实报）
+      box.appendChild(sec);
+      const row = document.createElement('div'); row.className = 'seedRow';
+      const seedBox = document.createElement('div');
+      seedBox.innerHTML = '<label>种子</label>';
+      const seedIn = document.createElement('input'); seedIn.type = 'number'; seedIn.dataset.key = 's:' + s.id + ':seed'; seedIn.value = s.seed != null ? s.seed : 0; seedIn.min = '0';
+      seedBox.appendChild(seedIn);
+      const sw = document.createElement('div'); sw.className = 'sw' + (seedRandom ? ' on' : ''); sw.setAttribute('data-pass', ''); sw.innerHTML = DICE + '<span>随机</span>'; sw.title = '每张换一个随机种子（关掉=用左边填的固定种子）';
+      sw.addEventListener('click', () => { seedRandom = !seedRandom; sw.classList.toggle('on', seedRandom); saveParams(); });
+      row.append(seedBox, sw);
+      box.appendChild(row);
+      const g = document.createElement('div'); g.className = 'grid2';
+      const fields = [['steps', '步数', 1, 1, 150], ['cfg', 'CFG', 0.5, 0, 30], ['denoise', '重绘幅度', 0.05, 0, 1]];
+      for (const [k, lb, step, min, max] of fields) {
+        if (s[k] == null) continue;
+        const d = document.createElement('div'); d.innerHTML = '<label>' + lb + '</label>';
+        const inp = document.createElement('input'); inp.type = 'number'; inp.dataset.key = 's:' + s.id + ':' + k; inp.value = s[k]; inp.step = step; inp.min = min; inp.max = max;
+        d.appendChild(inp); g.appendChild(d);
+      }
+      for (const [k, lb] of [['sampler', '采样器'], ['scheduler', '调度器']]) {
+        if (s[k] == null) continue;
+        const d = document.createElement('div'); d.innerHTML = '<label>' + lb + '</label>';
+        const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'inp'; inp.dataset.key = 's:' + s.id + ':' + k; inp.value = s[k];
+        d.appendChild(inp); g.appendChild(d);
+      }
+      box.appendChild(g);
+    });
+    // 处理分辨率（0916 用户要）：档位喂给 ImageScaleToTotalPixels.megapixels。
+    // 卡片窄，用胶囊按钮横排；键名 m:<节点id>，主进程按标签查回数值（档位表跟 comfy.js 的 MEGAPIXEL_TIERS 对齐）
+    (schema.upscales || []).forEach((u) => {
+      const sec = document.createElement('div'); sec.className = 'sec';
+      sec.innerHTML = '<span></span><span class="dim">#' + u.id + '</span>';
+      sec.firstChild.textContent = '处理分辨率';
+      box.appendChild(sec);
+      const row = document.createElement('div'); row.className = 'tiers';
+      // 值藏在 hidden input 里：collectEdits 只认 [data-key] 且读 el.value，div 两条都不满足（会存不下来）
+      const hid = document.createElement('input'); hid.type = 'hidden'; hid.dataset.key = 'm:' + u.id; hid.value = u.tier;
+      TIERS.forEach((t) => {
+        const b = document.createElement('div');
+        b.className = 'tier' + (t.label === u.tier ? ' on' : '');
+        b.setAttribute('data-pass', '');
+        b.textContent = t.label;
+        b.title = '处理前把图缩到 ' + t.label + ' 像素再跑。这个' + (t.mp >= 2 ? '更细更慢' : '更快更省显存')
+          + '——它管处理精度，出图尺寸跟着你的选区比例走（跑图时日志里会写实际像素）';
+        b.addEventListener('click', () => {
+          row.querySelectorAll('.tier').forEach((x) => x.classList.toggle('on', x === b));
+          hid.value = t.label;
+          saveParams();
+          if (window.orange.armModule) window.orange.armModule('comfy');
+        });
+        row.appendChild(b);
+      });
+      row.appendChild(hid);
+      box.appendChild(row);
+    });
+    // 出图尺寸（ResolutionSelector + EmptyLatentImage）：比例 + 百万像素，带"跟参考图"选项
+    (schema.sizes || []).forEach((sz) => {
+      const sec = document.createElement('div'); sec.className = 'sec';
+      sec.innerHTML = '<span></span><span class="dim">#' + sz.id + '</span>';
+      sec.firstChild.textContent = sz.label;
+      box.appendChild(sec);
+      const grid = document.createElement('div'); grid.className = 'grid2';
+      // 比例：下拉选择（空串 = 跟参考图），hidden input 存键 z:<id>
+      // 值必须是 ComfyUI 认的原字符串；显示用短标签（长英文名在窄卡里被截断，像没显示完）
+      const ratioBox = document.createElement('div'); ratioBox.innerHTML = '<label>比例</label>';
+      const ratioSel = document.createElement('select'); ratioSel.className = 'inp'; ratioSel.setAttribute('data-pass', '');
+      const ratios = [
+        ['', '跟参考图'], ['1:1 (Square)', '1:1 方形'], ['2:3 (Portrait)', '2:3 竖'],
+        ['3:2 (Landscape)', '3:2 横'], ['3:4 (Portrait)', '3:4 竖'], ['4:3 (Landscape)', '4:3 横'],
+        ['9:16 (Portrait)', '9:16 竖'], ['16:9 (Landscape)', '16:9 横'], ['21:9 (Ultrawide)', '21:9 超宽'],
+      ];
+      ratios.forEach(([v, lb]) => {
+        const opt = document.createElement('option'); opt.value = v; opt.textContent = lb;
+        if (v === sz.aspect_ratio) opt.selected = true;
+        ratioSel.appendChild(opt);
+      });
+      const ratioHid = document.createElement('input'); ratioHid.type = 'hidden'; ratioHid.dataset.key = 'z:' + sz.id; ratioHid.value = sz.aspect_ratio || '';
+      ratioSel.addEventListener('change', () => { ratioHid.value = ratioSel.value; saveParams(); if (window.orange.armModule) window.orange.armModule('comfy'); });
+      ratioBox.append(ratioSel, ratioHid); grid.appendChild(ratioBox);
+      // 百万像素：数字输入框，键 z:<id>:mp
+      const mpBox = document.createElement('div'); mpBox.innerHTML = '<label>百万像素</label>';
+      const mpInp = document.createElement('input'); mpInp.type = 'number'; mpInp.className = 'inp'; mpInp.dataset.key = 'z:' + sz.id + ':mp';
+      mpInp.value = sz.megapixels != null ? sz.megapixels : 1; mpInp.min = '0.1'; mpInp.max = '16'; mpInp.step = '0.1';
+      mpBox.appendChild(mpInp); grid.appendChild(mpBox);
+      box.appendChild(grid);
+    });
+    // 参考图区（千问 2.1）：5 槽位缩略图网格 + 上传按钮（UI 参考参考图卡）
+    if (schema.refs && schema.refs.slots) {
+      const n = Math.min(schema.refs.max || 5, schema.refs.slots);
+      const sec = document.createElement('div'); sec.className = 'sec';
+      sec.innerHTML = '<span>参考图</span><span class="dim">最多 ' + n + ' 张 · 点击取选区 · 右键删除</span>';
+      box.appendChild(sec);
+      const refGrid = document.createElement('div'); refGrid.style.cssText = 'display:grid;grid-template-columns:repeat(' + n + ',1fr);gap:5px;';
+      for (let i = 1; i <= n; i++) {
+        const slot = document.createElement('div');
+        slot.style.cssText = 'aspect-ratio:1;border-radius:8px;border:1px solid var(--inset-border);background:var(--inset-bg);cursor:pointer;position:relative;overflow:hidden;';
+        slot.setAttribute('data-pass', '');
+        slot.dataset.refSlot = i;
+        slot.title = '点击取 PS 选区作参考图 · 右键删除';
+        slot.appendChild(refPlaceholder());
+        slot.addEventListener('click', () => captureRefToSlot(i));
+        slot.addEventListener('contextmenu', (e) => { e.preventDefault(); if (refImages[i]) deleteRef(i); });
+        refGrid.appendChild(slot);
+      }
+      box.appendChild(refGrid);
+      for (let i = 1; i <= n; i++) if (refImages[i]) renderRefSlot(i);
+    }
+    // 模型切换（千问 2.1）：两套权重各一排胶囊（跟「处理分辨率」同视觉，省掉原生下拉的白底问题）
+    if (schema.models && (schema.models.unet || schema.models.clip)) {
+      const sec = document.createElement('div'); sec.className = 'sec';
+      sec.innerHTML = '<span>模型</span><span class="dim">int8 省显存 · bf16 精度高</span>';
+      box.appendChild(sec);
+      const defs = [
+        ['unet', schema.models.unet, ['qwen_image_2.1_int8_convrot.safetensors', 'qwen_image_2.1_bf16.safetensors']],
+        ['clip', schema.models.clip, ['qwen3vl_8b_int8_convrot.safetensors', 'qwen3vl_8b_bf16.safetensors']],
+      ];
+      for (const [kind, node, opts] of defs) {
+        if (!node) continue;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        const lb = document.createElement('span');
+        lb.style.cssText = 'font-size:9px;color:var(--text-dim);flex:none;width:46px;';
+        lb.textContent = kind === 'unet' ? '扩散模型' : '文本编码';
+        const pills = document.createElement('div'); pills.className = 'tiers'; pills.style.flex = '1';
+        const hid = document.createElement('input'); hid.type = 'hidden'; hid.dataset.key = kind + ':' + node.id; hid.value = node.value;
+        opts.forEach((m) => {
+          const isInt8 = m.includes('int8');
+          const b = document.createElement('div');
+          b.className = 'tier' + (m === node.value ? ' on' : '');
+          b.setAttribute('data-pass', '');
+          b.textContent = isInt8 ? 'int8' : 'bf16';
+          b.title = m;
+          b.addEventListener('click', () => {
+            pills.querySelectorAll('.tier').forEach((x) => x.classList.toggle('on', x === b));
+            hid.value = m;
+            saveParams();
+            if (window.orange.armModule) window.orange.armModule('comfy');
+          });
+          pills.appendChild(b);
+        });
+        row.append(lb, pills, hid);
+        box.appendChild(row);
+      }
+    }
+  }
+  function collectEdits() {
+    const e = {};
+    $('params').querySelectorAll('[data-key]').forEach((el) => { e[el.dataset.key] = el.type === 'number' ? Number(el.value) : el.value; });
+    // 参考图路径（千问 2.1）：refs:1 ~ refs:5
+    for (let i = 1; i <= 5; i++) { const ref = refImages[i]; if (ref && ref.path) e['refs:' + i] = ref.path; }
+    return e;
+  }
+  let saveTimer = null;
+  function saveParams() {
+    if (!curName) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => window.orange.comfySaveParams(curName, Object.assign(collectEdits(), { seedRandom })), 400);
+  }
+  $('params').addEventListener('change', saveParams);
+  $('params').addEventListener('input', saveParams);
+  // 滚轮调节。两条规矩都是踩过的坑：
+  // ① Chromium 早就不给 number 输入框响应滚轮了（原生行为，不是插件没接）——得自己接管，
+  //    滚一格 ±step，Shift 走 10 倍；程序改 .value 不触发 input 事件，所以算完要手动 saveParams。
+  // ② 只认「已经点进去的」那个框，刚点进来 400ms 内也不吃：不然鼠标划过整片参数区滚页面，
+  //    会顺手把路过的一堆数字全改掉。下拉更是一律不吃滚轮。
+  $('params').addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (t && t.type === 'number') t._pressWheelAt = Date.now();
+  });
+  $('params').addEventListener('wheel', (e) => {
+    const el = e.target;
+    if (!el) return;
+    if (el.tagName === 'SELECT') { e.preventDefault(); return; }
+    if (el.type !== 'number' || document.activeElement !== el) return;
+    if (Date.now() - (el._pressWheelAt || 0) < 400) return;   // 刚点进来就滚一下 = 误触
+    e.preventDefault();
+    const step = (Number(el.step) || 1) * (e.shiftKey ? 10 : 1);
+    let v = (Number(el.value) || 0) + (e.deltaY < 0 ? step : -step);
+    const min = el.min === '' ? -Infinity : Number(el.min);
+    const max = el.max === '' ? Infinity : Number(el.max);
+    if (Number.isFinite(min)) v = Math.max(min, v);
+    if (Number.isFinite(max)) v = Math.min(max, v);
+    const dec = String(step).includes('.') ? String(step).split('.')[1].length : 0;
+    v = Number(v.toFixed(dec));
+    if (String(v) === el.value) return;   // 顶到上下限了，别说"改过了"
+    el.value = String(v);
+    saveParams();
+    if (window.orange.armModule) window.orange.armModule('comfy');
+  }, { passive: false });
+
+  // ---------- 参考图上传（千问 2.1，5 槽位） ----------
+  // 唯一来源：PS 选区（path = 'ps:' + 落盘路径，角标标 PS）
+  const refImages = {}; // { 1: {path, thumb, ps}, 2: {...}, ... }
+  // 抓 PS 选区当参考图：captureRef 已在主进程落盘，返回真实路径
+  async function captureRefToSlot(slot) {
+    setStat('抓取 PS 选区中…');
+    const r = await window.orange.captureRef();
+    if (!r || !r.ok) { setStat((r && r.error) || '抓取选区失败'); return; }
+    const thumb = await window.orange.readImageThumb(r.file, 120);
+    refImages[slot] = { path: 'ps:' + r.file, thumb, ps: true };
+    renderRefSlot(slot);
+    saveParams();
+    setStat('参考图 ' + slot + ' 已取 PS 选区');
+  }
+  function deleteRef(slot) {
+    delete refImages[slot];
+    renderRefSlot(slot);
+    saveParams();
+  }
+  function renderRefSlot(slot) {
+    const el = document.querySelector('[data-ref-slot="' + slot + '"]');
+    if (!el) return;
+    const ref = refImages[slot];
+    if (!ref) { el.innerHTML = ''; el.appendChild(refPlaceholder()); return; }
+    el.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = ref.thumb; img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+    el.appendChild(img);
+    if (ref.ps) {
+      const b = document.createElement('div');
+      b.textContent = 'PS';
+      b.title = '这张来自 PS 选区';
+      b.style.cssText = 'position:absolute;left:3px;top:3px;padding:1px 4px;border-radius:4px;font-size:8px;font-weight:700;letter-spacing:.3px;background:var(--accent);color:#fff;pointer-events:none;';
+      el.appendChild(b);
+    }
+  }
+  function refPlaceholder() {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text-dim);';
+    d.textContent = '+';
+    return d;
+  }
+
+  // ---------- 进度环 / 完成反馈（与 Forge 同款） ----------
+  const card = $('card');
+  function sizeRing() { const r = $('ringRect'); r.setAttribute('x', 1.5); r.setAttribute('y', 1.5); r.setAttribute('width', Math.max(0, card.clientWidth - 3)); r.setAttribute('height', Math.max(0, card.clientHeight - 3)); r.setAttribute('rx', 21); }
+  new ResizeObserver(sizeRing).observe(card);
+  function setRingProg(pct) { pct = Math.max(0, Math.min(100, pct)); $('ringRect').style.strokeDasharray = pct + ' ' + (100 - pct); }
+  function ringShow(on) { if (on) { sizeRing(); setRingProg(0); } $('ringSvg').classList.toggle('on', on); }
+  function flashDone() {
+    const lg = document.querySelector('.lg');
+    let ring = lg.querySelector(':scope > .doneglow');
+    if (!ring) { ring = document.createElement('div'); ring.className = 'glowring doneglow'; lg.appendChild(ring); }
+    ring.classList.remove('once'); void ring.offsetWidth; ring.classList.add('once');
+  }
+  function playChime() {
+    window.orange.getConfig().then((c) => {
+      const g = c.gen || {};
+      if (g.soundOn === false) return;
+      const vol = (Number(g.soundVol) >= 0 ? Number(g.soundVol) : 60) / 100 * 0.5;
+      if (!vol) return;
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        [[660, 0], [880, 0.16]].forEach(([f, t]) => {
+          const o = ac.createOscillator(), gn = ac.createGain();
+          o.type = 'sine'; o.frequency.value = f; o.connect(gn); gn.connect(ac.destination);
+          const st = ac.currentTime + t;
+          gn.gain.setValueAtTime(0, st); gn.gain.linearRampToValueAtTime(vol, st + 0.02); gn.gain.exponentialRampToValueAtTime(0.001, st + 0.35);
+          o.start(st); o.stop(st + 0.4);
+        });
+        setTimeout(() => { try { ac.close(); } catch {} }, 900);
+      } catch {}
+    });
+  }
+
+  // ---------- 生成 / 中断 ----------
+  function setRunning(on) {
+    running = on;
+    $('btnRun').classList.toggle('busy', on);
+    $('btnRun').innerHTML = on ? '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>' : '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>';
+    ringShow(on);
+  }
+  // docId：批处理逐图跑时主进程传目标文档；count：总控「生成」传的张数（不传=用卡上的数量框）
+  async function runGenerate(docId, count) {
+    const did = Number.isFinite(docId) ? docId : null;
+    if (running) { window.orange.comfyInterrupt(comfyUrl); return { ok: false, error: '已中断' }; }
+    if (!connected) { await connect(); if (!connected) return { ok: false, error: '未连接 ComfyUI' }; }
+    if (!curName) { setStat('先选一个工作流'); $('wfList').classList.add('on'); renderList(); return { ok: false, error: '未选工作流' }; }
+    const n = Number.isFinite(count) && count > 0 ? count : (parseInt($('count').value) || 1);
+    setRunning(true); setStat('跑图中…');
+    const r = await window.orange.comfyRun({ url: comfyUrl, name: curName, edits: collectEdits(), seedMode: seedRandom ? 'random' : 'fixed', count: n, docId: did });
+    if (r && r.ok) { setRingProg(100); setStat('完成 ' + r.count + ' 张' + (r.fail ? '，失败 ' + r.fail : '')); setTimeout(() => { setRunning(false); flashDone(); playChime(); }, 380); }
+    else { setRunning(false); setStat((r && r.error) || '失败'); }
+    return r;
+  }
+  $('btnRun').addEventListener('click', async () => {
+    // batchFire 缺失=preload 是旧版（改了 preload 没重启软件）——必须说出来，静默退化单张会让用户毫无线索
+    if (!window.orange.batchFire) {
+      window.orange.ologWrite && window.orange.ologWrite('批处理入口不可用：软件是旧进程（改了 preload 未重启）。请重启来福后再试', 'err');
+      runGenerate();
+      return;
+    }
+    // 批处理开关打开时跑遍PS里每张图（先在各自图层框好选区），否则只跑当前这张
+    const b = await window.orange.batchFire('comfy');
+    if (b && b.batch) return;   // 已交给主进程逐图跑
+    runGenerate();
+  });
+  window.__fireComfy = runGenerate;   // 总控「生成」武装到 ComfyUI 时调用（批处理逐文档传 docId）
+  window.orange.onComfyProgress((p) => {
+    if (!running || p.done) return;
+    const n = Math.max(1, p.count || 1);
+    setRingProg(((p.i || 0) + (p.progress || 0)) / n * 100);
+    setStat('第 ' + ((p.i || 0) + 1) + '/' + n + ' 张 · ' + Math.round((p.progress || 0) * 100) + '%');
+  });
+
+  // 滚轮滑动/点文本框 = 武装 ComfyUI（调参即武装，同 Forge）
+  const armOnClick = (e) => { if (e.isTrusted && window.orange.armModule) window.orange.armModule('comfy'); };
+  card.addEventListener('wheel', (e) => { if (e.isTrusted && window.orange.armModule) window.orange.armModule('comfy'); }, { passive: true });
+
+  // ---------- 初始化 ----------
+  (async () => {
+    const cfg = await window.orange.getConfig();
+    comfyUrl = (cfg.comfy && cfg.comfy.url) || 'http://127.0.0.1:8188';
+    await refreshList();   // 内部会按 config.comfy.current 回载上次的工作流
+    connect();
+  })();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>
