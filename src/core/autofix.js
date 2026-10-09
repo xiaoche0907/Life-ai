@@ -33,7 +33,7 @@ const SHUT_DELAY = 60;
 let shutDeadline = null;
 function scheduleShutdown() {
   if (process.platform !== 'win32') { olog('🛠️ [自动修图] 自动关机仅支持Windows', 'err'); return; }
-  execFile('shutdown', ['/s', '/t', String(SHUT_DELAY), '/c', '橙AIper 自动修图已全部完成，' + SHUT_DELAY + '秒后关机（可在自动修图卡取消）'], { windowsHide: true }, (e) => {
+  execFile('shutdown', ['/s', '/t', String(SHUT_DELAY), '/c', '来福 自动修图已全部完成，' + SHUT_DELAY + '秒后关机（可在自动修图卡取消）'], { windowsHide: true }, (e) => {
     if (e) { olog('🛠️ [自动修图] 关机指令失败: ' + (e.message || e), 'err'); return; }
     shutDeadline = Date.now() + SHUT_DELAY * 1000;
     olog('⏻ [自动修图] 全部完成，' + SHUT_DELAY + '秒后自动关机——点卡上「取消关机」可撤销', 'err');

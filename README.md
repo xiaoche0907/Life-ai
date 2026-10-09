@@ -4,7 +4,7 @@
   <p>面向 Photoshop 工作流的 AI 桌面助手</p>
   <p>把生图、提示词与修图工具放到工作区旁，让创作操作更集中。</p>
   <p>
-    <a href="https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test">下载测试版</a> ·
+    <a href="https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.2">下载测试版</a> ·
     <a href="#快速上手">快速上手</a> ·
     <a href="https://github.com/xiaoche0907/Life-ai/issues">反馈问题</a>
   </p>
@@ -33,11 +33,11 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 
 ## 下载与安装
 
-**[下载 Life-ai测试版安装包](https://github.com/xiaoche0907/Life-ai/releases/download/v6.0.7-test/Life-ai-test-6.0.7-setup.exe)**
+**[下载 Life-ai测试版安装包](https://github.com/xiaoche0907/Life-ai/releases/download/v6.0.7-test.2/Life-ai-test-6.0.7-2-setup.exe)**
 
 - 平台：Windows x64。
-- 当前发布：[`v6.0.7-test`](https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test)。
-- 安装包：`Life-ai-test-6.0.7-setup.exe`，约 83 MB。
+- 当前发布：[`v6.0.7-test.2`](https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.2)。
+- 安装包：`Life-ai-test-6.0.7-2-setup.exe`，约 83 MB。
 - 安装后程序：`Life-ai.exe`。
 - 桌面与开始菜单快捷方式：`Life-ai测试版`。
 
@@ -48,7 +48,7 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 测试版尚未进行代码签名，Windows 可能显示发布者未验证提示。请从本仓库 Releases 下载；安装包的 SHA256 为：
 
 ```text
-977454573ebea5630d747b8894ec3f179907b146f9fd2dc5fb27423862223e5a
+0902557b92387ec2c16ffa189539e175684bc85dd3be12d0c68c7821d756b12b
 ```
 
 ## 快速上手
@@ -61,7 +61,7 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 
 AI 生图与对话需要自行配置对应服务，费用以服务提供方规则为准。Forge 和 ComfyUI 需要先启动相应本地服务，并配置正确的连接地址。
 
-桥接插件声明的最低 Photoshop 版本为 **23.3.0**；不同 Photoshop 版本及安装环境的实际兼容性仍需验证。为保持旧配置兼容，部分内部标识和桥接面板名称沿用原应用。
+桥接插件声明的最低 Photoshop 版本为 **23.3.0**；不同 Photoshop 版本及安装环境的实际兼容性仍需验证。为保持旧配置兼容，内部标识与配置路径沿用原应用，桥接面板名称已改为“来福桥接”。安装更新后需彻底退出并重启 Photoshop，才能加载新版面板。
 
 ## 界面与操作
 

@@ -1,7 +1,7 @@
 {
   "id": "com.orange.bridge",
-  "name": "橙子桥接",
-  "version": "1.0.58",
+  "name": "来福桥接",
+  "version": "1.0.59",
   "main": "index.html",
   "manifestVersion": 6,
   "host": {
@@ -22,7 +22,7 @@
       "type": "panel",
       "id": "orangeBridgePanel",
       "label": {
-        "default": "橙子桥接"
+        "default": "来福桥接"
       },
       "minimumSize": {
         "width": 200,

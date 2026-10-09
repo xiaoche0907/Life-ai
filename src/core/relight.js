@@ -31,13 +31,13 @@ async function bakeLight(p) {
 
     // 1) 只照人物/背景：先在"还没盖灯光层"的画面上识别主体，把选区存进临时通道
     //    （必须赶在置入前——置入后的合成画面被灰色灯光层盖住，选择主体就废了）
-    const chName = '橙子主体_' + Date.now();
+    const chName = '来福主体_' + Date.now();
     let subjectReady = false;
     if (maskMode !== 'all') {
       const sr = await ctx.sendToPSAwait({
         action: 'batchPlay',
         params: {
-          commandName: '橙子打光：识别主体',
+          commandName: '来福打光：识别主体',
           descriptors: [
             { _obj: 'autoCutout', sampleAllLayers: true },
             { _obj: 'duplicate', _target: [{ _ref: 'channel', _property: 'selection' }], name: chName },
@@ -77,7 +77,7 @@ async function bakeLight(p) {
     });
     const br = await ctx.sendToPSAwait({
       action: 'batchPlay',
-      params: { commandName: '橙子打光：蒙版与混合', descriptors: descs },
+      params: { commandName: '来福打光：蒙版与混合', descriptors: descs },
     }, 30000);
     if (!br.ok) olog('[打光] 已置入但蒙版/混合模式设置失败（请手动补）: ' + (br.error || ''), 'err');
     else {
@@ -205,7 +205,7 @@ ipcMain.handle('relight-ai-gen', async (_e, p) => {
         const br = await ctx.sendToPSAwait({
           action: 'batchPlay',
           params: {
-            commandName: '橙子打光：设置混合模式',
+            commandName: '来福打光：设置混合模式',
             descriptors: [{
               _obj: 'set',
               _target: [{ _ref: 'layer', _name: groupName }],

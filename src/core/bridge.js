@@ -53,7 +53,7 @@ function startBridgeServer() {
         const CUR_BRIDGE_VER = ctx.curBridgeVer || 28;
         const fatal = ctx.bridgeFatalVers && ctx.bridgeFatalVers[psBridgeVer];
         if (fatal) {
-          ctx.olog('🛑 PS里跑的橙子插件 v' + psBridgeVer + ' 有致命bug（' + fatal + '）。本软件已带 v' + CUR_BRIDGE_VER + '：请**完全退出并重启一次 PS**（任务管理器里确认没有 Photoshop.exe 再开）', 'err');
+          ctx.olog('🛑 PS里跑的来福插件 v' + psBridgeVer + ' 有致命bug（' + fatal + '）。本软件已带 v' + CUR_BRIDGE_VER + '：请**完全退出并重启一次 PS**（任务管理器里确认没有 Photoshop.exe 再开）', 'err');
         } else if (psBridgeVer < CUR_BRIDGE_VER) {
           ctx.olog('🔌 PS桥接已连接，但PS里跑的是旧版插件（v' + psBridgeVer + '→v' + CUR_BRIDGE_VER + '）——完全退出并重启一次PS才会加载新版', 'err');
         } else {
@@ -216,7 +216,7 @@ ctx.startBridgeServer = startBridgeServer;
 ctx.sendToPSAwait = sendToPSAwait;
 ctx.psConnected = () => !!(psSocket && psSocket.readyState === 1);   // COM兜底探测据此让位
 ctx.bridgeVer = () => psBridgeVer;
-ctx.curBridgeVer = 58;   // 期望的桥接件版本（与ps-bridge/bridge.js的hello version同步抬；58=贴回图层无条件转内嵌智能对象+辉光采集可传maxEdge）
+ctx.curBridgeVer = 59;   // 期望的桥接件版本（与ps-bridge/bridge.js的hello version同步抬；58=贴回图层无条件转内嵌智能对象+辉光采集可传maxEdge）
 // v56 是致命版：captureInput 必抛 "fullMode is not defined"（有没有选区都采不到）。握手撞见它要用最响的话说清楚——
 // 用户在 v5.18.39~42 安装包上重启过 PS 才会加载到它，"重启也没用"就是这个
 ctx.bridgeFatalVers = { 56: 'v56 采集选区必失败（fullMode 作用域错误）' };

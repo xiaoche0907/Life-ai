@@ -772,7 +772,7 @@ async function runBatch(params, count, forceDocId) {
 
   // 旧版插件拦头喊话：每次点生成都提醒（连接时那条容易淹在日志里）——旧版会缺新功能（如v28的自动回传打组）
   if (ctx.bridgeVer() > 0 && ctx.curBridgeVer && ctx.bridgeVer() < ctx.curBridgeVer) {
-    olog('⚠️ PS里的橙子插件是旧版(v' + ctx.bridgeVer() + '→v' + ctx.curBridgeVer + ')，本批按旧行为执行——重启一次PS完成更新', 'err');
+    olog('⚠️ PS里的来福插件是旧版(v' + ctx.bridgeVer() + '→v' + ctx.curBridgeVer + ')，本批按旧行为执行——重启一次PS完成更新', 'err');
   }
   if (ctx.warnIfBridgeDown) ctx.warnIfBridgeDown('生图');   // 0908：桥接没连上每批都要在日志里说
   let capErr = '';
@@ -804,7 +804,7 @@ async function runBatch(params, count, forceDocId) {
   // 无选区=不跑图（生成链路以选区img2img为核心，纯文生图容易误触浪费扣费）；
   // 设置开了"无选区默认跑全图"时由桥接件转成全图选区，走不到这里——走到=PS里还跑着不认 fullIfNoSel 的老版插件
   if (!psCtx || !psCtx.selection) {
-    if (config.gen.noSelFull) olog('[中止] 无选区且全图捕获未生效——PS里的橙子插件是旧版（v' + ctx.bridgeVer() + '，需 v25+），请完全退出并重启一次PS完成更新', 'err');
+    if (config.gen.noSelFull) olog('[中止] 无选区且全图捕获未生效——PS里的来福插件是旧版（v' + ctx.bridgeVer() + '，需 v25+），请完全退出并重启一次PS完成更新', 'err');
     else olog('[中止] 没有选区——请先在PS里框选生成区域（设置里可开启"无选区默认跑全图"）', 'err');
     return { ok: false, error: '没有选区', done: 0, fail: 0, total };
   }
@@ -934,7 +934,7 @@ async function runBatch(params, count, forceDocId) {
 ipcMain.handle('ai-generate-batch', (_e, { params, count }) => runBatch(params, count));
 
 // ---------- 提前贴回（0916用户裁定） ----------
-// 场景：一批跑 4 张，第 4 张卡住了，前 3 张早好了——用户不想干等。进度卡这批行上点橙子 logo：
+// 场景：一批跑 4 张，第 4 张卡住了，前 3 张早好了——用户不想干等。进度卡这批行上点来福 logo：
 //   ①已生成好还没贴的，现在就整批打组贴回 PS（与自动回传同一条链、同样打组）
 //   ②这批**还在跑的**完成后不再自动贴回，留在进度卡里等用户手点（图不丢，随时可贴）
 // 与「✕ 删除批次」的区别：图留着还能手贴；与「自动回传」总开关的区别：只管这一批。
@@ -1110,7 +1110,7 @@ ipcMain.handle('open-cache', () => {
   try { fs.mkdirSync(dir, { recursive: true }); } catch {}
   return require('electron').shell.openPath(dir);
 });
-// 清除缓存图片：删除缓存目录里橙子自己写的文件，并清空任务列表（缩略图随文件失效）
+// 清除缓存图片：删除缓存目录里来福自己写的文件，并清空任务列表（缩略图随文件失效）
 // ⚠0911 缓存夹可自选后，"目录里全删"就会删掉用户自己的东西（选了桌面=桌面清空）——只删已知前缀（坑91），子目录/别的文件一律不碰
 const CACHE_OWN = /^(gen|input|ref|forge|comfy)_/i;
 ipcMain.handle('clear-cache', () => {
@@ -1130,7 +1130,7 @@ ipcMain.handle('clear-cache', () => {
   config.gen.refs = [];   // 缓存文件已删，参考图引用同步清空（参考图卡经gen-vars刷新）
   saveConfig();
   broadcast('gen-vars', config.gen);
-  olog('🧹 已清除缓存图片 ' + count + ' 个' + (kept ? '（文件夹里另 ' + kept + ' 项不是橙子写的，原样保留）' : ''));
+  olog('🧹 已清除缓存图片 ' + count + ' 个' + (kept ? '（文件夹里另 ' + kept + ' 项不是来福写的，原样保留）' : ''));
   return { ok: true, count };
 });
 

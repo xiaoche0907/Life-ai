@@ -196,10 +196,10 @@ function histSave() {
   }, 300);
 }
 
-// 内置角色：src/roles/下随软件分发（橙子=默认人格；橙子语料（阉割版）=提示词工法,hidden=界面不可见）
+// 内置角色：src/roles/下随软件分发（来福=默认人格；来福语料（阉割版）=提示词工法,hidden=界面不可见）
 const BUILTIN_ROLES = [
-  { id: 'b_orange', name: '橙子', file: 'orange.txt' },
-  { id: 'b_corpus', name: '橙子语料（阉割版）', file: 'corpus-20260726.txt', hidden: true },
+  { id: 'b_orange', name: '来福', file: 'orange.txt' },
+  { id: 'b_corpus', name: '来福语料（阉割版）', file: 'corpus-20260726.txt', hidden: true },
 ];
 let rolesCache = null;
 function loadBuiltinRoles() {
@@ -228,7 +228,7 @@ ipcMain.handle('chat-send', async (_e, { message, image }) => {
   const hist = histLoad();
   const contents = [];
   // 系统提示词解析（全在主进程,hidden语料文本不经过渲染进程）：
-  // 当前角色=内置id→读内置文件；=自定义名→读presets；否则用手填systemPrompt；全空→默认橙子
+  // 当前角色=内置id→读内置文件；=自定义名→读presets；否则用手填systemPrompt；全空→默认来福
   let sys = '';
   const cp = config.chat.currentPreset || '';
   const bi = loadBuiltinRoles().find((r) => r.id === cp);

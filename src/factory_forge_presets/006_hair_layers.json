@@ -1,7 +1,7 @@
 {
   "id": "ocg_hair_layers",
-  "name": "1橙毛发层次",
-  "displayName": "橙毛发层次",
+  "name": "1来福毛发层次",
+  "displayName": "来福毛发层次",
   "category": "hair",
   "data": {
     "model": "xxmix9realistic_v40.safetensors",

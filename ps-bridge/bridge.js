@@ -1,4 +1,4 @@
-// 橙子桥接件：连接橙子软件的本地WS，收到命令 -> batchPlay执行 -> 回执
+// 来福桥接件：连接来福软件的本地WS，收到命令 -> batchPlay执行 -> 回执
 // manifest里 host.data.loadEvent="startup" = PS开机就加载本插件（Adobe第一方插件同款字段，
 // 实测第三方manifest v6也认，PS2026冷启动14秒握手）；没有它UXP只在面板被打开时才跑JS
 const photoshop = require('photoshop');
@@ -10,7 +10,7 @@ let ws = null;
 let retryTimer = null;
 
 function setStatus(connected) {
-  statusEl.textContent = connected ? '● 已连接橙子软件' : '● 未连接橙子软件（自动重连中…）';
+  statusEl.textContent = connected ? '● 已连接来福软件' : '● 未连接来福软件（自动重连中…）';
   statusEl.className = connected ? 'on' : 'off';
 }
 
@@ -105,9 +105,9 @@ const handlers = {
     if (!app.activeDocument) throw new Error('没有打开的文档');
     let layerName = null;
     await core.executeAsModal(async () => {
-      const layer = await app.activeDocument.createLayer({ name: params.name || '橙子图层' });
+      const layer = await app.activeDocument.createLayer({ name: params.name || '来福图层' });
       layerName = layer.name;
-    }, { commandName: '橙子：新建图层' });
+    }, { commandName: '来福：新建图层' });
     return { layerName };
   },
 
@@ -168,7 +168,7 @@ const handlers = {
       }
       try { await action.batchPlay([{ _obj: 'select', _target: [{ _ref: 'layer', _id: uid }], makeVisible: false }], {}); } catch (e) {}
       msg = '已把「' + upper.name + '」对齐到「' + lower.name + '」';
-    }, { commandName: '橙子：自动对齐' });
+    }, { commandName: '来福：自动对齐' });
     return { msg };
   },
 
@@ -290,7 +290,7 @@ const handlers = {
           note = '截取选区像素失败: ' + (e.message || e);
         }
       }
-    }, { commandName: '橙子：读取选区' });
+    }, { commandName: '来福：读取选区' });
     return { docId: doc ? doc.id : null, selection: sel, fullMode, image, mime: 'image/jpeg', note };
   },
 
@@ -317,12 +317,12 @@ const handlers = {
           right: { _unit: 'pixelsUnit', _value: s.right },
         },
       }], {});
-    }, { commandName: '橙子：复原选区' });
+    }, { commandName: '来福：复原选区' });
     return {};
   },
 
   // 批量回图（魔改版逻辑移植）：整批依次贴入原文档原选区（间隔60ms）。
-  // params.group=true（自动回传整批）→ 打进"橙子 生成组"（标红/移顶/组上白蒙版/展开）；
+  // params.group=true（自动回传整批）→ 打进"来福 生成组"（标红/移顶/组上白蒙版/展开）；
   // 不带group（进度卡手动单张贴回）→ 免打组，每张图层独立+各自白蒙版（用户裁定）
   async placeBatch(params) {
     const notes = [];
@@ -462,7 +462,7 @@ const handlers = {
           const targets = layerIds.map((id) => ({ _ref: 'layer', _id: id }));
           await action.batchPlay([{ _obj: 'select', _target: targets, selectionModifier: { _enum: 'selectionModifierType', _value: 'replaceSelection' }, makeVisible: false }], {});
           // 组名：顶层 name 在 PS27/UXP 下不生效（0908 真机读回"组 1"），using.layerSection.name 生效；两种都带兼容老版本
-          await action.batchPlay([{ _obj: 'make', _target: [{ _ref: 'layerSection' }], from: { _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }, using: { _obj: 'layerSection', name: '橙子 生成组' }, name: '橙子 生成组' }], {});
+          await action.batchPlay([{ _obj: 'make', _target: [{ _ref: 'layerSection' }], from: { _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }, using: { _obj: 'layerSection', name: '来福 生成组' }, name: '来福 生成组' }], {});
           await action.batchPlay([{ _obj: 'set', _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }], to: { _obj: 'layer', color: { _enum: 'color', _value: 'red' } } }], {});
           await action.batchPlay([{ _obj: 'move', _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }], to: { _ref: 'layer', _enum: 'ordinal', _value: 'front' } }], {});
           await action.batchPlay([{ _obj: 'select', _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }], makeVisible: false }], {});
@@ -480,7 +480,7 @@ const handlers = {
         try { await action.batchPlay([{ _obj: 'select', _target: [{ _ref: 'document', _id: origId }] }], {}); }
         catch (e) { notes.push('切回原文档失败: ' + (e.message || e)); }
       }
-    }, { commandName: '橙子：批量回图' });
+    }, { commandName: '来福：批量回图' });
     return { placed: layerIds.length, note: notes.join(' | ') };
   },
 
@@ -490,7 +490,7 @@ const handlers = {
   },
 
   // 导入选框工具预设（老插件同款机制，跨PS版本稳定）：插件内 presets/marquee.tpl 里预存
-  // "橙子预设_<比例>"16个固定比例工具预设，set toolPreset append:true 追加进PS（不覆盖用户已有）。
+  // "来福预设_<比例>"16个固定比例工具预设，set toolPreset append:true 追加进PS（不覆盖用户已有）。
   // ⚠桌面版此前从未移植这一步（只有"选用手录预设"），所以用户全走描述符直设=各版PS表现不一(1:0.001)。
   // 幂等：重复导入只是同名预设再追加一份，PS按名select取第一份，无害；软件端每次连桥接只调一次。
   async importMarqueePresets() {
@@ -513,21 +513,21 @@ const handlers = {
         append: true,
         to: { _kind: 'local', _path: token },
       }], { synchronousExecution: true });
-    }, { commandName: '橙子：导入选框工具预设' });
+    }, { commandName: '来福：导入选框工具预设' });
     const err = Array.isArray(result) && result.find((x) => x && x._obj === 'error');
     if (err) return { ok: false, error: err.message || '导入失败' };
     return { ok: true, imported: true };
   },
 
   // 比例联动PS矩形选框工具：
-  // 1) 激活选框工具 → 2) 按名选工具预设（先"橙子预设_<比例>"=tpl自带，再"橙子选框_<比例>"=用户手录）
+  // 1) 激活选框工具 → 2) 按名选工具预设（先"来福预设_<比例>"=tpl自带，再"来福选框_<比例>"=用户手录）
   // 3) 都没有才走描述符直设（自发现键名→set→读回验证；无单位比例值优先）→ 4) 保底直接画该比例选区
   // 每步结果进diag随结果返回（软件端落glass日志），失败也不抛错不阻塞生成
   async syncMarqueeAspect(params) {
     const aspect = params && params.aspect;
     if (!aspect) throw new Error('比例为空');
     // tpl 内预设名用老插件前缀；2.35:1 的 tpl 等价名是 21:9 之外没有，落到直设/保底
-    const presetNames = ['橙子预设_' + aspect, '橙子选框_' + aspect];
+    const presetNames = ['来福预设_' + aspect, '来福选框_' + aspect, '来福预设_' + aspect, '来福选框_' + aspect];
     const diag = { readKeys: null, tried: [], verified: false };
 
     await core.executeAsModal(async () => {
@@ -612,8 +612,8 @@ const handlers = {
       };
 
       if (aspect === 'Auto') {
-        // Auto=恢复正常选框。先试预设（tpl自带"橙子预设_Auto"→用户手录"橙子选框_Auto"）
-        for (const pn of ['橙子预设_Auto', '橙子选框_Auto']) {
+        // Auto=恢复正常选框。先试预设（tpl自带"来福预设_Auto"→用户手录"来福选框_Auto"）
+        for (const pn of ['来福预设_Auto', '来福选框_Auto', '来福预设_Auto', '来福选框_Auto']) {
           try {
             const pr = run([{ _obj: 'select', _target: [{ _name: pn, _ref: 'toolPreset' }] }]);
             const err = Array.isArray(pr) && pr.find((x) => x && x._obj === 'error');
@@ -730,7 +730,7 @@ const handlers = {
     let result = null;
     await core.executeAsModal(async () => {
       result = await action.batchPlay(params.descriptors, {});
-    }, { commandName: params.commandName || '橙子：批处理' });
+    }, { commandName: params.commandName || '来福：批处理' });
     return { result };
   },
 
@@ -802,7 +802,7 @@ function connect() {
     // 版本握手：软件端据此判断桥接件是否为旧版（提醒Reload）
     try {
       ws.send(JSON.stringify({
-        hello: true, version: 58,
+        hello: true, version: 59,
         presetImport: presetImportState,
         colorcal: Object.keys(hostRegistry).join(','),
         hostErr: hostLoadErr || undefined,
@@ -820,7 +820,7 @@ function scheduleRetry() {
 }
 
 // ---------- 开机自装选框工具预设（0908用户裁定"装上就有"，不再等切比例）----------
-// loadEvent=startup 让本插件随PS开机加载 → 这里查一眼PS现有工具预设里有没有"橙子预设_Auto"，
+// loadEvent=startup 让本插件随PS开机加载 → 这里查一眼PS现有工具预设里有没有"来福预设_Auto"，
 // 没有才导入 presets/marquee.tpl（有=跳过，杜绝每次开机追加一份重复）。老插件和软件端的"切比例时导"仍保留作兜底。
 // PS刚开机时executeAsModal可能还不可用 → 失败按 4s/15s/40s 三次重试；结果记在 presetImportState，握手时带给软件端。
 let presetImportState = 'pending';
@@ -831,7 +831,7 @@ async function hasOrangePresets() {
   }], { synchronousExecution: true });
   const pm = r && r[0] && r[0].presetManager;
   if (!Array.isArray(pm)) throw new Error('presetManager 不可读');
-  return pm.some((k) => k && Array.isArray(k.name) && k.name.indexOf('橙子预设_Auto') !== -1);
+  return pm.some((k) => k && Array.isArray(k.name) && k.name.indexOf('来福预设_Auto') !== -1);
 }
 async function ensureMarqueePresets(attempt) {
   try {

@@ -100,7 +100,7 @@ function registerPlugin(infoDir, pathToken, mf, ver) {
   j.plugins = j.plugins.filter((p) => p && p.pluginId !== BRIDGE_ID);
   j.plugins.push({
     hostMinVersion: (mf.host && mf.host.minVersion) || '25.0.0',
-    name: mf.name || '橙子桥接',
+    name: mf.name || '来福桥接',
     path: pathToken + '\\External\\' + STABLE_NAME,   // 稳定路径=插件身份不变（坑62根治）
     pluginId: BRIDGE_ID,
     status: 'enabled',
@@ -148,7 +148,7 @@ function elevatedInstall(src, mf, ver) {
         extBase: L0.ext, keep: STABLE_NAME, prefix: BRIDGE_ID + '_',
         entry: {
           hostMinVersion: (mf.host && mf.host.minVersion) || '23.3.0',
-          name: mf.name || '橙子桥接',
+          name: mf.name || '来福桥接',
           path: L0.token + '\\External\\' + STABLE_NAME,
           pluginId: BRIDGE_ID, status: 'enabled', type: 'uxp', versionString: ver,
         },
@@ -213,7 +213,7 @@ function installBridge(opts) {
     }
     const d1 = directInstallLevel(src, mf, ver, 1);
     if (d1.ok) {
-      d1.detail += '。⚠若重启PS后增效工具菜单仍无「橙子桥接」：请点设置「重新安装PS插件」（会请求管理员权限装到机器级）';
+      d1.detail += '。⚠若重启PS后增效工具菜单仍无「来福桥接」：请点设置「重新安装PS插件」（会请求管理员权限装到机器级）';
       return resolve(d1);
     }
     const upia = findUPIA();

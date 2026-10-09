@@ -141,9 +141,9 @@ function jsxPlaceBatch(paths, docId, selection, group) {
     + 'var gd=new ActionDescriptor();var gr=new ActionReference();gr.putClass(stringIDToTypeID("layerSection"));'
     + 'gd.putReference(charIDToTypeID("null"),gr);var fr=new ActionReference();'
     + 'fr.putEnumerated(charIDToTypeID("Lyr "),charIDToTypeID("Ordn"),charIDToTypeID("Trgt"));'
-    + 'gd.putReference(charIDToTypeID("From"),fr);gd.putString(charIDToTypeID("Nm  "),"橙子 生成组");'
+    + 'gd.putReference(charIDToTypeID("From"),fr);gd.putString(charIDToTypeID("Nm  "),"来福 生成组");'
     // 组名：顶层 Nm 在 PS27 读回"组 1"，Usng 里的 layerSection.name 才生效（0908 真机）
-    + 'var ud=new ActionDescriptor();ud.putString(charIDToTypeID("Nm  "),"橙子 生成组");gd.putObject(charIDToTypeID("Usng"),stringIDToTypeID("layerSection"),ud);'
+    + 'var ud=new ActionDescriptor();ud.putString(charIDToTypeID("Nm  "),"来福 生成组");gd.putObject(charIDToTypeID("Usng"),stringIDToTypeID("layerSection"),ud);'
     + 'executeAction(charIDToTypeID("Mk  "),gd,DialogModes.NO);try{mask();}catch(e6){}}catch(e4){}}'
     // 自动回传贴完切回用户正看着的文档（与UXP桥接件v54同语义）
     + (group ? 'try{if(orig&&orig.id!==d.id)app.activeDocument=orig;}catch(e7){}' : '')
