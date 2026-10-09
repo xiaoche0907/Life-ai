@@ -48,7 +48,7 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 测试版尚未进行代码签名，Windows 可能显示发布者未验证提示。请从本仓库 Releases 下载；安装包的 SHA256 为：
 
 ```text
-0902557b92387ec2c16ffa189539e175684bc85dd3be12d0c68c7821d756b12b
+dc85c11a93e609c8e1e3faea3be78e783cf2679620b26b054fea026e640f475a
 ```
 
 ## 快速上手

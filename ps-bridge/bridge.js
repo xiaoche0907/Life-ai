@@ -527,7 +527,7 @@ const handlers = {
     const aspect = params && params.aspect;
     if (!aspect) throw new Error('比例为空');
     // tpl 内预设名用老插件前缀；2.35:1 的 tpl 等价名是 21:9 之外没有，落到直设/保底
-    const presetNames = ['来福预设_' + aspect, '来福选框_' + aspect, '来福预设_' + aspect, '来福选框_' + aspect];
+    const presetNames = ['来福预设_' + aspect, '来福选框_' + aspect, '橙子预设_' + aspect, '橙子选框_' + aspect];
     const diag = { readKeys: null, tried: [], verified: false };
 
     await core.executeAsModal(async () => {
@@ -613,7 +613,7 @@ const handlers = {
 
       if (aspect === 'Auto') {
         // Auto=恢复正常选框。先试预设（tpl自带"来福预设_Auto"→用户手录"来福选框_Auto"）
-        for (const pn of ['来福预设_Auto', '来福选框_Auto', '来福预设_Auto', '来福选框_Auto']) {
+        for (const pn of ['来福预设_Auto', '来福选框_Auto', '橙子预设_Auto', '橙子选框_Auto']) {
           try {
             const pr = run([{ _obj: 'select', _target: [{ _name: pn, _ref: 'toolPreset' }] }]);
             const err = Array.isArray(pr) && pr.find((x) => x && x._obj === 'error');
