@@ -53,6 +53,8 @@ dc85c11a93e609c8e1e3faea3be78e783cf2679620b26b054fea026e640f475a
 
 ## 快速上手
 
+自动安装 PS 插件失败时，可单独下载 **[来福桥接 1.0.59（.ccx）](https://github.com/xiaoche0907/Life-ai/releases/download/v6.0.7-test.2/Life-ai-PS-Bridge-1.0.59.ccx)**，通过 OpenUXP Installer 或已配置的 Creative Cloud Desktop 尝试手动安装。详见 [手动安装说明](docs/ps-bridge-install.md)。`.ccx` 不包含桌面程序，连接时仍需运行 Life-ai。
+
 1. **打开控制台**：右键 Life 狗狗悬浮球，选择“控制台”，再打开需要的工具卡片。
 2. **连接 Photoshop**：打开 Photoshop。应用包含桥接安装逻辑；如连接失败，在界面设置中点击“重新安装PS插件”，按提示完成安装并重启 Photoshop。
 3. **配置生成渠道**：打开“生图模式”，进入该卡片的设置，填写自己使用的渠道地址、API Key，并选择模型。
