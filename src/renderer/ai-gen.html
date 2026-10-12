@@ -64,10 +64,11 @@
     font-size: 12px; padding: 0 8px; outline: none;
   }
   #settings select option { background: var(--option-bg); }
-  .setRow { display: flex; align-items: center; gap: 8px; }
+  .setRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .setRow .grow { flex: 1; min-width: 0; }
   /* 渠道两列并排（0908用户裁定）：AJI|GRS 一横排，其后自定义/用户新增渠道两两一排 */
   #provGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 400px) { #provGrid { grid-template-columns: 1fr; } }
   .provBox { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); }
   .provBox.off { opacity: 0.45; }
   .provHead { display: flex; align-items: center; gap: 6px; min-height: 22px; }
@@ -167,9 +168,9 @@
 
   <div id="body">
     <div id="settings">
-      <div class="setLabel">渠道（小眼睛=是否出现在渠道胶囊里；AJI/GRS内置，其余可增删）</div>
+      <div class="setLabel">渠道（小眼睛控制显示；自定义渠道可增删）</div>
       <div id="provGrid"></div>
-      <button id="btnAddProv" data-pass>＋ 新增自定义渠道（Gemini兼容中转）</button>
+      <button id="btnAddProv" data-pass>＋ 新增自定义渠道</button>
 
       <div class="setLabel">生成超时（秒）</div>
       <div class="setRow">
@@ -288,14 +289,14 @@
 
   // ---------- 渠道系统：AJI / GRS(静态模型+价格表) / custom + cus_*(动态模型，Gemini兼容中转) ----------
   let PROV = null;
-  let curProv = 'aji';
+  let curProv = 'custom';
   let curModelId = '';
-  const BUILTIN = ['aji', 'grs', 'custom'];   // momo已休眠不进列表
+  const BUILTIN = ['custom'];   // momo已休眠不进列表
   // 渠道胶囊可轮换的集合：内置+自定义里没被小眼睛关掉的（0908）
   function provOrder() {
     const all = BUILTIN.concat(Object.keys(PROV.conf).filter((k) => /^cus_/.test(k)));
     const vis = all.filter((k) => PROV.meta[k] && !(PROV.conf[k] && PROV.conf[k].hidden));
-    return vis.length ? vis : ['aji'];
+    return vis.length ? vis : ['custom'];
   }
   function provLabel(k) { return (PROV.conf[k] && PROV.conf[k].label) || (PROV.meta[k] && PROV.meta[k].label) || k; }
 
@@ -318,7 +319,7 @@
     return (mm && mm.name) || id || '未选择';
   }
   function applyProviderUI() {
-    if (!PROV.meta[curProv]) curProv = provOrder()[0];
+    if (!provOrder().includes(curProv)) curProv = provOrder()[0];
     $('pChannel').textContent = provLabel(curProv);
     curModelId = PROV.conf[curProv].model || '';
     $('pModelName').textContent = modelDisplay(curModelId);
@@ -377,6 +378,16 @@
     const key = document.createElement('input');
     key.type = 'password'; key.dataset.field = 'key'; key.placeholder = 'API Key'; key.value = conf.key || ''; key.setAttribute('data-pass', '');
     box.appendChild(key);
+    const protocolRow = document.createElement('label');
+    protocolRow.style.cssText = 'display:flex;align-items:center;gap:8px;color:var(--text-dim);font-size:11px';
+    protocolRow.appendChild(document.createTextNode('接口协议'));
+    const protocol = document.createElement('select');
+    protocol.dataset.field = 'protocol'; protocol.setAttribute('data-pass', '');
+    protocol.setAttribute('aria-label', provLabel(k) + '接口协议');
+    protocol.style.cssText = 'flex:1;min-width:0';
+    protocol.innerHTML = '<option value="gemini">Gemini</option><option value="openai">OpenAI（图片接口）</option>';
+    protocol.value = conf.protocol || 'gemini';
+    protocolRow.appendChild(protocol); box.appendChild(protocolRow);
     return box;
   }
   function renderProvGrid() {
@@ -418,10 +429,10 @@
     const box = e.target.closest('.provBox'); const f = e.target.dataset.field; if (!box || !f) return;
     const k = box.dataset.prov;
     const v = e.target.value.trim();
-    PROV.conf[k][f] = (f === 'base' && k === 'aji' && !v) ? 'https://ai.ajiai.top' : v;
+    PROV.conf[k][f] = v;
     clearTimeout(fieldTimer);
     fieldTimer = setTimeout(async () => {
-      const patch = {}; patch[k] = {}; patch[k][f] = PROV.conf[k][f];
+      const patch = {}; patch[k] = Object.assign({}, PROV.conf[k]);
       await window.orange.setConfig({ providers: patch });
       if (f === 'label') { PROV.meta[k].label = v || k; if (curProv === k) $('pChannel').textContent = provLabel(k); }
       if (f === 'key' && curProv === k) refreshBalance();
@@ -433,17 +444,17 @@
   $('btnAddProv').addEventListener('click', async () => {
     const k = 'cus_' + Math.random().toString(36).slice(2, 8);
     const n = Object.keys(PROV.conf).filter((x) => /^cus_/.test(x)).length + 1;
-    const patch = {}; patch[k] = { base: '', key: '', model: '', models: [], label: '自定义' + n, hidden: false };
+    const patch = {}; patch[k] = { base: '', key: '', model: '', models: [], label: '自定义' + n, hidden: false, protocol: 'gemini' };
     await window.orange.setConfig({ providers: patch });
     PROV = await window.orange.getProviders();
     renderProvGrid();
-    setStatus('已新增渠道「自定义' + n + '」：填网址和Key，模型用胶囊里的↻拉取', 'ok');
+    setStatus('已新增渠道「自定义' + n + '」：填写网址、Key并选择协议，模型用胶囊里的↻拉取', 'ok');
   });
   // 别的窗口改了渠道（对话设置等）→ 重拉表刷新
   if (window.orange.onProvidersChanged) window.orange.onProvidersChanged(async () => {
     const wasOpen = $('settings').classList.contains('show');
     PROV = await window.orange.getProviders();
-    if (!PROV.meta[curProv]) curProv = provOrder()[0];
+    if (!provOrder().includes(curProv)) curProv = provOrder()[0];
     if (wasOpen) renderProvGrid();
     $('pChannel').textContent = provLabel(curProv);
   });
@@ -532,7 +543,10 @@
     toast(on ? '自动回传已开启' : '自动回传已关闭（手动点图贴回）');
   });
   $('btnSaveApi').addEventListener('click', async () => {
-    // 字段已在 input 时即时落库；这里只收口：退出设置页 + 重查余额
+    clearTimeout(fieldTimer);
+    const patch = {};
+    for (const k of BUILTIN.concat(Object.keys(PROV.conf).filter(k => /^cus_/.test(k)))) patch[k] = Object.assign({}, PROV.conf[k]);
+    await window.orange.setConfig({ providers: patch });
     setSettingsMode(false);
     setStatus('设置已保存', 'ok');
     refreshBalance();

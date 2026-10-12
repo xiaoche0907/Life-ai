@@ -191,7 +191,7 @@ function resolveGen(p) {
   // cus_* 自定义渠道走 providerMeta 合成的 meta（Gemini兼容/动态模型）；内置渠道原样
   const meta = (ctx.providerMeta && ctx.providerMeta(prov)) || PROVIDERS[prov] || PROVIDERS.momo;
   const pc = config.providers[prov] || {};
-  const base = (pc.base || meta.base || '').replace(/\/+$/, '');
+  const base = (pc.base || meta.base || '').replace(/\/+$/, '').replace(/\/v1(?:beta)?$/, '');
   const key = ctx.cleanKey(pc.key);   // 空格/换行/零宽=粘贴垃圾，静默清；中文字符留给keyIssue报人话
   const model = (p && p.model) || pc.model || '';
   const mconf = meta.models && meta.models[model];
@@ -218,7 +218,7 @@ async function generateOne(p) {
   if (kerr) return { ok: false, error: kerr };   // Key含中文字符：发请求前就拦，不让fetch抛ByteString天书
   if (!rv.model) return { ok: false, error: '请先选择模型' };
   // 0909：按模型表 api 字段分流——'grs'=GRS 自家异步接口，'openai'=OpenAI 图片接口；缺省=Gemini generateContent
-  const api = rv.mconf && rv.mconf.api;
+  const api = rv.pc.protocol || (rv.mconf && rv.mconf.api);
   if (api === 'grs') return generateViaGrs(p, rv);
   if (api === 'openai') return generateViaOpenAI(p, rv);
   return generateViaGemini(p, rv);

@@ -24,12 +24,12 @@ const config = {
   // bgFile=背景图片/视频绝对路径(空=无)，bgOpacity=背景媒体不透明度
   ui: { theme: 'dark', blur: 36, tint: 0.32, accent: '#19b5bc', style: 'classic', uiMode: 'novice', ballMiddle: 'layout', bgFile: '', bgOpacity: 0.6, psOnlyTop: true, psDialogTop: true },   // psOnlyTop: 卡牌只浮在PS之上（0909 晚改默认开：默认关时用户不知有此功能，照样反馈"挡浏览器"）；psDialogTop: PS 弹窗/浮动面板压在卡牌上（0910）
   api: { base: 'https://api.momoapi.icu', key: '', model: '', models: [] },   // 旧结构，迁移后作为momo镜像保留
-  provider: 'aji',
+  provider: 'custom',
   providers: {
     momo: { base: 'https://api.momoapi.icu', key: '', model: '', models: [], balance: null },
     aji: { base: 'https://ai.ajiai.top', key: '', model: 'AJbanana3', balance: null },
     grs: { base: 'https://grsai.dakka.com.cn', key: '', model: 'nano-banana-pro', balance: null },
-    custom: { base: '', key: '', model: '', models: [] },
+    custom: { base: '', key: '', model: '', models: [], protocol: 'gemini' },
   },
   gen: { ratio: 'Auto', size: '2K', noSelFull: true, genTimeout: 600, autoCleanDays: 0 },   // noSelFull默认开：用户没框选区就按全图跑（关了会撞"没有选区"墙，用户找不到开关）；size 0908去Auto默认2K；genTimeout=生成超时秒数(0918)；autoCleanDays=缓存清理天数,0=永不(0918)
   cacheDir: null,
@@ -464,7 +464,9 @@ function runMigrations(saved) {
 }
 // 每次启动都要成立的不变量（不是迁移，别往MIGRATIONS里塞）
 function applyInvariants() {
-  if (config.provider === 'momo') config.provider = 'aji';   // momo已从渠道轮换移除
+  if (['momo', 'aji', 'grs'].includes(config.provider) || !config.providers[config.provider]) {
+    config.provider = Object.keys(config.providers).find(k => (k === 'custom' || /^cus_/.test(k)) && config.providers[k] && !config.providers[k].hidden && config.providers[k].base && config.providers[k].key) || 'custom';
+  }   // momo已从渠道轮换移除
   // 布局锁定已并入锁头（一键双锁）：启动时强制跟随locked——老配置里独立的layoutLock=true必须被覆盖
   config.layoutLock = config.locked;
   config.gen.forgePos = '';   // 一次性信使字段，清掉历史残留防重放
@@ -474,6 +476,7 @@ function applyInvariants() {
   for (const k of Object.keys(config.providers)) {
     const pc = config.providers[k];
     if (!pc) continue;
+    if (k === 'custom' || /^cus_/.test(k)) pc.protocol = pc.protocol === 'openai' ? 'openai' : 'gemini';
     if (Array.isArray(pc.models)) pc.models = pc.models.filter(MK.isImageModel);
     const dynamic = k === 'momo' || k === 'custom' || /^cus_/.test(k);   // 内置aji/grs的模型是代码表，不动
     if (dynamic && pc.model && !MK.isImageModel(pc.model)) pc.model = '';
@@ -548,13 +551,14 @@ ipcMain.handle('set-config', (e, patch) => {
     for (const k of Object.keys(patch.providers)) {
       const v = patch.providers[k];
       if (v === null) {   // 删自定义渠道（只许删 cus_ 前缀；内置四个不许删）
-        if (/^cus_/.test(k)) { delete config.providers[k]; if (config.provider === k) config.provider = 'aji'; }
+        if (/^cus_/.test(k)) { delete config.providers[k]; if (config.provider === k) config.provider = 'custom'; }
         continue;
       }
+      if (v.protocol !== undefined && !['gemini', 'openai'].includes(v.protocol)) continue;
       if (config.providers[k]) Object.assign(config.providers[k], v);
       else if (/^cus_[a-z0-9]{3,16}$/.test(k)) {
         // 用户自定义渠道（0908）：Gemini兼容中转，字段与custom同构；label给渠道胶囊显示
-        config.providers[k] = Object.assign({ base: '', key: '', model: '', models: [], label: k, hidden: false }, v);
+        config.providers[k] = Object.assign({ base: '', key: '', model: '', models: [], label: k, hidden: false, protocol: 'gemini' }, v);
       }
     }
     if (typeof ctx.broadcast === 'function') ctx.broadcast('providers-changed', {});   // 渠道增删/显隐→各卡刷新（broadcast 由 windows.js 稍后挂上，启动早期可能还没有）

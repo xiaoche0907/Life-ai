@@ -4,7 +4,7 @@
   <p>面向 Photoshop 工作流的 AI 桌面助手</p>
   <p>把生图、提示词与修图工具放到工作区旁，让创作操作更集中。</p>
   <p>
-    <a href="https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.2">下载测试版</a> ·
+    <a href="https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.3">下载测试版</a> ·
     <a href="#快速上手">快速上手</a> ·
     <a href="https://github.com/xiaoche0907/Life-ai/issues">反馈问题</a>
   </p>
@@ -33,11 +33,11 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 
 ## 下载与安装
 
-**[下载 Life-ai测试版安装包](https://github.com/xiaoche0907/Life-ai/releases/download/v6.0.7-test.2/Life-ai-test-6.0.7-2-setup.exe)**
+**[下载 Life-ai测试版安装包](https://github.com/xiaoche0907/Life-ai/releases/download/v6.0.7-test.3/Life-ai-test-6.0.7-3-setup.exe)**
 
 - 平台：Windows x64。
-- 当前发布：[`v6.0.7-test.2`](https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.2)。
-- 安装包：`Life-ai-test-6.0.7-2-setup.exe`，约 83 MB。
+- 当前发布：[`v6.0.7-test.3`](https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.3)。
+- 安装包：`Life-ai-test-6.0.7-3-setup.exe`，约 83 MB。
 - 安装后程序：`Life-ai.exe`。
 - 桌面与开始菜单快捷方式：`Life-ai测试版`。
 
@@ -48,7 +48,7 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 测试版尚未进行代码签名，Windows 可能显示发布者未验证提示。请从本仓库 Releases 下载；安装包的 SHA256 为：
 
 ```text
-dc85c11a93e609c8e1e3faea3be78e783cf2679620b26b054fea026e640f475a
+72b44d2c9a87d257e08b96f3525e624f51c9e2b6a49e17132e05433f5b99e162
 ```
 
 ## 快速上手
@@ -57,11 +57,13 @@ dc85c11a93e609c8e1e3faea3be78e783cf2679620b26b054fea026e640f475a
 
 1. **打开控制台**：右键 Life 狗狗悬浮球，选择“控制台”，再打开需要的工具卡片。
 2. **连接 Photoshop**：打开 Photoshop。应用包含桥接安装逻辑；如连接失败，在界面设置中点击“重新安装PS插件”，按提示完成安装并重启 Photoshop。
-3. **配置生成渠道**：打开“生图模式”，进入该卡片的设置，填写自己使用的渠道地址、API Key，并选择模型。
+3. **配置生成渠道**：打开“生图模式”，进入该卡片的设置，填写自己使用的渠道地址、API Key，选择接口协议，再拉取并选择模型。可以新增多个自定义渠道。
 4. **准备输入**：编辑提示词，按需加入参考图，并在 Photoshop 中准备选区或使用全图模式。
 5. **开始生成**：调整比例、分辨率及数量，在“生成”入口运行任务，通过“生图进度”和“生图日志”查看结果。
 
 AI 生图与对话需要自行配置对应服务，费用以服务提供方规则为准。Forge 和 ComfyUI 需要先启动相应本地服务，并配置正确的连接地址。
+
+生图协议默认是 **Gemini**（`generateContent`）；服务仅提供 OpenAI 图片接口时，手动选择 **OpenAI（图片接口）**。OpenAI 模式使用 `/v1/images/generations` 文生图，有输入图或参考图时使用 `/v1/images/edits`。目前不自动识别生图协议；已有自定义渠道继续默认使用 Gemini。地址可以填写服务根地址或带 `/v1` 的地址。生图设置不再显示 AJI、GRS 内置入口，控制台移除了“声明”按钮。
 
 桥接插件声明的最低 Photoshop 版本为 **23.3.0**；不同 Photoshop 版本及安装环境的实际兼容性仍需验证。为保持旧配置兼容，内部标识与配置路径沿用原应用，桥接面板名称已改为“来福桥接”。安装更新后需彻底退出并重启 Photoshop，才能加载新版面板。
 
@@ -78,11 +80,12 @@ Life 标志替换了原悬浮球图案，默认图案尺寸保持 72 × 72。应
 
 当前发布已经完成以下检查：
 
-- Windows 安装与卸载验证。
-- 119 个安装文件的 SHA256 一致性检查。
+- 最新安装包离线解压后，119 个文件的 SHA256 与构建清单一致；旧版已通过 Windows 安装与卸载验证。
 - Electron 33.4.11 与 `ws`、`ag-psd`、`koffi` 依赖加载检查。
-- 应用、安装器及卸载器图标检查。
-- 源码、页面内脚本和 JSON 文件检查。
+- 144 个源码、页面内脚本和 JSON 文件检查。
+- 协议配置保存与重载、旧渠道回落、渠道删除和请求地址检查。
+- Gemini 生图、OpenAI 文生图及双图编辑请求检查（模拟响应，不调用付费接口）。
+- 320、440、768 像素宽度的界面交互、立即保存和脚本错误检查。
 
 **真实 Photoshop 联动、各渠道生图及完整业务流程尚未完成全面验证。** 使用中遇到问题，请提交 Issue，并附上复现步骤及相关日志。
 

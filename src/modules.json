@@ -229,14 +229,5 @@
     "width": 360,
     "height": 520,
     "ready": true
-  },
-  {
-    "id": "statement",
-    "icon": "📄",
-    "label": "声明",
-    "file": "statement.html",
-    "width": 360,
-    "height": 340,
-    "ready": true
   }
 ]

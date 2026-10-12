@@ -163,7 +163,7 @@ ipcMain.handle('ai-models', async () => {
   const meta = metaOf(prov);
   if (!meta || !meta.dynamicModels) return { ok: false, error: '该渠道模型为内置列表' };
   const pc = config.providers[prov];
-  const base = (pc.base || '').replace(/\/+$/, '');
+  const base = (pc.base || '').replace(/\/+$/, '').replace(/\/v1(?:beta)?$/, '');
   const key = ctx.cleanKey(pc.key);
   if (!base || !key) return { ok: false, error: '请先填写该渠道的地址和Key' };
   const kerr = ctx.keyIssue(key, (meta && meta.label) || prov);
