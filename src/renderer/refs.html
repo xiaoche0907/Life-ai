@@ -24,12 +24,13 @@
   #head:active { cursor: grabbing; }
   #head .sp { flex: 1; }
 
-  /* 圆球整排绝对垂直居中；状态行贴底悬浮不参与排版 */
+  /* 圆球整排垂直居中；状态行悬浮在顶部，为底部编号留出空间 */
   #body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 2px 13px; }
 
   /* 圆球直径宽高双限制：跟宽度等比(7.3vw)，但卡片被压扁时按高度收缩——永远缩在玻璃框内不被裁 */
   #refsRow { --d: min(7.3vw, calc(100vh - 58px)); display: flex; align-items: center; gap: 1.1vw; }
   #btnAddRef {
+    border: 0; padding: 0;
     width: var(--d); height: var(--d); border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background: var(--btn-bg); color: var(--accent-text);
@@ -39,12 +40,20 @@
   #btnAddRef:hover { background: var(--btn-bg-hover); }
   #btnAddRef svg { width: calc(var(--d) * 0.58); height: calc(var(--d) * 0.58); }
   #slots { display: flex; gap: 1.1vw; flex: 1; }
-  .slot { width: var(--d); height: var(--d); border-radius: 50%; background: var(--btn-bg); overflow: hidden; flex-shrink: 0; }
-  .slot img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+  .slot { position: relative; width: var(--d); height: var(--d); border-radius: 50%; background: var(--btn-bg); flex-shrink: 0; }
+  .slot img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; cursor: pointer; }
+  .slot-label { position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 9px; line-height: 11px; color: var(--text-dim); pointer-events: none; }
+  #addMenu { position: absolute; inset: 4px 8px; z-index: 10; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; background: var(--option-bg); }
+  #addMenu[hidden] { display: none; }
+  #addMenu button { border: 0; border-radius: 8px; padding: 8px; background: var(--btn-bg); color: var(--text); cursor: pointer; font-size: 12px; }
+  #addMenu button:hover { background: var(--btn-bg-hover); }
+  button:focus-visible, .slot img:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #btnAddRef:disabled { opacity: .5; cursor: wait; }
 
   #status {
-    position: absolute; left: 13px; right: 13px; bottom: 5px;
+    position: absolute; left: 13px; right: 13px; top: 4px;
     font-size: 10px; color: var(--text-dim); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     pointer-events: none;
   }
   #status.ok { color: var(--ok); }
@@ -73,10 +82,15 @@
   </div>
   <div id="body">
     <div id="refsRow">
-      <div id="btnAddRef" title="抓取PS选区作为参考图（先在PS里框选）"></div>
+      <button id="btnAddRef" type="button" title="点击直接添加 PS 选区，无选区时上传本地图片；右键可选择来源" aria-label="添加参考图：优先 PS 选区，无选区时上传本地图片" aria-expanded="false" aria-controls="addMenu"></button>
       <div id="slots"></div>
     </div>
-    <div id="status"></div>
+    <div id="status" role="status" aria-live="polite"></div>
+  </div>
+  <div id="addMenu" role="group" aria-label="选择参考图来源" hidden>
+    <button id="btnCaptureRef" type="button">抓取 PS 选区</button>
+    <button id="btnUploadRef" type="button">上传本地图片</button>
+    <button id="btnCloseMenu" type="button" aria-label="取消添加">取消</button>
   </div>
   <img id="refPrev" />
 </div>
@@ -93,7 +107,7 @@
   function toast(t, cls) { setStatus(t, cls); setTimeout(() => { if ($('status').textContent === t) setStatus(''); }, 1600); }
 
   // refs存config.gen.refs：全模块共享（AI生图/半合成/特效跑图都带上）
-  function save() { window.orange.setConfig({ gen: { refs: refs.slice() } }); }
+  function save() { return window.orange.setConfig({ gen: { refs: refs.slice() } }); }
 
   // 有参考图时：卡牌边框红色警示爆闪（0904用户裁定，与批处理/抗截断同款warnring）——
   // 参考图挂着会影响每一次生成，必须一眼看见
@@ -118,10 +132,20 @@
     for (let i = 0; i < MAX_SLOTS; i++) {
       const d = document.createElement('div');
       d.className = 'slot';
+      const label = document.createElement('span');
+      label.className = 'slot-label';
+      label.textContent = '图' + (i + 2);
+      d.appendChild(label);
+      d.title = '图' + (i + 2) + (refs[i] ? ' · 参考图' : ' · 待添加');
       if (refs[i]) {
         const img = document.createElement('img');
-        img.src = 'file:///' + refs[i].replace(/\\/g, '/');
-        img.title = '点击移除 · 悬停看大图';
+        img.src = 'file:///' + encodeURI(refs[i].replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F');
+        img.title = '图' + (i + 2) + ' · 点击移除 · 悬停看大图';
+        img.alt = '参考图' + (i + 2);
+        img.tabIndex = 0;
+        img.setAttribute('role', 'button');
+        img.setAttribute('aria-label', '移除参考图' + (i + 2));
+        img.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); img.click(); } });
         img.addEventListener('click', () => { refs.splice(i, 1); save(); renderSlots(); $('refPrev').style.display = 'none'; });
         img.addEventListener('mouseenter', () => { $('refPrev').src = img.src; $('refPrev').style.display = 'block'; });
         img.addEventListener('mouseleave', () => { $('refPrev').style.display = 'none'; });
@@ -131,13 +155,66 @@
     }
   }
 
-  $('btnAddRef').addEventListener('click', async () => {
+  function closeMenu() {
+    $('addMenu').hidden = true;
+    $('btnAddRef').setAttribute('aria-expanded', 'false');
+    $('btnAddRef').focus();
+  }
+
+  function openMenu() {
+    if (adding) return;
     if (refs.length >= MAX_SLOTS) { toast('参考图已满，点缩略图可删除'); return; }
-    setStatus('抓取选区中…');
-    const r = await window.orange.captureRef();
-    if (r.ok) { refs.push(r.file); save(); renderSlots(); toast('已添加选区参考图', 'ok'); }
-    else toast(r.error || '抓取失败');
+    $('addMenu').hidden = false;
+    $('btnAddRef').setAttribute('aria-expanded', 'true');
+    $('btnCaptureRef').focus();
+  }
+  $('btnAddRef').addEventListener('click', () => addRefs('auto'));
+  $('btnAddRef').addEventListener('contextmenu', e => { e.preventDefault(); openMenu(); });
+  $('btnAddRef').addEventListener('keydown', e => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); openMenu(); }
   });
+  $('btnCloseMenu').addEventListener('click', closeMenu);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('addMenu').hidden) closeMenu(); });
+
+  let adding = false;
+  async function addRefs(source) {
+    if (adding) return;
+    closeMenu();
+    if (refs.length >= MAX_SLOTS) { toast('参考图已满，点缩略图可删除'); return; }
+    adding = true;
+    $('btnAddRef').disabled = true;
+    try {
+      let files;
+      if (source !== 'local') {
+        setStatus('抓取选区中…');
+        const r = await window.orange.captureRef();
+        if (r.ok && r.file) {
+          files = [r.file];
+        } else if (source !== 'auto' || !['NO_SELECTION', 'NO_DOCUMENT', 'PS_UNAVAILABLE'].includes(r.code)) {
+          toast(r.error || '抓取失败，请先在 PS 中框选，或右键上传本地图片');
+          return;
+        }
+      }
+      if (!files) {
+        setStatus('选择本地图片…');
+        files = await window.orange.pickImages();
+      }
+      if (!Array.isArray(files) || !files.length) { setStatus(''); return; }
+      const available = MAX_SLOTS - refs.length;
+      const accepted = files.slice(0, available);
+      refs.push(...accepted);
+      await save();
+      renderSlots();
+      toast('已添加 ' + accepted.length + ' 张参考图' + (files.length > available ? '，超出 10 张的未添加' : ''), 'ok');
+    } catch (e) {
+      toast(e.message || '添加失败，请重试');
+    } finally {
+      adding = false;
+      $('btnAddRef').disabled = false;
+    }
+  }
+  $('btnCaptureRef').addEventListener('click', () => addRefs('selection'));
+  $('btnUploadRef').addEventListener('click', () => addRefs('local'));
 
   // 外部改动（清缓存等）实时同步
   if (window.orange.onGenVars) {

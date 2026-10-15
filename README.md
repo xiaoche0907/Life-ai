@@ -4,7 +4,7 @@
   <p>面向 Photoshop 工作流的 AI 桌面助手</p>
   <p>把生图、提示词与修图工具放到工作区旁，让创作操作更集中。</p>
   <p>
-    <a href="https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.3">下载测试版</a> ·
+    <a href="https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.4">下载测试版</a> ·
     <a href="#快速上手">快速上手</a> ·
     <a href="https://github.com/xiaoche0907/Life-ai/issues">反馈问题</a>
   </p>
@@ -33,11 +33,11 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 
 ## 下载与安装
 
-**[下载 Life-ai测试版安装包](https://github.com/xiaoche0907/Life-ai/releases/download/v6.0.7-test.3/Life-ai-test-6.0.7-3-setup.exe)**
+**[下载 Life-ai测试版安装包](https://github.com/xiaoche0907/Life-ai/releases/download/v6.0.7-test.4/Life-ai-test-6.0.7-4-setup.exe)**
 
 - 平台：Windows x64。
-- 当前发布：[`v6.0.7-test.3`](https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.3)。
-- 安装包：`Life-ai-test-6.0.7-3-setup.exe`，约 83 MB。
+- 当前发布：[`v6.0.7-test.4`](https://github.com/xiaoche0907/Life-ai/releases/tag/v6.0.7-test.4)。
+- 安装包：`Life-ai-test-6.0.7-4-setup.exe`，约 83 MB。
 - 安装后程序：`Life-ai.exe`。
 - 桌面与开始菜单快捷方式：`Life-ai测试版`。
 
@@ -48,7 +48,7 @@ Life-ai（来福）是一款基于 Electron 的 Windows 桌面助手，围绕 Ph
 测试版尚未进行代码签名，Windows 可能显示发布者未验证提示。请从本仓库 Releases 下载；安装包的 SHA256 为：
 
 ```text
-72b44d2c9a87d257e08b96f3525e624f51c9e2b6a49e17132e05433f5b99e162
+70bec3b8db1dfa3f2df55306cf3fe20be41c22e564e2adc55eb2ae43ff319591
 ```
 
 ## 快速上手
@@ -69,6 +69,9 @@ AI 生图与对话需要自行配置对应服务，费用以服务提供方规�
 
 ## 界面与操作
 
+- **参考图「＋」左键**：有 PS 选区时直接添加选区；无选区、没有打开的文档或 PS 未启动时，自动打开本地图片选择，支持 PNG、JPG/JPEG、WebP 多选。
+- **参考图「＋」右键**：手动选择「抓取 PS 选区」或「上传本地图片」，有选区时也可上传本地图片。
+- **参考图编号**：最多 10 张，从左到右显示「图2、图3……」，点击缩略图移除后自动连续编号。「图1」对应生成时的 PS 主图；没有主图时，模型对编号的理解取决于渠道及提示词。
 - **悬浮球左键**：收纳或释放工具卡片。
 - **悬浮球右键**：打开控制台、设置、锁定、拉回最前与退出菜单。
 - **窗口布局**：拖动工具卡片排列工作区，通过快速布局管理常用排布。
@@ -86,6 +89,8 @@ Life 标志替换了原悬浮球图案，默认图案尺寸保持 72 × 72。应
 - 协议配置保存与重载、旧渠道回落、渠道删除和请求地址检查。
 - Gemini 生图、OpenAI 文生图及双图编辑请求检查（模拟响应，不调用付费接口）。
 - 320、440、768 像素宽度的界面交互、立即保存和脚本错误检查。
+- 参考图一键选区采集、无选区自动上传、手动来源选择、取消、错误处理、10 张上限、删除后编号与外部清空检查（模拟接口）；320/380/560 像素布局检查。
+- 参考图采集的 UXP/COM 无选区全图回退关闭及错误分类检查（模拟桥接响应）。
 
 **真实 Photoshop 联动、各渠道生图及完整业务流程尚未完成全面验证。** 使用中遇到问题，请提交 Issue，并附上复现步骤及相关日志。
 

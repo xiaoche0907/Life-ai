@@ -1166,10 +1166,15 @@ ipcMain.handle('read-image-thumb', async (_e, { path, size }) => {
 
 // 抓取PS选区作为参考图（替代文件对话框）
 ipcMain.handle('capture-ref', async () => {
-  const cap = await sendToPSAwait({ action: 'captureInput', params: {} }, 25000);
-  if (!cap.ok) return { ok: false, error: cap.error };
+  const cap = await sendToPSAwait({ action: 'captureInput', params: { fullIfNoSel: false, noSelFull: false } }, 25000);
+  if (!cap.ok) {
+    const error = cap.error || '抓取选区失败';
+    const code = /没有打开的文档|无打开的文档/.test(error) ? 'NO_DOCUMENT'
+      : /PS未连接|PS未启动/.test(error) ? 'PS_UNAVAILABLE' : 'CAPTURE_FAILED';
+    return { ok: false, code, error };
+  }
   const res = cap.result || {};
-  if (!res.image) return { ok: false, error: (res.note || '未检测到选区——请先在PS里框选') };
+  if (!res.image) return { ok: false, code: /未检测到选区/.test(res.note || '') ? 'NO_SELECTION' : 'CAPTURE_FAILED', error: (res.note || '选区图像采集失败') };
   try {
     const dir = genDir();
     fs.mkdirSync(dir, { recursive: true });
