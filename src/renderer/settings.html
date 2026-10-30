@@ -290,9 +290,9 @@
     <div>
       <div class="label">PS插件</div>
       <div class="row">
-        <button class="mbtn" id="btnBridge" style="flex:1;height:32px">重新安装PS插件</button>
+        <button class="mbtn" id="btnBridge" style="flex:1;height:32px">清理旧版并安装新版</button>
       </div>
-      <div class="modeDesc" id="bridgeStat">软件启动时会自动把桥接插件装进PS（重启PS生效）；装了新版PS或连不上时点上面重装</div>
+      <div class="modeDesc" id="bridgeStat" role="status" aria-live="polite">自动检查插件更新。PS 运行时等待退出，退出后清理旧版并安装新版；请保持来福运行，看到安装完成后再打开 PS。</div>
     </div>
 
     <button id="btnReset" title="改动实时应用到所有窗口并自动保存；不透明度决定玻璃底色浓淡">恢复默认</button>
@@ -628,15 +628,19 @@
   // ---------- PS插件重装 ----------
   const btnBridge = $('btnBridge');
   btnBridge.setAttribute('data-pass', '');
+  function showBridgeStatus(r) {
+    const busy = r.status === 'installing';
+    btnBridge.disabled = busy;
+    btnBridge.textContent = busy ? '正在替换…' : r.pending ? '等待 PS 退出（已排队）' : r.needsAdmin ? '授权清理并安装新版' : '清理旧版并安装新版';
+    $('bridgeStat').textContent = (r.pending ? '⏳ ' : r.ok ? '✓ ' : '✗ ') + (r.detail || r.error || '安装失败');
+  }
+  window.orange.onBridgeInstallStatus(showBridgeStatus);
+  window.orange.bridgeInstallStatus().then(showBridgeStatus).catch(() => {});
   btnBridge.addEventListener('click', async () => {
     btnBridge.disabled = true;
-    btnBridge.textContent = '安装中…';
-    const r = await window.orange.bridgeReinstall();
-    $('bridgeStat').textContent = r.ok
-      ? '✓ ' + r.detail + '（重启PS后生效）'
-      : '✗ ' + (r.detail || r.error || '安装失败');
-    btnBridge.disabled = false;
-    btnBridge.textContent = '重新安装PS插件';
+    btnBridge.textContent = '检查中…';
+    try { showBridgeStatus(await window.orange.bridgeReinstall()); }
+    catch (error) { showBridgeStatus({ ok: false, error: '安装请求失败：' + error.message }); }
   });
 
   // ---------- 初始化 ----------

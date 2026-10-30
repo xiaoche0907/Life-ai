@@ -1,5 +1,6 @@
 // 渠道与模型价格表（魔改版MODEL_CONFIG移植）+ 余额/模型列表查询
-const { ipcMain } = require('electron');
+const { ipcMain, net } = require('electron');
+const { requestModels } = require('./model-request');
 const ctx = require('./ctx');
 const { isImageModel } = require('./model-kind');   // 0908：拉取模型只留生图模型
 
@@ -163,19 +164,14 @@ ipcMain.handle('ai-models', async () => {
   const meta = metaOf(prov);
   if (!meta || !meta.dynamicModels) return { ok: false, error: '该渠道模型为内置列表' };
   const pc = config.providers[prov];
-  const base = (pc.base || '').replace(/\/+$/, '').replace(/\/v1(?:beta)?$/, '');
+  const base = String(pc.base || meta.base || '').trim();
   const key = ctx.cleanKey(pc.key);
   if (!base || !key) return { ok: false, error: '请先填写该渠道的地址和Key' };
   const kerr = ctx.keyIssue(key, (meta && meta.label) || prov);
   if (kerr) return { ok: false, error: kerr };
   try {
-    const resp = await fetch(base + '/v1/models', {
-      headers: { 'Authorization': 'Bearer ' + key },
-    });
-    if (!resp.ok) return { ok: false, error: 'HTTP ' + resp.status };
-    const data = await resp.json();
-    // 0908用户裁定"绝对不允许"：生图卡只列生图模型（白名单判定见 model-kind.js），语言等其他模型一律不入
-    const all = (data.data || []).map((m) => m.id).filter(Boolean);
+    const all = await requestModels((url, options) => net.fetch(url, options), base, key);
+    // 生图卡只展示生图模型；请求失败时保留原有模型列表。
     const ids = all.filter(isImageModel).sort();
     pc.models = ids;
     if (pc.model && !ids.includes(pc.model)) pc.model = '';   // 选中的不是生图模型=清空，别带着错模型去跑

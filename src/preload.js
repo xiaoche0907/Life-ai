@@ -142,6 +142,8 @@ const API = {
   soundOpenFolder: () => ipcRenderer.invoke('sound-open-folder'),
   // --- PS桥接插件自动安装 ---
   bridgeReinstall: () => ipcRenderer.invoke('bridge-reinstall'),
+  bridgeInstallStatus: () => ipcRenderer.invoke('bridge-install-status'),
+  onBridgeInstallStatus: (cb) => ipcRenderer.on('bridge-install-status', (_e, status) => cb(status)),
 
   // --- 提示词库（存文档目录，卸载重装不丢） ---
   plibGet: () => ipcRenderer.invoke('plib-get'),

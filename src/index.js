@@ -51,6 +51,7 @@ require('./core/autofix');   // 自动修图：文件夹批量工序流水线→
 require('./core/qpresets');   // 快捷预设：修图师标准动作一键执行，预设=文档夹里的 JSON（0912）
 require('./core/misc');
 require('./core/tray');   // 系统托盘：任务栏右下角常驻入口（0909用户要求"做到任务栏里"）
+require('./core/dev-reload').enableDevReload(require('electron'), ctx);
 
 // ---------- 系统关机/注销：立即落盘并退出（0909用户实拍"正在关闭 21 个应用"每张卡一行阻止关机）----------
 // 病因：Windows 关机给每个顶层窗发 WM_ENDSESSION，Electron 只发 'session-end' 事件不退出，进程赖到系统超时才被杀，

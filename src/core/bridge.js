@@ -53,11 +53,16 @@ function startBridgeServer() {
         const CUR_BRIDGE_VER = ctx.curBridgeVer || 28;
         const fatal = ctx.bridgeFatalVers && ctx.bridgeFatalVers[psBridgeVer];
         if (fatal) {
-          ctx.olog('🛑 PS里跑的来福插件 v' + psBridgeVer + ' 有致命bug（' + fatal + '）。本软件已带 v' + CUR_BRIDGE_VER + '：请**完全退出并重启一次 PS**（任务管理器里确认没有 Photoshop.exe 再开）', 'err');
+          ctx.olog('🛑 PS里运行的来福插件 v' + psBridgeVer + ' 有致命bug（' + fatal + '）。已安排替换，请保存作品并退出 PS，等待来福提示安装完成后再打开。', 'err');
         } else if (psBridgeVer < CUR_BRIDGE_VER) {
-          ctx.olog('🔌 PS桥接已连接，但PS里跑的是旧版插件（v' + psBridgeVer + '→v' + CUR_BRIDGE_VER + '）——完全退出并重启一次PS才会加载新版', 'err');
+          ctx.olog('🔌 检测到旧版桥接（v' + psBridgeVer + '→v' + CUR_BRIDGE_VER + '），已安排清理替换。请保存作品并退出 PS，保持来福运行，安装完成后再打开 PS。', 'info');
         } else {
           ctx.olog('🔌 PS桥接已连接（插件 v' + psBridgeVer + '）', 'ok');   // 0908用户要求：连上要在生图日志里明说
+        }
+        if ((fatal || psBridgeVer < CUR_BRIDGE_VER) && ctx.installBridge) {
+          ctx.installBridge({ force: true }).then((r) => {
+            if (!r.ok) ctx.olog('🔌 ' + r.error, 'err');
+          });
         }
         if (msg.presetImport && msg.presetImport !== 'pending') logPresetImport(msg.presetImport);
         else if (psBridgeVer >= 52) pollPresetImport(socket, 0);   // 握手时还在查/导：稍后主动问（开机阶段的推送实证丢过）

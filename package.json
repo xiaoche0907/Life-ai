@@ -1,14 +1,16 @@
 {
   "name": "life-ai",
   "productName": "Life-ai测试版",
-  "version": "6.0.7",
+  "version": "6.0.8",
   "description": "来福 Life-ai Photoshop AI 桌面助手测试版",
   "author": "oranG / Life UI customization",
   "main": "src/index.js",
   "private": true,
   "scripts": {
     "start": "electron .",
+    "dev": "electron . --dev",
     "check": "node scripts/check-source.cjs",
+    "test:bridge": "node scripts/test-bridge-queue.cjs && powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-bridge-install.ps1",
     "build": "electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
