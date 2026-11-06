@@ -12,3 +12,4 @@ orange-config.json*
 life-config.json*
 Thumbs.db
 .DS_Store
+dist2/
