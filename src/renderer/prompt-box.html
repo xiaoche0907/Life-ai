@@ -244,6 +244,7 @@
     pcSaveTimer = setTimeout(() => window.orange.setConfig({ gen: { ctl: pcCtl } }), 300);
   }
   let flipped = false;
+  let pasteForce = false;   // 本次改动是粘贴引起的→放行一次自动翻面（见 renderControls 注释）
   function setFlipped(on) {
     on = !!on && pcCount > 0;
     if (on === flipped && !svOpen) return;
@@ -337,7 +338,13 @@
     } catch (_) {}
   });
   // autoFlip=true：外部填入带控件的提示词时自动翻到控件面（正在打字时不抢）
+  // 粘贴放行（1011用户反馈①）：粘贴的内容带控件就直接翻到滑块面——用户刚灌进一份带 @param
+  // 的 JSON，想看/调的必然是滑块，让他再手动点一次 ⇄ 是纯多余。粘贴完输入框正好握着焦点，
+  // 而下面那句防打字抢翻面的守卫会把它当掉，所以由 pasteForce 开一次性放行。
   function renderControls(text, autoFlip) {
+    const fromPaste = pasteForce;
+    pasteForce = false;   // ⚠先消费再判断：粘的是纯文字（没控件）也得把这标用掉，
+                          // 否则它会一直挂着，等下次手打出一个控件时"诈尸"翻面
     const sig = window.ORANGE_PARAM_CTL.signature(text);
     if (sig !== pcSig) {
       pcSig = sig;
@@ -346,14 +353,23 @@
       pcCnt.textContent = pcCount ? pcCount + '个' : '';
       if (!pcCount) setFlipped(false);
     }
-    if (autoFlip && pcCount > 0 && !(document.hasFocus() && document.activeElement === ta)) setFlipped(true);
+    // ⚠判"用户正在这个框里打字"只认 activeElement，别用 document.hasFocus()：
+    //   本卡是 focusable:false 的调色板窗，鼠标点进来时 hasFocus 常为假，靠它会把手打也当掉→自己翻面
+    const typing = document.activeElement === ta;
+    if (autoFlip && pcCount > 0 && (!typing || fromPaste)) setFlipped(true);
   }
 
   // 输入防抖自动保存到 config.gen.prompt（AI生图卡生成时实时读取）
   let saveTimer = null;
-  ta.addEventListener('input', () => {
+  // 粘贴放行（1011用户反馈①）：paste 事件的 inputType 认得出粘贴（含 Ctrl+V/右键粘贴/拖入文字），
+  // 由它给下面这次 renderControls 开一次性放行→粘贴的提示词带 @param 时卡牌自己翻到滑块面。
+  // ⚠标在 input 之前、由 input 消费：粘贴也可能一次触发多次 input，多余的标在下一次输入里自然作废
+  ta.addEventListener('paste', () => { pasteForce = true; });
+  ta.addEventListener('input', (e) => {
     updateCount();
-    renderControls(ta.value);   // 控件集合变了才重建（签名跳过）
+    // 手打字符一律不许因为带控件就翻面（那是"打字打字突然翻过去"，用户没提过要）
+    if (e && e.inputType && e.inputType !== 'insertFromPaste') pasteForce = false;
+    renderControls(ta.value, true);   // 控件集合变了才重建（签名跳过）；带控件且非打字（或本次是粘贴）才翻
     if (pair) pair[pmode] = ta.value;   // 编辑同步进当前显示的那个版本
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {

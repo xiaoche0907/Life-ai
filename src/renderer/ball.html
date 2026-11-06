@@ -209,6 +209,14 @@
   let dragStarted = false;
   window.addEventListener('mousemove', (e) => {
     if (!dragging) return;
+    // ⚠1014：还按着吗？鼠标"松开"事件丢过一次（在球窗外松、切程序、被系统弹窗抢焦点）
+    //   而这里还在靠上一次的 dragging 继续发位移信号 —— 那就是"球粘鼠标"。
+    //   主进程侧已加了按键自检兜底，这里再加一道页面侧的门：两道任一命中都能停住。
+    if (e.buttons === 0) {
+      if (dragStarted) window.orange.ballDragEnd();
+      dragging = false; dragStarted = false;
+      return;
+    }
     moved += Math.abs(e.screenX - lastX) + Math.abs(e.screenY - lastY);
     lastX = e.screenX; lastY = e.screenY;
     if (!dragStarted && moved > 3) {
@@ -236,7 +244,19 @@
     }
     dragging = false; dragStarted = false;
   });
-  window.addEventListener('blur', () => { dragging = false; dragStarted = false; });   // 焦点丢失=手势作废（坑57同族）
+  // ⚠1014：blur 兜底只管页面自己的变量，**必须同时通知主进程**。
+  //   原来这里只复位局部变量、不发 ballDragEnd → 主进程那个 8ms 跟随循环照跑 = 球粘鼠标。
+  //   顺带补上 pointercancel / lostpointercapture：这才是"手势被系统打断"的正规信号
+  //   （glass.js 的卡牌拖动早就有这两个兜底，球这边一直是裸的——所以只有球被反馈）。
+  const abortDrag = (why) => {
+    if (!dragging && !dragStarted) return;
+    if (dragStarted && window.orange.glassLog) window.orange.glassLog('[ballpage] 手势作废：' + why);
+    if (dragStarted) window.orange.ballDragEnd();
+    dragging = false; dragStarted = false;
+  };
+  window.addEventListener('blur', () => abortDrag('失焦'));
+  window.addEventListener('pointercancel', () => abortDrag('pointercancel'));
+  window.addEventListener('lostpointercapture', () => abortDrag('lostpointercapture'));
   // 菜单展开中左键点球=收起菜单（不开关面板）
   ball.addEventListener('click', (e) => {
     if (menuOpen) { e.stopPropagation(); window.orange.ballMenu(false); }

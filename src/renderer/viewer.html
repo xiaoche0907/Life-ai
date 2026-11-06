@@ -8,7 +8,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
   html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; cursor: default; }
   /* 主题色：本页不载 theme.css（不需要玻璃底），只要这一个色，由主进程随数据下发覆写；dim 由它派生 */
-  :root { --vw-accent: #19b5bc; --vw-accent-dim: color-mix(in srgb, var(--vw-accent) 45%, transparent); }
+  :root { --vw-accent: #ff9f0a; --vw-accent-dim: color-mix(in srgb, var(--vw-accent) 45%, transparent); }
   #bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 180ms ease-out; }
   body.on #bg { opacity: 1; }
   body.dimonly #bg { background: rgba(0, 0, 0, 0.62); }

@@ -8,8 +8,7 @@
   // ---------- 盲人修图模式：肌肉记忆党的极简界面（去文字标注/悬停提示/气泡名） ----------
   // 悬停提示是title属性，CSS藏不掉：摘掉并把原文存进data-otitle，切回新手模式时原样还原；
   // 动态新建的元素靠2秒兜底轮询补摘
-  let blindTimer = null;
-  function stripTitles() {
+  let blindTimer = null;  function stripTitles() {
     document.querySelectorAll('[title]').forEach((el) => {
       if (!el.dataset.otitle) el.dataset.otitle = el.getAttribute('title');
       el.removeAttribute('title');
@@ -81,6 +80,26 @@
   }
   window.orange.getConfig().then((c) => applyUI(c.ui)).catch(() => {});
   if (window.orange.onUIVars) window.orange.onUIVars(applyUI);
+
+  // ---------- 流畅优先（低配电脑，1011）----------
+  // 渲染端只做两件事：①给html挂 data-perf="lite"，theme.css 据此停掉装饰性无限动画（省GPU）
+  //                   ②穿透上报频率由 250ms 降到 1000ms（passIntervalMs，供下方锁定上报块使用）
+  // 主进程侧另有：光标轮询降频、闲置卡回收5分钟→45秒（core/windows.js 的 applyPerf）
+  let perfLite = false;
+  let passIntervalMs = 250;
+  let lockRectTimerRef = null;
+  function applyPerf(p) {
+    perfLite = !!(p && p.lite);
+    document.documentElement.setAttribute('data-perf', perfLite ? 'lite' : 'normal');
+    passIntervalMs = perfLite ? 1000 : 250;
+    // 锁定上报正在跑 → 立刻换频率（不等下次重排）
+    if (lockRectTimerRef) {
+      clearInterval(lockRectTimerRef);
+      lockRectTimerRef = setInterval(() => { try { window.__reportPassRects && window.__reportPassRects(); } catch (e) {} }, passIntervalMs);
+    }
+  }
+  window.orange.getConfig().then((c) => applyPerf(c.perf)).catch(() => {});
+  if (window.orange.onPerfVars) window.orange.onPerfVars(applyPerf);
 
   // ---------- 字体缩放系统（0904恒定+0905用户滑杆+高分屏适配） ----------
   // 手法：全部样式表字号一次性改写——px→calc(N*var(--fz))，vw→calc(N*var(--fzv))
@@ -374,13 +393,19 @@
         lg.classList.remove(cls); void lg.offsetWidth; lg.classList.add(cls);
         setTimeout(() => lg.classList.remove(cls), 260);
       } else if (mode === 'gather') {
-        // 收回第二幕：随螺旋收缩旋转
-        lg.style.transition = 'transform ' + dur + 'ms cubic-bezier(.6,0,.9,.4)';
+        // 收回第二幕：随螺旋收缩旋转+淡出。1012：淡出从"主进程逐窗改窗口透明度"挪到这里——17 张卡改一轮窗口透明度
+        // 实测 4ms、每两步一轮，和挪窗一起把 8ms 一步的节拍挤爆（150% 屏收纳一顿一顿）；页面内 CSS 淡出走 GPU 合成，不占主进程。
+        // ⚠淡出晚 120ms 开始：收纳开头主进程在 capturePage 给释放代理截图，截图读的是页面内容，早淡=截到半透明卡、释放飞出来是淡的。
+        //   原曲线是缓入（120ms 时透明度仍 0.96），推迟起步肉眼看不出差别
+        const ease = 'cubic-bezier(.6,0,.9,.4)';
+        lg.style.transition = 'transform ' + dur + 'ms ' + ease + ', opacity ' + Math.max(60, dur - 120) + 'ms ' + ease + ' 120ms';
         lg.style.transform = 'scale(0.38) rotate(-14deg)';
+        lg.style.opacity = '0.05';
       } else {
         // reset
         lg.style.transition = 'none';
         lg.style.transform = '';
+        lg.style.opacity = '';
         const ring = lg.querySelector(':scope > .fxring');
         if (ring) ring.remove();
       }
@@ -474,7 +499,6 @@
   // ⚠球窗口豁免：球菜单自己上报菜单项热区，通用上报会每250ms把它覆盖掉（菜单点击时灵时不灵的元凶）；
   //   菜单关着时球走主进程的圆形判定，本来就不需要热区
   if (window.orange.setPassRects && !isBallPage) {
-    let lockRectTimer = null;
     function reportPassRects() {
       // 锁定时放行的可点元素：原生控件 + canvas + 各卡片的交互类（气泡/胶囊/pill/列表行/开关/爱心/灯具格等）
       const sel = 'button, input, select, textarea, a, canvas, .hbtn, .lock-btn, .bubble, .gpill, .row, .heart, .fbtn, .pill, .switch, .sq, .fx-el, .cfollow, .chip, .fp-item, .tbtn, .slot, .gpr, .gin, .gout, .gx, #btnAddRef, #presetTrig, #presetList, #carousel, #cntPill, [data-pass]';
@@ -490,13 +514,14 @@
       }
       window.orange.setPassRects(rects);
     }
+    window.__reportPassRects = reportPassRects;   // 供 applyPerf 换频率时直接调（跨块共享）
     function setLockReporting(on) {
       document.body.classList.toggle('lockedon', !!on);   // 锁定时CSS隐藏缩放手柄（主进程同时拒绝grip）
-      clearInterval(lockRectTimer);
-      lockRectTimer = null;
+      clearInterval(lockRectTimerRef);
+      lockRectTimerRef = null;
       if (on) {
         reportPassRects();
-        lockRectTimer = setInterval(reportPassRects, 250);   // 布局变化跟随
+        lockRectTimerRef = setInterval(reportPassRects, passIntervalMs);   // 布局变化跟随（流畅优先时降频1000ms）
         document.addEventListener('click', reportPassRects, true);   // 点击后（如弹窗弹出）立即补报
       } else {
         document.removeEventListener('click', reportPassRects, true);

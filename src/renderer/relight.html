@@ -774,7 +774,7 @@
     // 牵引线 + 发光灯球（球大小跟随照射大小）
     const lp = gzProject(L3.gx, L3.gy, L3.gz, W, H);
     const oc2 = gzProject(0, 0, 0, W, H);
-    const acc = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#19b5bc').trim();
+    const acc = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#ff9f0a').trim();
     if (lp && oc2) {
       g.strokeStyle = acc; g.globalAlpha = 0.55;
       g.beginPath(); g.moveTo(lp.x, lp.y); g.lineTo(oc2.x, oc2.y); g.stroke();

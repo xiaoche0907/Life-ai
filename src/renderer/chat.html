@@ -270,6 +270,13 @@
   }
   #viewSet textarea[readonly] { opacity: 0.72; }
   .srow { display: flex; align-items: center; gap: 8px; }
+  /* 「其它功能的模型」：功能名单独一行（浅灰小字），下面三个下拉等宽并排（1013 第二轮用户裁定"做成一横排"）。
+     功能名为什么不跟下拉挤一行：卡宽约 460px，名字占 84px 后每个下拉只剩 ~123px，「GPT-5.6 Sol」就会截断；
+     名字独占一行则每个 ~148px。 */
+  .capgroup { margin-bottom: 9px; }
+  .capgroup .cpyname { font-size: 11.5px; color: var(--text-dim); margin-bottom: 5px; }
+  /* 三个下拉等宽：min-width:0 是必须的，否则 select 按内容撑宽把行挤爆（flex 项默认最小尺寸=内容宽） */
+  .capgroup .srow > select { flex: 1 1 0; min-width: 0; }
   .rpill {
     height: 30px; padding: 0 13px; margin: 3px 0;
     border-radius: 10px; border: 1px solid var(--inset-border);
@@ -291,8 +298,23 @@
   }
   .cprow .cphead { display: flex; align-items: center; gap: 8px; }
   .cprow .cpname { flex: 1; min-width: 0; font-size: 12px; color: #fff; }
-  #viewSet .cprow input[type="text"] { height: 30px; font-size: 12px; border-radius: 9px; background: rgba(0,0,0,0.18); user-select: text; }
+  /* ⚠ 别按 type 选（1013 踩过）：Key 框为了"圆点隐藏"从 text 改成 password 后，
+     input[type="text"] 这条就匹配不上了 → 掉回浏览器默认白底，整排变白。
+     改按容器选：不管 type 是 text 还是 password，外观一样。 */
+  #viewSet .cprow input { height: 30px; font-size: 12px; border-radius: 9px; background: rgba(0,0,0,0.18); user-select: text; color: var(--text); border: 1px solid var(--inset-border); padding: 0 9px; outline: none; min-width: 0; }
+  #viewSet .cprow input:focus { border-color: var(--accent-border); }
   #viewSet .cprow input.masked { color: #7fe0a3; letter-spacing: 1px; }
+  /* Key 行 + 小眼睛（1013） */
+  #viewSet .cpkeyrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  #viewSet .cpkeyrow input { flex: 1; min-width: 0; }
+  #viewSet .cpkeyeye {
+    width: 28px; height: 28px; border-radius: 9px; flex: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text-dim);
+  }
+  #viewSet .cpkeyeye svg { width: 14px; height: 14px; }
+  #viewSet .cpkeyeye:hover { background: var(--btn-bg-hover); }
+  #viewSet .cpkeyeye.on { color: var(--accent-text); background: var(--accent-soft); }
   .cprow .cpname input[type="text"] { height: 28px; padding: 0 8px; }
   .cprow .cpx { font-size: 11px; opacity: 0.7; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
   .cprow .cpx:hover { opacity: 1; background: var(--btn-bg-hover); }
@@ -340,18 +362,37 @@
 
     <div id="viewSet">
       <div>
-        <div class="slabel">默认渠道 / 模型</div>
-        <div class="srow">
-          <select id="provider" style="flex:0 0 38%"></select>
-          <select id="model" style="flex:1"></select>
-          <button id="btnRefreshM" class="hbtn" style="width:34px;height:34px;border:none;flex:none" title="拉取模型列表（自定义渠道）"></button>
-        </div>
-        <div class="shint" style="margin-top:5px">对话渠道与生图渠道互不相干；角色可各自指定模型，未指定的角色用这里的默认</div>
-      </div>
-      <div>
         <div class="slabel">渠道配置</div>
         <div id="cpList"></div>
         <button id="btnAddCp" class="cpadd">＋ 新增自定义渠道</button>
+      </div>
+      <div>
+        <div class="slabel">其它功能的模型</div>
+        <div class="capgroup">
+          <div class="cpyname">AI对话</div>
+          <div class="srow">
+            <select id="capChatProv"></select>
+            <select id="capChatModel"></select>
+            <select id="capChatCorpus" title="这一格用谁的语料"></select>
+          </div>
+        </div>
+        <div class="capgroup">
+          <div class="cpyname">转JSON</div>
+          <div class="srow">
+            <select id="capJsonProv"></select>
+            <select id="capJsonModel"></select>
+            <select id="capJsonCorpus" title="这一格用谁的语料"></select>
+          </div>
+        </div>
+        <div class="capgroup">
+          <div class="cpyname">半合成识图</div>
+          <div class="srow">
+            <select id="capAskProv"></select>
+            <select id="capAskModel"></select>
+            <select id="capAskCorpus" title="这一格用谁的语料"></select>
+          </div>
+        </div>
+        <div class="shint" style="margin-top:5px">渠道留「跟随 AI对话」=用 AI对话 那行的渠道/模型。语料三格各管各的，都是**具体角色名**（没有"跟着变"的隐式档）：想让转JSON 用另一套工法就在这里挑。自动修图的识图模型在自动修图卡上选，不在这里。</div>
       </div>
       <div>
         <div class="slabel">角色</div>
@@ -361,14 +402,6 @@
           <button id="btnAddRole">添加</button>
         </div>
         <div class="shint" id="roleHint" style="display:none; color:#ff9a9a; margin-top:5px;"></div>
-      </div>
-      <div>
-        <div class="slabel">角色专属模型</div>
-        <div class="srow">
-          <select id="roleProv" style="flex:0 0 38%"></select>
-          <select id="roleModel" style="flex:1"></select>
-        </div>
-        <div class="shint" style="margin-top:5px" id="roleModelHint">选「跟随默认」=用上面的默认渠道/模型</div>
       </div>
       <div>
         <div class="slabel">系统提示词</div>
@@ -387,7 +420,8 @@
   $('btnClear').innerHTML = ICO.trash;
   $('btnCap').innerHTML = ICO.camera;
   $('btnSend').innerHTML = ICO.send;
-  $('btnRefreshM').innerHTML = ICO.refresh;
+  // ⚠「默认渠道/模型」那块已删（1013），它的 btnRefreshM 也没了——这行原来给那个按钮塞图标，
+  //   留着就是 $('btnRefreshM')===null → 整页脚本在这里抛错、后面全不执行（界面看着"半死不活"）
   document.querySelector('#typing .msg-avatar').innerHTML = ICO.orange;
 
   const msgs = $('messages');
@@ -668,14 +702,18 @@
   // 卡片被收起/隐藏时自动退回对话页（学AI生图）
   document.addEventListener('visibilitychange', () => { if (document.hidden) setMode(false); });
 
-  // ---------- 设置视图：对话渠道表（0908 与生图解耦）/默认模型/角色（内置+自定义）/角色专属模型/系统提示词 ----------
-  const providerSel = $('provider'), modelSel = $('model'), sysTa = $('sysPrompt');
-  const roleProvSel = $('roleProv'), roleModelSel = $('roleModel');
+  // ---------- 设置视图：对话渠道表（0908 与生图解耦）/角色（内置+自定义）/其它功能的模型+语料/系统提示词 ----------
+  // 1013 第一轮：原「默认渠道 / 模型」那块（providerSel/modelSel/btnRefreshM）已删——槽位搬到「其它功能的模型」的
+  //   AI对话 一行（caps.chat）。config.chat.provider/model 仍在主进程当兜底，界面不再出现。
+  // 1013 第二轮：**「角色专属模型」整块删掉**（用户裁定"多角色不管"）——roleModels 这一层从配置表、
+  //   解析链、界面三处一起摘除，模型只看「其它功能的模型」那三行。
+  const sysTa = $('sysPrompt');
   let CP = {};           // chatProviders 表 {id:{label,base,hasKey,builtin,models:[{id,name,dead}]}}
-  let roleModels = {};   // config.chat.roleModels
   let builtins = [];     // 内置角色 [{id,name,prompt}]
   let customs = [];      // 自定义角色 config.chat.presets
   let currentRole = '';
+  // 唯一内置角色（1011 起「橙子」人设已移除，只剩「橙子语料」）：所有"找不到角色就退回"都落它
+  const FALLBACK_ROLE = 'b_corpus';
 
   function isBuiltinId(x) { return builtins.some((b) => b.id === x); }
   let hintTimer = null;
@@ -688,7 +726,6 @@
   async function reloadCP() {
     const d = await window.orange.chatProviders();
     CP = (d && d.conf) || {};
-    roleModels = (d && d.roleModels) || {};
     return d;
   }
   function fillProvSelect(sel, withFollow) {
@@ -722,30 +759,15 @@
     return pick;
   }
 
-  // ---- 默认渠道/模型 ----
-  function renderDefault(cfgChat) {
-    fillProvSelect(providerSel, false);
-    const prov = (cfgChat && cfgChat.provider && CP[cfgChat.provider]) ? cfgChat.provider : (Object.keys(CP)[0] || '');
-    providerSel.value = prov;
-    const picked = fillModelSelect(modelSel, prov, cfgChat && cfgChat.model);
-    if (picked && picked !== (cfgChat && cfgChat.model)) window.orange.setConfig({ chat: { model: picked } });
-    $('btnRefreshM').style.visibility = (CP[prov] && !CP[prov].builtin) ? 'visible' : 'hidden';
-  }
-  providerSel.addEventListener('change', () => {
-    const prov = providerSel.value;
-    const picked = fillModelSelect(modelSel, prov, '');
-    window.orange.setConfig({ chat: { provider: prov, model: picked } });
-    $('btnRefreshM').style.visibility = (CP[prov] && !CP[prov].builtin) ? 'visible' : 'hidden';
-  });
-  modelSel.addEventListener('change', () => window.orange.setConfig({ chat: { model: modelSel.value } }));
-  $('btnRefreshM').addEventListener('click', async () => {
-    const r = await window.orange.chatModelsFetch(providerSel.value);
+  // ---- 拉取当前渠道的对话模型（自定义渠道/墨墨这类动态渠道才有意义）；成功后重画三个功能行
+  async function pullModels(prov) {
+    if (!prov) { roleHint('先选一个渠道'); return; }
+    const r = await window.orange.chatModelsFetch(prov);
     if (!r.ok) { roleHint(r.error || '拉取失败'); return; }
     await reloadCP();
-    const c = await window.orange.getConfig();
-    renderDefault(c.chat); renderRoleModel();
+    renderCaps();
     roleHint('已拉取 ' + r.models.length + ' 个对话模型' + ((r.total || 0) > r.models.length ? '（另 ' + (r.total - r.models.length) + ' 个生图/音频等非对话模型已排除）' : ''));
-  });
+  }
 
   // ---- 渠道配置列表（内置两条固定 + 自定义 cc_* 增删改；Key/地址/名字 400ms 防抖落库）----
   // ⚠落库后不重建列表（0908用户实测"Key 粘贴上去就消失"=防抖回调整表重渲染把输入框连值一起换掉了）：
@@ -757,9 +779,6 @@
     cpTimers[id] = setTimeout(async () => {
       await window.orange.setConfig({ chatProviders: { [id]: patch } });
       await reloadCP();
-      const c = await window.orange.getConfig();
-      fillProvSelect(providerSel, false); providerSel.value = c.chat.provider;
-      fillProvSelect(roleProvSel, true); roleProvSel.value = (roleModels[currentRole] && roleModels[currentRole].provider) || '';
       updateCpRow(id);
     }, 400);
   }
@@ -794,6 +813,15 @@
         nm.appendChild(ni);
       }
       head.appendChild(nm);
+      // 「拉取模型」按钮（1013：原来在「默认渠道/模型」那一行，那行删了 → 挪到每张渠道卡自己头上）。
+      // 只对动态渠道（自定义 cc_* / 墨墨）显示：内置 AJI/GRS 的模型是代码里的静态表，没有接口可拉。
+      if (!c.builtin || /^cc_/.test(id) || id === 'momo') {
+        const rb = document.createElement('span'); rb.className = 'cpx'; rb.title = '拉取该渠道的对话模型列表';
+        rb.innerHTML = ICO.refresh;
+        rb.style.display = 'inline-flex'; rb.style.alignItems = 'center';
+        rb.addEventListener('click', () => pullModels(id));
+        head.appendChild(rb);
+      }
       const badge = document.createElement('span'); badge.className = 'cpbadge' + (c.hasKey ? ' cpok' : '');
       badge.textContent = badgeText(c);
       head.appendChild(badge);
@@ -809,8 +837,7 @@
           clearTimeout(cpDelArm.t); cpDelArm = null;
           await window.orange.setConfig({ chatProviders: { [id]: null } });
           await reloadCP();
-          const cc = await window.orange.getConfig();
-          renderDefault(cc.chat); renderCpList(); renderRoleModel();
+          renderCpList(); renderCaps();
         });
         head.appendChild(x);
       }
@@ -820,12 +847,29 @@
         bi.addEventListener('input', () => cpSave(id, { base: bi.value.trim() }));
         row.appendChild(bi);
       }
-      const ki = document.createElement('input'); ki.type = 'text'; ki.dataset.cpf = id + ':key'; ki.spellcheck = false;
+      // Key 行 + 小眼睛（1013 用户要求）：睁眼=输入框明文（打字时看得见自己在贴什么），闭眼=圆点
+      // 注意：页面本就只拿得到掩码（明文从不发给渲染进程），所以"闭眼"看到的是掩码不是圆点
+      const kRow = document.createElement('div'); kRow.className = 'cpkeyrow';
+      const ki = document.createElement('input'); ki.type = 'password'; ki.dataset.cpf = id + ':key'; ki.spellcheck = false; ki.autocomplete = 'off';
       showKeyMask(ki, c);
       ki.addEventListener('focus', () => { if (ki.dataset.masked) { ki.value = ''; ki.dataset.masked = ''; ki.classList.remove('masked'); ki.placeholder = '粘贴新 Key（留空=保留原 Key）'; } });
       ki.addEventListener('input', () => { const v = ki.value.trim(); if (v) cpSave(id, { key: v }); });
       ki.addEventListener('blur', () => { const cc = CP[id] || c; showKeyMask(ki, cc); });
-      row.appendChild(ki);
+      const kEye = document.createElement('span');
+      kEye.className = 'cpkeyeye'; kEye.title = '睁眼 = 明文显示；闭眼 = 圆点';
+      // ⚠ 用内联 SVG，别取 window.ORANGE_ICONS.eye —— 那个 eye 在 PLIB_ICONS 里（分组图标集），
+      //   ORANGE_ICONS 里没有它，取回来是 undefined，会被当文字插进去显示成 "undefined"（1013 踩过）
+      kEye.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+      kEye.addEventListener('mousedown', (e) => e.preventDefault());   // 别把输入框的焦点抢走
+      kEye.addEventListener('click', () => {
+        const on = ki.type === 'password';
+        ki.type = on ? 'text' : 'password';
+        kEye.classList.toggle('on', on);
+        kEye.title = on ? '已显示明文，点击变回圆点' : '睁眼 = 明文显示；闭眼 = 圆点';
+        if (on) ki.focus();
+      });
+      kRow.appendChild(ki); kRow.appendChild(kEye);
+      row.appendChild(kRow);
       cpList.appendChild(row);
     }
   }
@@ -834,8 +878,7 @@
     const n = Object.keys(CP).filter((k) => !CP[k].builtin).length + 1;
     await window.orange.setConfig({ chatProviders: { [id]: { label: '自定义' + n, base: '', key: '', models: [] } } });
     await reloadCP();
-    const c = await window.orange.getConfig();
-    renderDefault(c.chat); renderCpList(); renderRoleModel();
+    renderCpList(); renderCaps();
     const el = cpList.querySelector('[data-cpf="' + id + ':base"]'); if (el) el.focus();
   });
 
@@ -848,7 +891,7 @@
       p.className = 'rpill' + (currentRole === b.id ? ' active' : '');
       p.innerHTML = '<span class="bstar">★</span>';
       p.appendChild(document.createTextNode(b.name));
-      p.title = '内置角色' + (b.id === 'b_orange' ? '（默认）' : '') + (roleModels[b.id] && roleModels[b.id].provider ? ' · 专属模型' : '');
+      p.title = '内置角色（默认）';
       p.addEventListener('click', () => selectRole(b.id));
       row.appendChild(p);
     });
@@ -861,7 +904,6 @@
       del.style.cssText = 'opacity:.7;cursor:pointer;';
       del.addEventListener('click', (e) => { e.stopPropagation(); delRole(c.name, del); });
       p.appendChild(nm); p.appendChild(del);
-      p.title = roleModels[c.name] && roleModels[c.name].provider ? '专属模型' : '';
       p.addEventListener('click', () => selectRole(c.name));
       row.appendChild(p);
     });
@@ -877,18 +919,20 @@
     }
     clearTimeout(delArm.t); delArm = null;
     customs = customs.filter((c) => c.name !== name);
-    if (roleModels[name]) { delete roleModels[name]; }
-    window.orange.setConfig({ chat: { presets: customs, roleModels } });
-    if (currentRole === name) selectRole('b_orange');
+    window.orange.setConfig({ chat: { presets: customs } });
+    if (currentRole === name) selectRole(FALLBACK_ROLE);
     else renderRoles();
   }
-  // 内置隐藏角色的提示词区留空（0903用户裁定：删掉面具文案和角色说明，不给beta用户漏工法底细）
-  const HIDDEN_MASK = '';
+  // 内置角色的提示词区：hidden 角色**可见但不可读**（1011 用户裁定 A）——语料工法全文不进渲染进程；
+  // Life 分支恢复的「来福」人设是可见角色，文本随角色表下发、界面可读（沿用旧版行为）。
+  // hidden 的 sysTa 只读 + 面具文案 = 用户知道"有这么个内置角色"，却看不到工法全文。
+  // 要改内容就另存为自定义角色（那是用户自己的，当然可读可改）。
+  const HIDDEN_MASK = '（内置角色：工法文本不在界面展示，模型实际会按它作答。想自定义请「另存为」新角色）';
   function selectRole(id) {
     currentRole = id;
     const b = builtins.find((x) => x.id === id);
     if (b) {
-      // 内置角色：主进程发送时按currentPreset自行解析提示词，界面只做展示（hidden=面具）
+      // 内置角色：hidden 显示面具文案；可见人设显示原文。发送时主进程按 id 自行解析提示词
       sysTa.value = b.hidden ? HIDDEN_MASK : b.prompt;
       sysTa.readOnly = true;
       window.orange.setConfig({ chat: { currentPreset: id } });
@@ -899,7 +943,7 @@
       window.orange.setConfig({ chat: { systemPrompt: sysTa.value, currentPreset: id } });
     }
     renderRoles();
-    renderRoleModel();
+    renderCaps();
   }
   $('btnAddRole').addEventListener('click', () => {
     const name = $('roleName').value.trim();
@@ -921,42 +965,111 @@
     }, 500);
   });
 
-  // ---- 角色专属模型：roleModels[角色]={provider,model}；provider 空=跟随默认 ----
-  function renderRoleModel() {
-    fillProvSelect(roleProvSel, true);
-    const rm = roleModels[currentRole] || {};
-    const prov = (rm.provider && CP[rm.provider]) ? rm.provider : '';
-    roleProvSel.value = prov;
-    if (!prov) { roleModelSel.innerHTML = '<option value="">—</option>'; roleModelSel.disabled = true; }
-    else { roleModelSel.disabled = false; fillModelSelect(roleModelSel, prov, rm.model); }
-    $('roleModelHint').textContent = prov ? ('「' + roleLabel(currentRole) + '」固定用 ' + CP[prov].label + ' · ' + (roleModelSel.value || '未选模型')) : '选「跟随默认」=用上面的默认渠道/模型';
+  // ---- 其它功能的模型 + 语料（1011 建模型槽位 / 1013 加 AI对话 行与三个语料格 / 1013 删角色专属模型）----
+  // 配置存 config.chat.caps = { chat:{provider,model}, json:{...}, ask:{...} }，空=跟随
+  //      config.chat.corpus = { chat:'__builtin__', json:'__builtin__', ask:'__builtin__' }
+  //          值 = 具体角色名，或 '__builtin__'（内置语料）。**没有"跟随当前角色"那一档**（1013 第三轮）。
+  // ⚠自动修图识图不在这里：它有自己的 autofix.det（卡面选 + 配方可存），两处入口会互相打架。
+  let capsData = { chat: {}, json: {}, ask: {} };
+  let corpusData = { chat: '', json: '', ask: '__builtin__' };
+  const CAP_KEYS = {
+    chat: ['capChatProv', 'capChatModel'],
+    json: ['capJsonProv', 'capJsonModel'],
+    ask: ['capAskProv', 'capAskModel'],
+  };
+  // 语料下拉（1013 第四轮，用户裁定）：⚠「橙子语料」和「内置语料」是**两个东西**，别混：
+  //   橙子语料   = 内置角色（src/roles/corpus-20260726.txt），值 'b_corpus' → AI对话 / 转JSON 的默认
+  //   内置语料   = 半合成卡写死的那套看图用词（不是角色、没有文件），值 '__none__' → 半合成识图 的默认，
+  //                语义是"不叠加角色语料"（那套词已经在它自己的提示词里了，再叠会顶掉/串味）
+  //   其余 = 用户自建角色名。**没有"跟随当前角色"这一档**（第三轮已删）。
+  const CORPUS_NONE = '__none__';
+  function fillCorpusSelect(sel, want) {
+    sel.innerHTML = '';
+    const mk = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+    // 内置角色用**它自己的名字**（橙子语料）——别再给它另起"内置语料"这种会跟半合成那档撞车的名字
+    for (const b of builtins) mk(b.id, b.name);
+    if (!builtins.some((b) => b.id === 'b_corpus')) mk('b_corpus', '来福语料（阉割版）');   // 角色表万一没加载出来也要有它
+    mk(CORPUS_NONE, '内置语料');
+    for (const c of customs) mk(c.name, c.name + '（自定义）');
+    // 悬空值（角色已删）→ 落回该格的功能默认（chat/json=橙子语料；ask=内置）
+    const first = sel.options[0].value;
+    const fallback = (sel.id === 'capAskCorpus') ? CORPUS_NONE : 'b_corpus';
+    if (![...sel.options].some((o) => o.value === want)) sel.value = ([...sel.options].some((o) => o.value === fallback)) ? fallback : first;
+    else sel.value = want;
+    return sel.value;
   }
-  function roleLabel(id) { const b = builtins.find((x) => x.id === id); return b ? b.name : id; }
-  function saveRoleModel() {
-    const prov = roleProvSel.value;
-    if (!prov) delete roleModels[currentRole];
-    else roleModels[currentRole] = { provider: prov, model: roleModelSel.value };
-    window.orange.setConfig({ chat: { roleModels } });
-    renderRoles();
-    $('roleModelHint').textContent = prov ? ('「' + roleLabel(currentRole) + '」固定用 ' + CP[prov].label + ' · ' + (roleModelSel.value || '未选模型')) : '选「跟随默认」=用上面的默认渠道/模型';
+  function renderCaps() {
+    for (const key of Object.keys(CAP_KEYS)) {
+      const [pid, mid] = CAP_KEYS[key];
+      const psel = $(pid), msel = $(mid);
+      fillProvSelect(psel, key !== 'chat');
+      psel.value = (capsData[key] && capsData[key].provider) || '';
+      const prov = psel.value;
+      if (!prov) {
+        // 留空 = 跟随：AI对话 跟随渠道兜底（原「默认」那套），其余跟随 AI对话
+        msel.innerHTML = '<option value="">' + (key === 'chat' ? '跟随渠道兜底' : '跟随 AI对话') + '</option>';
+        msel.disabled = true;
+      } else {
+        msel.disabled = false;
+        const want = (capsData[key] && capsData[key].model) || '';
+        fillModelSelect(msel, prov, want);
+        // 存的模型名不在该渠道的模型表里（渠道换过表 / 模型下架 / 手填的网关模型名）——**只提示，绝不改**。
+        // ⚠这里踩过一次：第一版写的是"就地对齐并落库"，把用户明确选过的 claude-opus-5 直接改成表里第一个
+        //   gpt-5.6-sol。用户选过的东西被静默改写，比留一个过期名字危险得多（后者顶多报错，前者是悄悄换模型跑钱）。
+        //   所以只在界面上把话说清楚，改不改由用户自己决定。
+        if (want && msel.value && msel.value !== want) {
+          const o = document.createElement('option');
+          o.value = want; o.textContent = want + '（不在该渠道模型表里，可能已下架）';
+          msel.insertBefore(o, msel.firstChild);
+          msel.value = want;
+        }
+      }
+      // 动态渠道（没拉过模型列表）给个提示，免得用户对着空的模型下拉发愣
+      if (prov && !msel.options.length) roleHint('该渠道还没有模型列表，点渠道卡上的 ↻ 拉取');
+    }
+    fillCorpusSelect($('capChatCorpus'), corpusData.chat);
+    fillCorpusSelect($('capJsonCorpus'), corpusData.json);
+    fillCorpusSelect($('capAskCorpus'), corpusData.ask);
   }
-  roleProvSel.addEventListener('change', () => {
-    const prov = roleProvSel.value;
-    if (!prov) { roleModelSel.innerHTML = '<option value="">—</option>'; roleModelSel.disabled = true; }
-    else { roleModelSel.disabled = false; fillModelSelect(roleModelSel, prov, ''); }
-    saveRoleModel();
-  });
-  roleModelSel.addEventListener('change', saveRoleModel);
+  function saveCap(key) {
+    const [pid, mid] = CAP_KEYS[key];
+    const prov = $(pid).value;
+    capsData[key] = prov ? { provider: prov, model: $(mid).value } : { provider: '', model: '' };
+    window.orange.setConfig({ chat: { caps: capsData } });
+    renderCaps();
+    refreshChip();   // 徽标显示"当前实际会用哪个模型"，改完立刻跟
+  }
+  function saveCorpus(key, val) {
+    corpusData[key] = val || '';
+    window.orange.setConfig({ chat: { corpus: corpusData } });
+    refreshChip();
+  }
+  for (const key of Object.keys(CAP_KEYS)) {
+    const [pid, mid] = CAP_KEYS[key];
+    $(pid).addEventListener('change', () => saveCap(key));
+    $(mid).addEventListener('change', () => saveCap(key));
+  }
+  $('capChatCorpus').addEventListener('change', () => saveCorpus('chat', $('capChatCorpus').value));
+  $('capJsonCorpus').addEventListener('change', () => saveCorpus('json', $('capJsonCorpus').value));
+  $('capAskCorpus').addEventListener('change', () => saveCorpus('ask', $('capAskCorpus').value));
 
-  // 设置视图初始化：无角色记录→默认「来福」并落库
+  // 设置视图初始化：无角色记录→默认「橙子」并落库
   (async () => {
     const [cfg, br] = await Promise.all([window.orange.getConfig(), window.orange.chatBuiltinRoles()]);
     await reloadCP();
     builtins = br || [];
     customs = (cfg.chat && cfg.chat.presets) || [];
-    renderDefault(cfg.chat);
     renderCpList();
     const cp = (cfg.chat && cfg.chat.currentPreset) || '';
+    // 功能槽位 + 语料（1013）：老配置没有 corpus 字段 → chat/json 空串=跟随当前角色（老行为），
+    //   ask 空=内置语料（半合成原来没有系统提示词，这才是"不改变行为"）
+    capsData = (cfg.chat && cfg.chat.caps) || { chat: {}, json: {}, ask: {} };
+    for (const k of ['chat', 'json', 'ask']) if (!capsData[k]) capsData[k] = {};
+    corpusData = (cfg.chat && cfg.chat.corpus) || {};
+    const CORPUS_DEF = { chat: 'b_corpus', json: 'b_corpus', ask: CORPUS_NONE };
+    for (const k of ['chat', 'json', 'ask']) {
+      if (typeof corpusData[k] !== 'string' || !corpusData[k]) corpusData[k] = CORPUS_DEF[k];
+    }
     if (cp && (isBuiltinId(cp) || customs.some((c) => c.name === cp))) {
       currentRole = cp;
       const b = builtins.find((x) => x.id === cp);
@@ -964,24 +1077,37 @@
         : ((customs.find((c) => c.name === cp) || {}).prompt || (cfg.chat && cfg.chat.systemPrompt) || '');
       sysTa.readOnly = !!b;
       renderRoles();
-      renderRoleModel();
     } else {
-      selectRole('b_orange');
+      // 没有任何有效角色记录 → 落回默认语料角色（「来福」人设可在角色列表点选）
+      selectRole(FALLBACK_ROLE);
     }
+    // ⚠顺序要紧：角色/自定义列表上一步才齐，语料下拉要照着它们画（早画=下拉是空的）
+    renderCaps();
   })();
 
-  // ---------- 模型徽标：显示当前角色实际会用的渠道/模型（角色专属优先），设置改了实时跟 ----------
+  // ---------- 模型徽标：显示当前对话实际会用的渠道/模型（AI对话行 > 渠道兜底），设置改了实时跟 ----------
   async function refreshChip() {
     try {
       const [cfg, d] = await Promise.all([window.orange.getConfig(), window.orange.chatProviders()]);
       const c = cfg.chat || {};
       const conf = (d && d.conf) || {};
-      const rm = ((d && d.roleModels) || {})[c.currentPreset || ''] || {};
-      const prov = (rm.provider && conf[rm.provider]) ? rm.provider : c.provider;
-      const mid = (rm.provider && conf[rm.provider]) ? rm.model : c.model;
+      // 1013 第二轮：角色专属那一层已删，徽标口径跟着简化——只剩「AI对话行 > 渠道兜底」。
+      // ⚠主进程 resolveChat 的兜底还留着 channels 里的 model 名对齐，这里必须照抄同一套判定，
+      //   否则徽标显示的和实际跑的不是一个东西（铁律22）。
+      const cap = (c.caps && c.caps.chat) || {};
+      const capOk = !!(cap.provider && conf[cap.provider]);
+      const prov = capOk ? cap.provider : (c.provider || '');
       const meta = conf[prov] || {};
-      const m = (meta.models || []).find((x) => x.id === mid);
-      modelChip.textContent = (meta.label || prov || '') + ' · ' + ((m && m.name) || mid || '未选模型') + (rm.provider ? ' ·角色专属' : '');
+      const list = meta.models || [];
+      // 模型名与主进程 resolveChat **同一套规矩**：填了就用填的（哪怕不在表里——自定义网关可手填），
+      // 只有空着才回落到全局 model / 表里第一个。两边对不上=徽标骗人（铁律22）。
+      let mid = capOk ? (cap.model || '') : '';
+      if (!mid) {
+        const alive = list.filter((x) => !x.dead).map((x) => x.id);
+        mid = (c.model && alive.includes(c.model)) ? c.model : (alive[0] || '');
+      }
+      const m = list.find((x) => x.id === mid);
+      modelChip.textContent = (meta.label || prov || '') + ' · ' + ((m && m.name) || mid || '未选模型');
     } catch {}
   }
   refreshChip();

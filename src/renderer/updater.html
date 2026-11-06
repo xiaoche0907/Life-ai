@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card {
+    position: absolute; inset: 12px;
+    border-radius: 22px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    color: var(--text);
+  }
+  /* 标题栏平时隐藏（与校色/生成卡同款：去标题、省地方）；堆牌被压时露出当切牌条 */
+  #head {
+    display: none; align-items: center; gap: 8px;
+    padding: 0 14px; height: 38px;
+    cursor: grab;
+  }
+  body.deckbehind #head { display: flex; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+
+  /* 留白下限与生成卡同款（0909：右键拖拽要有地方抓） */
+  #card { --pad: max(10px, calc(8px * var(--zi, 1))); }
+  #body {
+    flex: 1; min-height: 0; overflow-y: auto;
+    padding: var(--pad); display: flex; flex-direction: column; gap: 9px;
+  }
+  #body::-webkit-scrollbar { width: 6px; }
+  #body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+
+  /* 状态卡：版本/最新版 */
+  .panel {
+    border-radius: 12px; padding: 9px 11px;
+    background: var(--btn-bg); border: 1px solid var(--inset-border);
+  }
+  .vrow { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+  .vrow .k { color: var(--text-dim); font-size: 11px; }
+  .vrow .v { color: #fff; font-weight: 600; }
+  #newTag {
+    display: none; margin-left: auto;
+    font-size: 10px; padding: 1px 7px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border);
+  }
+  #newTag.on { display: inline-block; }
+  #lastLine { font-size: 10.5px; color: var(--text-dim); margin-top: 5px; line-height: 1.5; }
+
+  /* 开关行：与半合成卡 `.hd` 同款结构（label + switch），带 data-arm 不是必须——本卡不出图不武装 */
+  .swrow {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 11px; border-radius: 12px;
+    background: var(--btn-bg); border: 1px solid var(--inset-border);
+  }
+  .swrow .swlab { flex: 1; min-width: 0; font-size: 11.5px; line-height: 1.35; }
+  .swrow .swlab .sub { display: block; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+  /* 本卡的开关点整行都能切（用户实报过"个别按钮点不动"的教训：文字也是按钮） */
+  .swrow .switch { cursor: pointer; flex: none; }
+  .swrow label { cursor: pointer; }
+
+  /* 开关（照抄 composite.html 的那套——⚠.switch/.knob **不是全局样式**，
+     每张卡自己定义；漏了就是"开关根本看不见"） */
+  .switch {
+    position: relative; width: 38px; height: 20px; flex: none;
+    border-radius: 10px; cursor: pointer;
+    background: var(--btn-bg); border: 1px solid var(--inset-border);
+    transition: background 0.18s;
+  }
+  .switch .knob {
+    position: absolute; top: 1px; left: 1px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #ccc; transition: left 0.18s, background 0.18s;
+  }
+  .switch.on { background: var(--accent); }
+  .switch.on .knob { left: 19px; background: #fff; }
+
+  /* 按钮 */
+  .btn {
+    height: 34px; border: none; border-radius: 11px;
+    background: var(--accent); color: #fff; font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn.ghost { background: var(--btn-bg); color: var(--text); border: 1px solid var(--inset-border); }
+  .btn.wide { width: 100%; }
+  #btnRow { display: flex; gap: 8px; }
+  #btnRow .btn { flex: 1; }
+
+  /* 进度条 */
+  #pg { display: none; flex-direction: column; gap: 5px; }
+  #pg.on { display: flex; }
+  #pgTxt { font-size: 10.5px; color: var(--text-dim); display: flex; }
+  #pgTxt .pct { margin-left: auto; color: var(--accent-text); }
+  #pgTrack { height: 5px; border-radius: 3px; background: var(--btn-bg); overflow: hidden; }
+  #pgBar { height: 100%; width: 0%; border-radius: 3px; background: var(--accent); transition: width 0.2s; }
+
+  /* 更新报告 */
+  #noteHead {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-dim); cursor: pointer;
+  }
+  #noteHead .arrow { transition: transform 0.2s; }
+  #noteHead.open .arrow { transform: rotate(90deg); }
+  #notes { display: none; flex-direction: column; gap: 7px; margin-top: 2px; }
+  #notes.on { display: flex; }
+  .rel { border-left: 2px solid var(--accent-border); padding-left: 8px; }
+  .rel .rv { font-size: 11px; color: #fff; font-weight: 600; }
+  .rel .rd { font-size: 9.5px; color: var(--text-dim); margin-left: 6px; }
+  .rel ul { margin: 3px 0 0 14px; }
+  .rel li { font-size: 10.5px; color: var(--text); line-height: 1.55; }
+
+  #empty { font-size: 10.5px; color: var(--text-dim); line-height: 1.6; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--btn-bg-hover); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>更新</span>
+    <div class="sp"></div>
+  </div>
+
+  <div id="body">
+    <div class="panel">
+      <div class="vrow">
+        <span class="k">当前版本</span><span class="v" id="vLocal">—</span>
+        <span id="newTag">有新版本</span>
+      </div>
+      <div class="vrow" id="vRemoteRow" style="margin-top:4px;display:none">
+        <span class="k">最新版本</span><span class="v" id="vRemote">—</span>
+      </div>
+      <div id="lastLine">点「检查更新」看看有没有新版本</div>
+    </div>
+
+    <div id="pg">
+      <div id="pgTxt"><span id="pgLabel">正在下载…</span><span class="pct" id="pgPct">0%</span></div>
+      <div id="pgTrack"><div id="pgBar"></div></div>
+    </div>
+
+    <div id="btnRow">
+      <button class="btn ghost" id="btnCheck">检查更新</button>
+      <button class="btn" id="btnGo">立即更新</button>
+    </div>
+    <button class="btn ghost wide" id="btnFolder" style="display:none">打开安装包所在文件夹</button>
+
+    <div class="swrow">
+      <label class="swlab" for="swApp">自动更新软件<span class="sub">开机后台检查，有新版就自动下载；装不装由你点</span></label>
+      <span class="switch" id="swApp"><span class="knob"></span></span>
+    </div>
+    <div class="swrow">
+      <label class="swlab" for="swPlib">提示词库自动更新<span class="sub">从云端拉最新的提示词并进库；你改过的词条永不被覆盖</span></label>
+      <span class="switch" id="swPlib"><span class="knob"></span></span>
+    </div>
+
+    <div>
+      <div id="noteHead"><span class="arrow">▸</span><span>更新报告</span></div>
+      <div id="notes"></div>
+    </div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('ico').innerHTML = (window.ORANGE_ICONS && window.ORANGE_ICONS.updater) || '🔄';
+
+  let st = null;          // 主进程返回的状态
+  let busy = false;       // 检查/下载中（按钮防连点）
+  let notesOpen = false;
+
+  function fmtTime(ts) {
+    if (!ts) return '';
+    try { return new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+    catch (e) { return ''; }
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  // 开关：点整行都能切（别只让右边那个小圆钮能点——用户实报过手感受不了）
+  function bindRowSwitch(swId, onToggle) {
+    const sw = $(swId);
+    const row = sw.closest('.swrow');
+    if (row) {
+      row.addEventListener('click', (e) => {
+        if (busy) return;
+        // 点 label/整行 = 切；点 switch 自己由它自己的监听处理（避免切两次）
+        if (e.target.closest('.switch')) return;
+        onToggle(!sw.classList.contains('on'));
+      });
+    }
+    sw.addEventListener('click', () => { if (!busy) onToggle(!sw.classList.contains('on')); });
+  }
+
+  function render() {
+    if (!st) return;
+    $('vLocal').textContent = st.local || '—';
+    const hasNew = !!st.hasNew;
+    $('vRemoteRow').style.display = (st.latest && hasNew) ? 'flex' : 'none';
+    $('vRemote').textContent = st.latest || '';
+    $('newTag').classList.toggle('on', hasNew);
+
+    // 上次检查结果
+    const when = fmtTime(st.lastCheck);
+    $('lastLine').textContent = st.lastResult ? (st.lastResult + (when ? ('（' + when + '）') : '')) : '点「检查更新」看看有没有新版本';
+
+    // 开关状态
+    $('swApp').classList.toggle('on', !!st.autoApp);
+    $('swPlib').classList.toggle('on', !!st.autoPlib || !!st.plibAuto);
+
+    // 主按钮：有新版→"下载/安装"；有已下载的文件→"立即安装"；否则→检查
+    const go = $('btnGo');
+    if (st.hasFile) { go.textContent = '立即安装'; go.disabled = false; }
+    else if (hasNew) { go.textContent = '下载更新'; go.disabled = false; }
+    else { go.textContent = '立即更新'; go.disabled = true; }
+    $('btnFolder').style.display = st.hasFile ? 'flex' : 'none';
+
+    // 有新版就闪（用户要的"这个按钮会闪烁提示"）
+    const blinkOn = hasNew && st.seen !== st.latest;
+    go.classList.toggle('blink', blinkOn);
+    const card = $('card');
+    let ring = card.querySelector(':scope > .glowring');
+    if (blinkOn && !ring) {
+      ring = document.createElement('div');
+      ring.className = 'glowring loop';
+      card.appendChild(ring);
+    } else if (!blinkOn && ring) { ring.remove(); }
+
+    renderNotes();
+  }
+
+  function renderNotes() {
+    const box = $('notes');
+    const list = (st && st.notes) || [];
+    box.innerHTML = '';
+    if (!list.length) {
+      box.innerHTML = '<div id="empty">还没有更新报告——发布新版本后这里会显示改了什么</div>';
+      return;
+    }
+    // 新的在前
+    for (const rel of list.slice(0, 8)) {
+      const d = document.createElement('div');
+      d.className = 'rel';
+      const items = (rel && rel.items) || [];
+      d.innerHTML = '<div><span class="rv">' + esc(rel && rel.version ? ('v' + rel.version) : '') + '</span>'
+        + '<span class="rd">' + esc((rel && rel.date) || '') + '</span></div>'
+        + '<ul>' + items.map((it) => '<li>' + esc(it) + '</li>').join('') + '</ul>';
+      box.appendChild(d);
+    }
+  }
+
+  async function refresh() {
+    try { st = await window.orange.updaterStatus(); } catch (e) { st = null; }
+    render();
+  }
+
+  // ---- 检查更新 ----
+  $('btnCheck').addEventListener('click', async () => {
+    if (busy) return;
+    busy = true;
+    $('btnCheck').disabled = true;
+    $('btnCheck').innerHTML = '<span class="spin"></span> 检查中';
+    try {
+      const r = await window.orange.updaterCheck();
+      if (!r || !r.ok) { $('lastLine').textContent = (r && r.message) || '检查失败'; }
+      await refresh();
+      // 用户主动点过检查=他看过提示了 → 停掉闪烁（红点只提示"你不知道"的情况）
+      if (st && st.hasNew && st.seen !== st.latest) await window.orange.updaterSeen();
+      await refresh();
+    } catch (e) {
+      $('lastLine').textContent = '检查失败：' + ((e && e.message) || e);
+    } finally {
+      busy = false;
+      $('btnCheck').disabled = false;
+      $('btnCheck').textContent = '检查更新';
+    }
+  });
+
+  // ---- 立即更新：没下载就先下，下好了就装 ----
+  $('btnGo').addEventListener('click', async () => {
+    if (busy) return;
+    // 已下载 → 直接装
+    if (st && st.hasFile) {
+      if (st.hasNew && st.seen !== st.latest) { try { await window.orange.updaterSeen(); } catch (e) {} }
+      // 二段确认：装了就退出软件，不能误触
+      const go = $('btnGo');
+      if (!go.dataset.arm) {
+        go.dataset.arm = '1';
+        go.textContent = '确认安装（会退出软件）';
+        setTimeout(() => { delete go.dataset.arm; render(); }, 4000);
+        return;
+      }
+      delete go.dataset.arm;
+      go.disabled = true;
+      go.innerHTML = '<span class="spin"></span> 启动中';
+      await window.orange.updaterRun();
+      return;
+    }
+    // 未下载 → 下载
+    busy = true;
+    $('btnGo').disabled = true;
+    $('pg').classList.add('on');
+    $('pgLabel').textContent = '正在下载安装包…';
+    $('pgPct').textContent = '0%';
+    $('pgBar').style.width = '0%';
+    try {
+      const r = await window.orange.updaterDownload();
+      if (!r || !r.ok) {
+        $('pgLabel').textContent = '下载失败：' + ((r && r.error) || '未知错误');
+        $('pgPct').textContent = '';
+      } else {
+        $('pgLabel').textContent = '下载完成';
+        $('pgPct').textContent = '100%';
+        $('pgBar').style.width = '100%';
+        setTimeout(() => { $('pg').classList.remove('on'); }, 1500);
+      }
+      await refresh();
+    } catch (e) {
+      $('pgLabel').textContent = '下载失败：' + ((e && e.message) || e);
+      $('pgPct').textContent = '';
+    } finally { busy = false; }
+  });
+
+  $('btnFolder').addEventListener('click', () => window.orange.updaterOpenFolder());
+
+  // ---- 两个开关 ----
+  bindRowSwitch('swApp', async (on) => {
+    $('swApp').classList.toggle('on', on);
+    const r = await window.orange.setConfig({ updater: { autoApp: on } });
+    st = await window.orange.updaterStatus();
+  });
+  bindRowSwitch('swPlib', async (on) => {
+    $('swPlib').classList.toggle('on', on);
+    // 两个来源一起写：新卡的 autoPlib + 老的 plibUpdate.auto（plib-update.js 的开机检查读后者）
+    await window.orange.setConfig({ updater: { autoPlib: on } });
+    await window.orange.setConfig({ plibUpdate: { auto: on } });
+    st = await window.orange.updaterStatus();
+  });
+
+  // ---- 更新报告折叠 ----
+  $('noteHead').addEventListener('click', () => {
+    notesOpen = !notesOpen;
+    $('noteHead').classList.toggle('open', notesOpen);
+    $('notes').classList.toggle('on', notesOpen);
+  });
+
+  // ---- 下载进度（主进程广播） ----
+  if (window.orange.onUpdaterProgress) {
+    window.orange.onUpdaterProgress((p) => {
+      $('pg').classList.add('on');
+      $('pgBar').style.width = (p.pct >= 0 ? p.pct : 0) + '%';
+      $('pgPct').textContent = p.pct >= 0 ? (p.pct + '%') : '';
+      const mb = (p.got / 1048576).toFixed(1);
+      const tot = p.total ? ((p.total / 1048576).toFixed(1) + 'MB') : '';
+      $('pgLabel').textContent = '正在下载… ' + mb + (tot ? (' / ' + tot) : 'MB');
+    });
+  }
+  // 主进程改了状态就跟着刷（比如开机自动下载完成）
+  if (window.orange.onUpdaterVars) window.orange.onUpdaterVars(() => { refresh(); });
+
+  refresh();
+  // 卡片被打开时刷一次（收纳期间主进程可能已经查到新版了）
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

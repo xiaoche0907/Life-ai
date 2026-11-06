@@ -40,6 +40,8 @@ require('./core/com-bridge');   // COM自动化兜底通道：UXP桥接缺席时
 require('./core/providers');
 require('./core/plib');
 require('./core/plib-import');   // 提示词批量导入/搬运（0906）
+require('./core/plib-update');   // 提示词远程更新：OSS 拉取+按条合并（1012）
+require('./core/updater');       // 软件本体更新：查版本/下载安装包/启动安装程序（1013，更新卡）
 require('./core/gen');
 require('./core/viewer');   // 看图层：进度卡右键大图（整屏压暗模糊/滚轮切图/点图贴回，0913）
 require('./core/chat');
@@ -51,7 +53,7 @@ require('./core/autofix');   // 自动修图：文件夹批量工序流水线→
 require('./core/qpresets');   // 快捷预设：修图师标准动作一键执行，预设=文档夹里的 JSON（0912）
 require('./core/misc');
 require('./core/tray');   // 系统托盘：任务栏右下角常驻入口（0909用户要求"做到任务栏里"）
-require('./core/dev-reload').enableDevReload(require('electron'), ctx);
+require('./core/dev-reload').enableDevReload(require('electron'), ctx);   // Life分支：开发预览热重载（启动开发预览.cmd 依赖）
 
 // ---------- 系统关机/注销：立即落盘并退出（0909用户实拍"正在关闭 21 个应用"每张卡一行阻止关机）----------
 // 病因：Windows 关机给每个顶层窗发 WM_ENDSESSION，Electron 只发 'session-end' 事件不退出，进程赖到系统超时才被杀，
@@ -81,6 +83,9 @@ app.on('second-instance', () => {
 // ---------- 启动：恢复上次的窗口布局 ----------
 app.whenReady().then(() => {
   ctx.loadConfig();
+  // ⚠流畅优先必须在 loadConfig 之后再应用一次：光标轮询的间隔在模块加载时就定下了，
+  // 那时候配置还没读出来（config.perf.lite 还是默认 false），错过这里就会一直按 30ms 跑。
+  try { ctx.applyPerf && ctx.applyPerf('启动'); } catch (e) {}
   ctx.startBridgeServer();
   ctx.createBallWindow();
   const config = ctx.config;
@@ -93,6 +98,19 @@ app.whenReady().then(() => {
   ctx.restoreStacks();   // 融合叠按上次状态重建（叠放/当前页/整叠隐藏）
   ctx.recoverAllWindows();   // 历史配置里跑到屏幕外的窗口开机即拉回有效工作区
   ctx.finishBootChoreo();   // 等加载齐(或4秒兜底)后绽放
+
+  // 低内存机器的顺带提醒（1011）：只建议、不替用户改设置——擅自打开会让他莫名其妙少了一截界面效果，
+  // 而且老机器用户可能自己知道原因。判定按物理内存：<8GB 就是吃紧的那一档（PS自己还要占2-4GB）。
+  setTimeout(() => {
+    try {
+      if (config.perf && config.perf.lite) return;   // 已经开着，不用提醒
+      const gb = require('os').totalmem() / 1024 / 1024 / 1024;
+      if (gb < 8) {
+        ctx.olog('💡 这台机器内存 ' + gb.toFixed(1) + 'GB，可到设置卡开「流畅优先（低配电脑）」——'
+          + '开启后收起卡片更早释放内存、少跑装饰动画，能明显缓解卡顿', 'info');
+      }
+    } catch (e) {}
+  }, 6000);
 
   // 默认布局收录：还没有默认布局时，把当前排布原样存为默认
   setTimeout(() => {

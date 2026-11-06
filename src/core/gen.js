@@ -191,7 +191,7 @@ function resolveGen(p) {
   // cus_* 自定义渠道走 providerMeta 合成的 meta（Gemini兼容/动态模型）；内置渠道原样
   const meta = (ctx.providerMeta && ctx.providerMeta(prov)) || PROVIDERS[prov] || PROVIDERS.momo;
   const pc = config.providers[prov] || {};
-  const base = (pc.base || meta.base || '').replace(/\/+$/, '').replace(/\/v1(?:beta)?$/, '');
+  const base = (pc.base || meta.base || '').replace(/\/+$/, '');
   const key = ctx.cleanKey(pc.key);   // 空格/换行/零宽=粘贴垃圾，静默清；中文字符留给keyIssue报人话
   const model = (p && p.model) || pc.model || '';
   const mconf = meta.models && meta.models[model];
@@ -218,7 +218,7 @@ async function generateOne(p) {
   if (kerr) return { ok: false, error: kerr };   // Key含中文字符：发请求前就拦，不让fetch抛ByteString天书
   if (!rv.model) return { ok: false, error: '请先选择模型' };
   // 0909：按模型表 api 字段分流——'grs'=GRS 自家异步接口，'openai'=OpenAI 图片接口；缺省=Gemini generateContent
-  const api = rv.pc.protocol || (rv.mconf && rv.mconf.api);
+  const api = rv.mconf && rv.mconf.api;
   if (api === 'grs') return generateViaGrs(p, rv);
   if (api === 'openai') return generateViaOpenAI(p, rv);
   return generateViaGemini(p, rv);
@@ -764,6 +764,8 @@ async function runBatch(params, count, forceDocId) {
     if (st.ok) {
       params.prompt = (params.prompt || '') + CHART_PROMPT;
       olog('[色卡] 已贴卡并附加保护提示词');
+      // 贴卡细节（贴到哪张/什么区域）由 PS 端持有，软件端这边拿不到；桥接会推 chartStampResult
+      // （bridge.js 的 push 分支打"贴卡完成/失败"），排查时搜生图日志的 [色卡] 即可。
     } else {
       olog('[色卡] 贴卡失败(' + (st.error || '') + ')，本批按普通模式跑', 'err');
     }
@@ -915,11 +917,9 @@ async function runBatch(params, count, forceDocId) {
   }
   // 色卡结算：测量色卡偏差→生成校正→遮卡（带发起文档id：贴回后PS已切回用户正看的文档，结算得自己找回贴卡那张）
   // 提前贴回过的批次也要结算：色卡是跑图前贴在文档上的，图已经进 PS 了，不结算就一直留着
-  if (chartOn && (placedOk || held)) {
-    await new Promise((r) => setTimeout(r, 700));
-    const fin = await sendToPSAwait({ action: 'chartFinish', params: { docId: psCtx ? psCtx.docId : null } }, 120000);
-    olog(fin.ok ? '[色卡] 结算完成：已测偏并生成校正层' : '[色卡] 结算失败: ' + (fin.error || ''), fin.ok ? 'ok' : 'err');
-  }
+  // 1013：改用共用的 ctx.settleChartIfOn（bridge.js）——它自带 chartOn 判断，手动贴回/提前贴回/自动回传
+  //   三条链共用同一个结算入口，免得再出现"某条链忘了结算"（用户实报过两次）。
+  if (placedOk || held) await ctx.settleChartIfOn(psCtx ? psCtx.docId : null);
 
   // 计费（魔改版口径：按请求次数计）；0915起不再显示扣费金额——报错未出图时部分渠道不扣钱，
   // 显示"已扣费"会冤枉渠道。广播保留：生图卡靠它响铃+自动刷新官网余额（余额才是唯一真账）
@@ -934,7 +934,7 @@ async function runBatch(params, count, forceDocId) {
 ipcMain.handle('ai-generate-batch', (_e, { params, count }) => runBatch(params, count));
 
 // ---------- 提前贴回（0916用户裁定） ----------
-// 场景：一批跑 4 张，第 4 张卡住了，前 3 张早好了——用户不想干等。进度卡这批行上点来福 logo：
+// 场景：一批跑 4 张，第 4 张卡住了，前 3 张早好了——用户不想干等。进度卡这批行上点橙子 logo：
 //   ①已生成好还没贴的，现在就整批打组贴回 PS（与自动回传同一条链、同样打组）
 //   ②这批**还在跑的**完成后不再自动贴回，留在进度卡里等用户手点（图不丢，随时可贴）
 // 与「✕ 删除批次」的区别：图留着还能手贴；与「自动回传」总开关的区别：只管这一批。
@@ -969,6 +969,16 @@ async function earlyPlace(key, dry) {
     const tail = (running ? ' · 本批剩余 ' + running + ' 张完成后不再自动贴回，进度卡点图可手动贴' : '') + (notes.length ? ' · ' + notes.join(' / ') : '');
     if (placed === ready.length) olog('⏩ 提前贴回 ' + placed + ' 张 完成' + tail, 'ok');
     else olog('⏩ 提前贴回：' + placed + '/' + ready.length + ' 张贴回，失败：' + lastErr + '（没贴上的仍在进度卡，点图可手动贴回）' + tail, 'err');
+    // 色卡结算（1013 用户实报："图全回来之后再点提前回图就没曲线了"）：
+    //   原来这里**不结算**——跑图收尾那段（runBatch 尾部 `if (placedOk || held)`）才会结算，
+    //   而图全回来之后收尾早跑完了，再点提前贴回就没人管色卡了 → 没曲线。
+    //   修法：贴完后按文档去重各结算一次（不同文档各自有自己的色卡任务）。
+    //   重复结算安全：PS 端结算完会重新登记底账，不会重复建层也不会报错。
+    if (placed > 0) {
+      const docs = [];
+      for (const t of ready) { const k = String(t.docId || ''); if (docs.indexOf(k) < 0) docs.push(k); }
+      for (const k of docs) await ctx.settleChartIfOn(k || null);
+    }
     return { ok: placed > 0, error: placed > 0 ? undefined : lastErr, placed, ready: ready.length, running };
   } finally { placingBatches.delete(key); }
 }
@@ -1110,7 +1120,7 @@ ipcMain.handle('open-cache', () => {
   try { fs.mkdirSync(dir, { recursive: true }); } catch {}
   return require('electron').shell.openPath(dir);
 });
-// 清除缓存图片：删除缓存目录里来福自己写的文件，并清空任务列表（缩略图随文件失效）
+// 清除缓存图片：删除缓存目录里橙子自己写的文件，并清空任务列表（缩略图随文件失效）
 // ⚠0911 缓存夹可自选后，"目录里全删"就会删掉用户自己的东西（选了桌面=桌面清空）——只删已知前缀（坑91），子目录/别的文件一律不碰
 const CACHE_OWN = /^(gen|input|ref|forge|comfy)_/i;
 ipcMain.handle('clear-cache', () => {
@@ -1166,15 +1176,10 @@ ipcMain.handle('read-image-thumb', async (_e, { path, size }) => {
 
 // 抓取PS选区作为参考图（替代文件对话框）
 ipcMain.handle('capture-ref', async () => {
-  const cap = await sendToPSAwait({ action: 'captureInput', params: { fullIfNoSel: false, noSelFull: false } }, 25000);
-  if (!cap.ok) {
-    const error = cap.error || '抓取选区失败';
-    const code = /没有打开的文档|无打开的文档/.test(error) ? 'NO_DOCUMENT'
-      : /PS未连接|PS未启动/.test(error) ? 'PS_UNAVAILABLE' : 'CAPTURE_FAILED';
-    return { ok: false, code, error };
-  }
+  const cap = await sendToPSAwait({ action: 'captureInput', params: {} }, 25000);
+  if (!cap.ok) return { ok: false, error: cap.error };
   const res = cap.result || {};
-  if (!res.image) return { ok: false, code: /未检测到选区/.test(res.note || '') ? 'NO_SELECTION' : 'CAPTURE_FAILED', error: (res.note || '选区图像采集失败') };
+  if (!res.image) return { ok: false, error: (res.note || '未检测到选区——请先在PS里框选') };
   try {
     const dir = genDir();
     fs.mkdirSync(dir, { recursive: true });

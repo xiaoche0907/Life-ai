@@ -103,10 +103,12 @@ async function callLLM({ base, key, model, contents, genCfg, image }, timeoutMs)
   return { ok: false, error: g.error + '；改道OpenAI端点也失败: ' + (o.error || '') };
 }
 
-// ---------- 对话渠道解析（0908 与生图彻底解耦）----------
-// 对话只认 config.chatProviders（内置 aji/grs 各自的 Key + 用户自定义 cc_*），绝不碰 config.providers（生图渠道）。
+// ---------- 对话渠道解析（0908 与生图彻底解耦；1013 去掉"角色专属模型"这一层）----------
+// 对话只认 config.chatProviders（内置 aji/grs/momo 各自的 Key + 用户自定义 cc_*），绝不碰 config.providers（生图渠道）。
 // 模型目录：内置渠道=providers.js 的 chatModels 静态表（dead 的不列）；cc_*=拉取后存进 models。
-// 角色专属模型：config.chat.roleModels[角色id或名]={provider,model}；没设或渠道/模型已不存在→回落全局 chat.provider/model。
+// 1013 用户裁定：**"角色专属模型"整块移除**（"多角色不管"）。原来看法 roleModels[角色] 这一层没了，
+//   解析顺序简化为：功能槽位(caps) → config.chat.provider/model 兜底。
+//   ⚠老配置里的 roleModels 数据由 MIGRATIONS v24 搬进 caps.chat 后清空，不会静默失效。
 function chatModelList(prov) {
   const cp = config.chatProviders[prov];
   if (!cp) return [];
@@ -127,25 +129,42 @@ function chatProvidersTable() {
   }
   return out;
 }
-// role: 角色 id（内置 b_*）或自定义角色名；不传=当前角色
-function resolveChat(role) {
-  const r = role !== undefined ? role : (config.chat.currentPreset || '');
-  const rm = (config.chat.roleModels || {})[r];
-  let prov = (rm && rm.provider) || config.chat.provider || 'grs';
-  let model = (rm && rm.model) || '';
-  let perRole = !!(rm && rm.provider && config.chatProviders[rm.provider]);   // 角色指定的渠道还在才算"专属"生效
-  if (!config.chatProviders[prov]) { prov = config.chat.provider || 'grs'; model = ''; perRole = false; }
-  if (!config.chatProviders[prov]) prov = 'grs';
+// 解析"某次对话调用"该用哪个渠道/模型。
+//   capId = 功能槽位：'chat'=AI对话（原「默认渠道/模型」那块）/'json'=提示词卡转JSON/'ask'=半合成识图。
+//           该槽位填了渠道就用它；空 = 回落到 config.chat.provider/model 兜底。
+// 1013 之前这里还有一层 role（角色专属模型），用户裁定"多角色不管"后**整层移除**：
+//   签名从 resolveChat(role, capId) 简化为 resolveChat(capId)，三个调用点同步改。
+function resolveChat(capId) {
+  // 功能槽位：填了渠道且该渠道还在 → 用它
+  const cap = (capId && config.chat.caps && config.chat.caps[capId]) || null;
+  if (cap && cap.provider && config.chatProviders[cap.provider]) {
+    const cp0 = config.chatProviders[cap.provider];
+    const list0 = chatModelList(cap.provider);
+    const alive0 = list0.filter((m) => !m.dead).map((m) => m.id);
+    let m0 = cap.model || '';
+    // ⚠模型名不在这张表里时**保留用户填的那个**，不拿表里第一个顶替（1013 踩过）：
+    //   原来这里写的是"不在表里就换成表里第一个"，结果用户明确选的 claude-opus-5（GRS 表里没有，
+    //   但网关可能认）被悄悄换成 gpt-5.6-sol —— 界面显示的和实跑的对不上，而且花的是用户的钱。
+    //   表里没有≠不能用（自定义网关可手填模型名）；真要报错也该由接口报，不该由我们替他决定。
+    //   只有"压根没填"时才回落到 global model / 表里第一个。
+    if (!m0) m0 = (config.chat.model && alive0.includes(config.chat.model)) ? config.chat.model : (alive0[0] || '');
+    return { prov: cap.provider, label: cp0.label || cap.provider, base: (cp0.base || '').replace(/\/+$/, ''), key: ctx.cleanKey(cp0.key), model: m0, viaCap: capId };
+  }
+  // 兜底 = config.chat.provider/model（老配置一直带着这对值；界面不再单独露出它）
+  let prov = config.chat.provider || 'grs';
+  let model = '';
+  if (!config.chatProviders[prov]) { prov = 'grs'; model = ''; }
   const cp = config.chatProviders[prov] || {};
   const list = chatModelList(prov);
   const alive = list.filter((m) => !m.dead).map((m) => m.id);
-  if (!model || !alive.includes(model)) model = (config.chat.model && alive.includes(config.chat.model)) ? config.chat.model : (rm && rm.model && !list.length ? rm.model : '');
+  if (!model || !alive.includes(model)) model = (config.chat.model && alive.includes(config.chat.model)) ? config.chat.model : '';
   if (!model && !list.length) model = config.chat.model || '';   // cc_* 没拉过列表也允许手填
-  return { prov, label: cp.label || prov, base: (cp.base || '').replace(/\/+$/, ''), key: ctx.cleanKey(cp.key), model, perRole };
+  return { prov, label: cp.label || prov, base: (cp.base || '').replace(/\/+$/, ''), key: ctx.cleanKey(cp.key), model };
 }
+
 ctx.chatResolve = resolveChat;   // autofix 识图等直调（它们有自己的 det.provider/model 时只借 base/key）
 ctx.chatProvidersTable = chatProvidersTable;
-ipcMain.handle('chat-providers', () => ({ conf: chatProvidersTable(), current: config.chat.provider, roleModels: config.chat.roleModels || {} }));
+ipcMain.handle('chat-providers', () => ({ conf: chatProvidersTable(), current: config.chat.provider }));
 // 自定义对话渠道拉模型：用该渠道自己的 base/key 请求 /v1/models，结果存进 chatProviders[prov].models
 ipcMain.handle('chat-models-fetch', async (_e, { prov }) => {
   const cp = config.chatProviders[prov];
@@ -196,7 +215,12 @@ function histSave() {
   }, 300);
 }
 
-// 内置角色：src/roles/下随软件分发（来福=默认人格；来福语料（阉割版）=提示词工法,hidden=界面不可见）
+// 内置角色：src/roles/下随软件分发。
+// ⚠1011 上游裁定只保留「语料」一个内置角色；Life 分支恢复旧版双角色结构：
+//   b_orange「来福」人设——可见、文本随角色表下发（旧版行为）；
+//   b_corpus 语料工法——保持 hidden，工法全文不进渲染进程。
+//   注意（1013 起语料与角色解耦）：想让「来福」人设实际作答，
+//   把「其它功能的模型 → AI对话 → 语料」挑成「来福」即可。
 const BUILTIN_ROLES = [
   { id: 'b_orange', name: '来福', file: 'orange.txt' },
   { id: 'b_corpus', name: '来福语料（阉割版）', file: 'corpus-20260726.txt', hidden: true },
@@ -211,16 +235,47 @@ function loadBuiltinRoles() {
   });
   return rolesCache;
 }
-// hidden角色的文本永不出主进程：IPC只发空串,系统提示词在chat-send时主进程内部解析
+// hidden角色（语料工法）的文本永不出主进程：IPC只发空串，系统提示词在chat-send时主进程内部解析。
+// 可见人设角色（来福）沿用旧版行为：文本随角色表下发、界面可读可看。
+// 双保险：hidden 的工法全文渲染端就算有 bug 也不会漏给页面/调试器。
 ipcMain.handle('chat-builtin-roles', () => loadBuiltinRoles().map((r) => ({
   id: r.id, name: r.name, hidden: r.hidden, prompt: r.hidden ? '' : r.prompt,
 })));
+
+// ---------- 语料解析（1013：语料与模型解耦） ----------
+// ⚠**"橙子语料"和"内置语料"是两个东西**，用户裁定（1013）分得很清楚，别混：
+//   橙子语料 = src/roles/corpus-20260726.txt 那个**角色**（id=b_corpus）→ AI对话 / 转JSON 的默认。
+//   内置语料 = **半合成卡写死的那套看图用词**（composite.html 的「你是资深影视场景美术…【角色识别】…」）
+//              —— 它**不是角色、没有文件、也不该被叠加**：那套词本来就长在提示词里了，
+//                再叠一份角色语料只会顶掉它/串味。所以这一档的语义是"**不叠加角色语料**"。
+// pick='' / '__none__' → 不叠加角色语料（半合成的默认）
+// pick=b_corpus 或角色名 → 用那个角色的语料
+// 1013 第三轮：去掉"空=跟随 currentPreset"那一档（用户裁定"不要显示跟随当前角色、精确到角色名字"）。
+//   老配置里的空值由 MIGRATIONS v25 一次性钉成具体角色名，此后 pick 永远是个明确的值。
+// ⚠只读不写：这里绝不改 config.chat.currentPreset，否则挑语料会连带把对话里的角色换掉。
+const CORPUS_NONE = '__none__';   // "不叠加角色语料" = 半合成的内置语料档
+function resolveCorpus(pick) {
+  const p = String(pick || '').trim();
+  if (p && p !== CORPUS_NONE) {
+    // 先按自定义角色名找（用户在下拉里挑的就是它），再按内置角色 id / 名字找
+    const cu = (config.chat.presets || []).find((x) => x && x.name === p);
+    if (cu && String(cu.prompt || '').trim()) return { text: cu.prompt, from: cu.name, id: p };
+    const bi = loadBuiltinRoles().find((r) => r.id === p || r.name === p);
+    if (bi && String(bi.prompt || '').trim()) return { text: bi.prompt, from: bi.name, id: bi.id };
+    try { ctx.dlog('[chat] 语料 ' + p + ' 找不到（角色可能已删），本次不叠加角色语料'); } catch (e) {}
+  }
+  // 空 / __none__ / 指向已删角色 → 空文本 = 不叠加（半合成的老行为，也是"找不到"的兜底）
+  return { text: '', from: '', id: '' };
+}
+ctx.resolveCorpus = resolveCorpus;
 
 ipcMain.handle('chat-send', async (_e, { message, image }) => {
   if ((!message || !message.trim()) && !image) return { ok: false, error: '消息不能为空' };
 
   // 0908 对话渠道独立：按当前角色解析（角色专属模型优先，否则全局对话渠道/模型），与生图渠道零关系
-  const { base, key, model, label } = resolveChat();
+  // 1013：AI对话 也有了功能槽位 caps.chat（原「默认渠道/模型」那块界面删了，槽位搬进「其它功能的模型」）——
+  //   填了就用它；留空 = 走角色专属/全局兜底 = 老行为一字不差。
+  const { base, key, model, label } = resolveChat('chat');
   if (!base || !key) return { ok: false, error: '请先在「对话设置」给渠道「' + label + '」填 Key' };
   if (!model) return { ok: false, error: '请先在「对话设置」选择模型' };
 
@@ -228,18 +283,14 @@ ipcMain.handle('chat-send', async (_e, { message, image }) => {
   const hist = histLoad();
   const contents = [];
   // 系统提示词解析（全在主进程,hidden语料文本不经过渲染进程）：
-  // 当前角色=内置id→读内置文件；=自定义名→读presets；否则用手填systemPrompt；全空→默认来福
-  let sys = '';
+  // 1013 改成走 resolveCorpus：语料不再钉死在 currentPreset 上——「其它功能的模型」里 AI对话 那行
+  // 可以单独挑一套语料（1013 第三轮起是**具体角色名**，不再有"跟随当前角色"的隐式档）。
   const cp = config.chat.currentPreset || '';
-  const bi = loadBuiltinRoles().find((r) => r.id === cp);
-  if (bi) sys = bi.prompt;
-  else {
-    const cu = (config.chat.presets || []).find((p) => p.name === cp);
-    sys = cu ? (cu.prompt || '') : (config.chat.systemPrompt || '');
-  }
-  sys = sys.trim();
-  if (!sys) sys = ((loadBuiltinRoles()[0] || {}).prompt || '').trim();
+  const sysRes = resolveCorpus((config.chat.corpus || {}).chat);
+  let sys = String(sysRes.text || '').trim();
+  if (sys && sysRes.id) { try { ctx.dlog('[chat] 语料=' + sysRes.from + '（' + sysRes.id + '）'); } catch {} }
   // 一次性清理：老版本曾把内置角色文本镜像进config.chat.systemPrompt（语料全文躺配置文件里），擦掉
+  const bi = loadBuiltinRoles().find((r) => r.id === cp);
   if (bi && config.chat.systemPrompt) { config.chat.systemPrompt = ''; ctx.saveConfig(); }
   if (sys) {
     contents.push({ role: 'user', parts: [{ text: sys }] });
@@ -279,18 +330,20 @@ ipcMain.handle('chat-send', async (_e, { message, image }) => {
   return { ok: true, reply, ts: rts, id: msgId };
 });
 
-// 自然语→JSON提示词转换（AI生图卡「转JSON」钮）：聊天渠道模型+内置语料工法，一次性调用不进聊天历史
+// 自然语→JSON提示词转换（提示词卡「转JSON」钮）：聊天渠道模型 + 当前角色语料工法，一次性调用不进聊天历史
 ipcMain.handle('chat-to-json', async (_e, { text }) => {
   const t = (text || '').trim();
   if (!t) return { ok: false, error: '内容为空' };
-  // 0908 对话渠道独立：转JSON走全局对话渠道/模型（不按角色）
-  const { base, key, model, label } = resolveChat('');
+  // 1011 定的是"转JSON 跟随当前角色"；1013 第三轮改成**语料由转JSON 那格自己指定**（具体角色名），
+  //   与对话里选着谁无关。**只读，不动 currentPreset**：用户在对话里选着角色A，这里挑语料B 转JSON，
+  //   对话那边仍应是A。
+  const { base, key, model, label } = resolveChat('json');
   if (!base || !key) return { ok: false, error: '请先在AI对话设置里给渠道「' + label + '」填 Key' };
   if (!model) return { ok: false, error: '请先在AI对话设置里选择模型' };
-  const corpus = loadBuiltinRoles().find((r) => r.id === 'b_corpus');
+  const corpusText = resolveCorpus((config.chat.corpus || {}).json).text || '';
   const contents = [];
-  if (corpus && corpus.prompt) {
-    contents.push({ role: 'user', parts: [{ text: corpus.prompt }] });
+  if (String(corpusText).trim()) {
+    contents.push({ role: 'user', parts: [{ text: String(corpusText).trim() }] });
     contents.push({ role: 'model', parts: [{ text: '好的，我明白了。' }] });
   }
   contents.push({ role: 'user', parts: [{ text:
@@ -307,16 +360,26 @@ ipcMain.handle('chat-to-json', async (_e, { text }) => {
 ipcMain.handle('chat-ask', async (_e, { prompt, imageBase64 }) => {
   const t = (prompt || '').trim();
   if (!t) return { ok: false, error: '内容为空' };
-  // 0908 对话渠道独立：一次性问答走全局对话渠道/模型
-  const { base, key, model, label } = resolveChat('');
+  // 1011：半合成IP清单生成走 caps.ask 槽位（没填=跟随默认，行为不变）
+  const { base, key, model, label } = resolveChat('ask');
   if (!base || !key) return { ok: false, error: '请先在AI对话设置里给渠道「' + label + '」填 Key' };
   if (!model) return { ok: false, error: '请先在AI对话设置里选择模型' };
   const parts = [{ text: t }];
   if (imageBase64) parts.push({ inlineData: { mimeType: 'image/jpeg', data: imageBase64 } });
+  // 语料（1013）：半合成识图也有自己的语料槽了。默认 '__builtin__'=内置语料 —— **与改之前等价**
+  // （这条链原来靠 composite.html 里写死的提示词工作，不带系统提示词；给内置那份不会改变它的表现，
+  //   因为内置语料是"提示词工法"而这里要的是"识图美术判断"，两者不冲突但也不该被用户的对话语料悄悄替换）。
+  const askSys = String(resolveCorpus((config.chat.corpus || {}).ask || CORPUS_BUILTIN).text || '').trim();
+  const contents = [];
+  if (askSys) {
+    contents.push({ role: 'user', parts: [{ text: askSys }] });
+    contents.push({ role: 'model', parts: [{ text: '好的，我明白了。' }] });
+  }
+  contents.push({ role: 'user', parts });
   // 输出上限与对话卡同为 8192（0908 由 2048 抬高）：半合成的 IP 清单提示词长且带图，思考型模型
   // （用户自定义渠道的 gemini-3.7-flash-high 等）思考 token 计入输出额度——实测一个 30 字小问题就烧 606 个，
   // 2048 被思考吃光→正文为空→"未返回有效内容"（对话卡用 8192 所以正常，半合成独报错正是这条）
-  const r = await callLLM({ base, key, model, contents: [{ role: 'user', parts }], genCfg: { temperature: 0.8, topP: 0.95, maxOutputTokens: 8192 }, image: imageBase64 }, 120000);
+  const r = await callLLM({ base, key, model, contents, genCfg: { temperature: 0.8, topP: 0.95, maxOutputTokens: 8192 }, image: imageBase64 }, 120000);
   if (!r.ok) return { ok: false, error: r.error };
   return { ok: true, text: r.text.trim() };
 });

@@ -12,7 +12,7 @@ const GE = require('../renderer/glow-engine.js');
 const olog = (m, t) => ctx.olog(m, t);
 const dlog = (m) => { try { ctx.dlog('[glow] ' + m); } catch (e) {} };
 const presetDir = () => path.join(app.getPath('documents'), '橙子', 'glow-presets');
-const LAYER_NAME = '橙子辉光';
+const LAYER_NAME = '来福辉光';
 // 0916 起色散不再单独成层（渲染端 merge() 焊进辉光层），这个名字只留作历史注记：老版本贴过叫这个的层
 const b64Of = (dataUrl) => { const s = String(dataUrl || ''); return s.indexOf(',') !== -1 ? s.split(',')[1] : s; };
 
@@ -29,7 +29,7 @@ async function setPlacedLayer(base, docId, name, blend, opacity) {
   targets.push([{ _ref: 'layer', _name: base }]);
   let br = null;
   for (const tgt of targets) {
-    br = await ctx.sendToPSAwait({ action: 'batchPlay', params: { commandName: '橙子辉光：混合与命名', descriptors: mk(tgt) } }, 30000);
+    br = await ctx.sendToPSAwait({ action: 'batchPlay', params: { commandName: '来福辉光：混合与命名', descriptors: mk(tgt) } }, 30000);
     if (br && br.ok) return br;
     dlog('set layer ' + name + ' 失败(' + tgt.length + '级引用): ' + (br && br.error));
   }

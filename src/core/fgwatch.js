@@ -39,11 +39,27 @@ function decideMode(s) {
 let state = { enabled: false, fgPid: 0, fgName: '', override: false, selfPid: process.pid, mode: '', dlgOn: true, fgAddr: '', fgIsDialog: false, psMain: null, fgDesc: '' };
 let suppressed = false;
 let curMode = 'top';
+// 抖动阻尼用：候选 mode 与它连续出现了几拍（见 apply 的说明）
+let pendingMode = '', pendingN = 0;
 function log(m) { try { ctx.dlog('[fg] ' + m); } catch (e) {} }
 
 function apply(reason) {
   const mode = decideMode(state);
-  if (mode === curMode) return;
+  if (mode === curMode) { pendingMode = ''; pendingN = 0; return; }
+  // ⚠1014 抖动阻尼（修"腾讯会议拖出的置顶聊天窗下卡牌一直闪"）：
+  //   原来 mode 一变就立刻动手。而前台归属会在采样点上抖 —— 典型是"别的程序自带置顶的窗"
+  //   （腾讯会议聊天窗）反复抢/让前台：pid 不变、窗句柄变（nativeTick 的 winChanged）就调一次 apply，
+  //   于是 100ms 一拍地 mode 在 'top'↔'other' 之间翻，每翻一次就是整组卡牌撤顶/重申 + 17 窗 moveTop
+  //   重排 = 肉眼看到的"一直闪"。
+  //   改法：新状态要**连续 2 拍（≈200ms）都指向同一个 mode** 才算数，中途回到原状就作废。
+  //   200ms 的延迟在"用户真的换了程序"时感觉不到；而对 100ms 级的抖动它是道死闸。
+  if (pendingMode === mode) pendingN++;
+  else { pendingMode = mode; pendingN = 1; }
+  if (pendingN < 2) {
+    log('mode 候选 ' + mode + '（第 ' + pendingN + ' 拍，待稳定）· ' + reason);
+    return;
+  }
+  pendingMode = ''; pendingN = 0;
   curMode = mode;
   suppressed = mode !== 'top';   // 看门狗/全员重申/系统位核验一律跳过卡牌（两种"主动撤下"同待遇）
   log((mode === 'top' ? '卡牌置顶恢复' : mode === 'other' ? '撤卡牌置顶' : '进弹窗模式(卡牌落到 PS 主窗之上·弹窗之下)') + ' · ' + reason

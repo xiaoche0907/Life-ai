@@ -1,7 +1,7 @@
 {
   "name": "life-ai",
   "productName": "Life-ai测试版",
-  "version": "6.0.8",
+  "version": "6.0.20",
   "description": "来福 Life-ai Photoshop AI 桌面助手测试版",
   "author": "oranG / Life UI customization",
   "main": "src/index.js",
@@ -27,17 +27,37 @@
     "productName": "Life-ai测试版",
     "executableName": "Life-ai",
     "asar": true,
-    "asarUnpack": ["src/factory_quick_presets/**", "src/factory_forge_presets/**"],
-    "files": ["src/**", "package.json"],
-    "extraResources": [
-      { "from": "ps-bridge", "to": "ps-bridge" },
-      { "from": "sounds", "to": "sounds" },
-      { "from": "bridge-machine-install.ps1", "to": "bridge-machine-install.ps1" }
+    "asarUnpack": [
+      "src/factory_quick_presets/**",
+      "src/factory_forge_presets/**"
     ],
-    "directories": { "output": "dist", "buildResources": "build" },
+    "files": [
+      "src/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "ps-bridge",
+        "to": "ps-bridge"
+      },
+      {
+        "from": "sounds",
+        "to": "sounds"
+      },
+      {
+        "from": "bridge-machine-install.ps1",
+        "to": "bridge-machine-install.ps1"
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
     "compression": "maximum",
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.ico",
       "artifactName": "Life-ai测试版-安装包.exe"
     },
@@ -54,7 +74,10 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false,
-      "installerLanguages": ["zh_CN", "en_US"],
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
       "language": "2052"
     }
   }

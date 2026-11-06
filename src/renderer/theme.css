@@ -1,4 +1,4 @@
-/* 来福 · Liquid Glass 主题 —— 参考Apple iOS 26液态玻璃设计语言
+/* 橙子 · Liquid Glass 主题 —— 参考Apple iOS 26液态玻璃设计语言
    配方：半透明基底 + 凸面边缘(inset高光/阴影) + fresnel亮环 + 镜面高光条 + 深度投影
    注意：窗口根容器禁用backdrop-filter(透明窗口上会画出方形合成框)；
         面板内部元素(气泡等)可以用真backdrop-filter模糊面板基底 */
@@ -720,8 +720,14 @@ body.lockedon .lg-grip, body.lockedon .lg-edge { display: none; }
 /* 四边自由拉伸：角部=等比缩放，四边=自由拉伸，两种能力并存。
    上下边整条（拆左右两角分段会连卡片中间的上下边都没手柄=只能横拉伸）。
    边热区避开角落 40px，避免与 .lg-grip 抢。 */
+/* 四边自由拉伸：角部=等比缩放，四边=自由拉伸，两种能力并存。
+   上下边整条（拆左右两角分段会连卡片中间的上下边都没手柄=只能横拉伸）。
+   边热区避开角落 40px，避免与 .lg-grip 抢。
+   ⚠1014 右边从 22px 收到 14px：各卡 #body 右 padding 14~18px，滚动条贴 #body 右缘。
+   22px 的带子正好盖住滚动条——能看见却点不到（感觉在拖窗口）。14px 仍大于透明边距 12px，
+   手感差不多，但不再覆盖滚动条区域（左边无此问题，保持 22px）。 */
 .lg-edge { position: fixed; z-index: 999; }
-.lg-edge-r { right: 0; top: 40px; bottom: 40px; width: 22px; cursor: ew-resize; }
+.lg-edge-r { right: 0; top: 40px; bottom: 40px; width: 12px; cursor: ew-resize; }
 .lg-edge-l { left: 0; top: 40px; bottom: 40px; width: 22px; cursor: ew-resize; }
 .lg-edge-b { bottom: 0; left: 40px; right: 40px; height: 22px; cursor: ns-resize; }
 .lg-edge-t { top: 0; left: 40px; right: 40px; height: 22px; cursor: ns-resize; }
@@ -786,7 +792,33 @@ input[type="range"]::-webkit-slider-runnable-track {
 }
 input[type="range"] { cursor: pointer; }
 
-/* 只在预览副本中生效。后续 UI 调整可以写在这里，保存后自动刷新。 */
+/* ============ 流畅优先（低配电脑，1011）============
+   只停【装饰性】常驻动画——主题扫光/漂移/旋转这类纯好看、永不停止的效果，
+   它们让 GPU 每帧都在重绘。状态提示类（.warnring 警示环 / .blink 闪烁 / .armring 武装脉冲 /
+   .glowring 收尾辉光）一律保留：那是功能反馈，停了用户就不知道软件在干什么了。
+   挂载点=glass.js 的 applyPerf 给 html 加的 data-perf="lite"。
+   ⚠这里的选择器与各主题规则【权重相同】(html[attr] + 类 + 伪元素)，只靠"后写的赢"，
+     所以整段要留在文件最末尾；每条都带 !important，主题再改也不会把它压掉。 */
+html[data-perf="lite"][data-style] .lg::after,
+html[data-perf="lite"][data-style] .lg::before,
+html[data-perf="lite"][data-style] .lg-tile::after,
+html[data-perf="lite"][data-style] .lg-tile::before {
+  animation: none !important;
+}
+/* 各材质主题的常驻扫光/漂移（goldflow/aurora/orbit/yidao/neonflow/speedRace/steel 等） */
+html[data-perf="lite"][data-style="goldflow"] .lg::after,
+html[data-perf="lite"][data-style="aurora"] .lg::after,
+html[data-perf="lite"][data-style="orbit"] .lg::before,
+html[data-perf="lite"][data-style="yidao"] .lg::before,
+html[data-perf="lite"][data-style="neonflow"] .lg::before,
+html[data-perf="lite"][data-style="steel"] .lg::before,
+html[data-perf="lite"][data-style="steel"] .lg::after {
+  animation: none !important;
+}
+/* 球的呼吸/脉冲：常驻那个也停（bootpulse 只在开机动效期挂一次，自行结束），
+   但"生图中"的 .on / .busy 状态保留——那是进度反馈 */
+html[data-perf="lite"] #ball:not(.on):not(.busy) { animation: none !important; }
+html[data-perf="lite"] #ball.bootpulse { animation: none !important; }
 
 /* 来福 Life 品牌。保留原有 DOM、事件、窗口尺寸与进度转场。 */
 :root { --accent-rgb: 25, 181, 188; }

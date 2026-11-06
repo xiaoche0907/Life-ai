@@ -43,7 +43,8 @@
 
   /* 翻牌双面：正面=logo网格，背面=分组词条列表（压扁-弹开2D翻牌，3D翻牌在透明窗=闪烁坑38） */
   #flipWrap { flex: 1; position: relative; overflow: hidden; min-height: 0; }
-  #faceA, #faceB, #faceC, #faceD { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+  /* ⚠ 每个翻牌面都必须列进来：漏一个 = 那面没有定位也没有竖排方向，整面塌成一条横带（1012 同步面踩过） */
+  #faceA, #faceB, #faceC, #faceD, #faceE { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
   #faceB { display: none; }
 
   /* 分组logo网格（正面整面）：一排4个，滚轮上下滑 */
@@ -193,6 +194,11 @@
 
   /* 底部操作条 */
   #foot { display: flex; align-items: center; gap: 8px; padding: 0 14px 12px; }
+  /* 检查更新（1012）：结果写在格子上（分组正面），转圈用 svg 旋转——不弹框（透明窗禁原生弹窗） */
+  #gtileUpd.busy svg { animation: updspin 0.9s linear infinite; }
+  #gtileUpd.busy .glab { color: var(--accent-text); }
+  #gtileUpd.err .glab { color: var(--err); }
+  @keyframes updspin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .fbtn {
     height: 28px; padding: 0 13px;
     border: none; border-radius: 10px;
@@ -239,10 +245,13 @@
 
   /* 批量导入面（第四翻牌面，0906）：来源选择 → 候选列表(勾选/改名/改组) → 开始导入/撤销 */
   #faceD { display: none; }
-  #ibar { display: flex; align-items: center; gap: 8px; padding: 2px 14px 8px; flex-shrink: 0; }
-  #ibar #ibarIco { display: flex; } #ibar #ibarIco svg { width: 18px; height: 18px; color: var(--accent-text); }
-  #ibar #ibarName { font-size: 12.5px; font-weight: 600; color: #fff; }
-  #ibar #ibarCnt { font-size: 10px; color: var(--text-dim); }
+  #faceE { display: none; }
+  /* ⚠ 导入面和同步面各有一条顶栏，**id 必须不同**（1012 踩过：两处都叫 ibar =
+     非法 HTML，样式互相抢，同步页的标题字被压成看不清）——共用写法走 .bar 类 */
+  .bar { display: flex; align-items: center; gap: 8px; padding: 2px 14px 8px; flex-shrink: 0; }
+  .bar .barIco { display: flex; flex: none; } .bar .barIco svg { width: 18px; height: 18px; color: var(--accent-text); }
+  .bar .barName { font-size: 12.5px; font-weight: 600; color: #fff; flex: none; }
+  .bar .barCnt { font-size: 10px; color: var(--text-dim); flex: none; }
   #isrc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 14px 8px; flex-shrink: 0; }
   #isrc .fbtn { padding: 0 9px; font-size: 11px; white-space: nowrap; }
   #isrc .fbtn svg { width: 13px; height: 13px; flex: none; }
@@ -251,9 +260,12 @@
   #ilist { flex: 1; overflow-y: auto; padding: 2px 14px 6px; display: flex; flex-direction: column; gap: 5px; min-height: 0; }
   #ilist::-webkit-scrollbar { width: 4px; }
   #ilist::-webkit-scrollbar-thumb { background: var(--btn-bg-hover); border-radius: 2px; }
+  /* ⚠ 行底不用 --inset-bg（rgba(0,0,0,.28) 叠暗卡＝黑压黑，看不清；1012 同步页踩过同一个坑）
+     ⚠ flex-direction 必须显式写 row：#ilist/#slist 是 column，光写 display:flex 会继承列方向，
+       结果勾选框/名字/徽标竖着堆成 121px 高的一条（1012 实测） */
   .irow {
-    display: flex; align-items: center; gap: 7px; padding: 5px 8px;
-    border-radius: 10px; background: var(--inset-bg); border: 1px solid var(--inset-border);
+    display: flex; flex-direction: row; align-items: center; gap: 7px; padding: 6px 9px;
+    border-radius: 10px; background: var(--btn-bg); border: 1px solid var(--inset-border);
   }
   .irow.off { opacity: 0.42; }
   .irow.done { border-color: var(--accent-border); }
@@ -277,8 +289,12 @@
   .igrp.unsure { border-color: var(--accent-border); color: var(--accent-text); }   /* 没把握的自动分组：亮边提醒看一眼 */
   .ibadge { flex: none; font-size: 9px; padding: 1px 5px; border-radius: 6px; background: var(--btn-bg); color: var(--text-dim); }
   .ibadge.dup { color: #ffb3ad; border: 1px solid rgba(255, 59, 48, 0.5); background: rgba(255, 59, 48, 0.12); }
+  /* 同步页的「新 / 可更新」徽标：走主题色（1012） */
+  .ibadge.accent { color: var(--accent-text); border: 1px solid var(--accent-border); background: var(--accent-soft); }
+  /* 「你改过」= 中性提示，不是错误（别用红色 dup 那种报错语气） */
+  .ibadge.mute { color: var(--text-dim); border: 1px solid var(--inset-border); background: var(--btn-bg); }
   .irow.forge { background: var(--accent-soft); border-color: var(--accent-border); }
-  /* 搬运插件选单（0908）：魔改版可点；其他来福系列插件只列名字、灰掉不可点 */
+  /* 搬运插件选单（0908）：魔改版可点；其他橙子系列插件只列名字、灰掉不可点 */
   .irow.pick { cursor: pointer; }
   .irow.pick:hover { border-color: var(--accent-border); background: var(--accent-soft); }
   .irow.nopick { opacity: 0.42; cursor: not-allowed; }
@@ -286,10 +302,26 @@
   #ifoot { display: flex; align-items: center; gap: 8px; padding: 0 14px 12px; flex-shrink: 0; }
   #ifootCnt { font-size: 10px; color: var(--text-dim); }
   #iempty { text-align: center; font-size: 11.5px; color: var(--text-dim); padding: 26px 10px; line-height: 1.8; }
+
+  /* ---------- 同步页（1012）：云端有哪些词条，勾选后只同步勾上的 ----------
+     ⚠ 行的样式**直接复用搬运面那套 .irow**（用户裁定：跟隔壁搬运提示词的 UI 一致）——
+     两面的行长得一样、改一处两边同步。 */
+  #slist { flex: 1; overflow-y: auto; padding: 2px 14px 6px; display: flex; flex-direction: column; gap: 5px; min-height: 0; }
+  #slist::-webkit-scrollbar { width: 4px; }
+  #slist::-webkit-scrollbar-thumb { background: var(--btn-bg-hover); border-radius: 2px; }
+  /* 只读名字（搬运面那个是可编辑 input，同步面这里不让改，外观保持一致） */
+  .iname-st {
+    height: 20px; line-height: 20px; padding: 0 4px; font-size: 11.5px; color: #fff;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #sfoot { display: flex; align-items: center; gap: 8px; padding: 0 14px 12px; flex-shrink: 0; }
+  #sfootCnt { font-size: 10px; color: var(--text-dim); }
 </style>
 </head>
 <body>
 <script src="icons.js"></script>
+<script src="pinyin-map.js"></script>
+<script src="pinyin.js"></script>
 <div id="card" class="lg">
   <div id="head">
     <span class="title"><span id="ico"></span>提示词库</span>
@@ -329,11 +361,11 @@
       </div>
     </div>
     <div id="faceD">
-      <div id="ibar">
+      <div class="bar" id="ibar">
         <span class="hbtn" id="ibtnBack" data-pass title="返回分组"></span>
-        <span id="ibarIco"></span>
-        <span id="ibarName">批量导入</span>
-        <span id="ibarCnt"></span>
+        <span class="barIco" id="ibarIco"></span>
+        <span class="barName" id="ibarName">批量导入</span>
+        <span class="barCnt" id="ibarCnt"></span>
         <div class="sp"></div>
       </div>
       <div id="isrc">
@@ -350,6 +382,22 @@
         <span class="sp"></span>
         <button class="fbtn" id="ibtnUndo" data-pass style="display:none">撤销本次导入</button>
         <button class="fbtn accent" id="ibtnGo" data-pass disabled>开始导入</button>
+      </div>
+    </div>
+    <div id="faceE">
+      <div class="bar" id="sbar">
+        <span class="hbtn" id="sbtnBack" data-pass title="返回分组"></span>
+        <span class="barIco" id="sbarIco"></span>
+        <span class="barName" id="sbarName">同步提示词</span>
+        <span class="barCnt" id="sbarCnt"></span>
+        <div class="sp"></div>
+      </div>
+      <div id="slist"><div id="sempty">正在检查云端…</div></div>
+      <div id="sfoot">
+        <button class="fbtn icon" id="sbtnAll" data-pass title="全选 / 全不选"></button>
+        <span id="sfootCnt"></span>
+        <span class="sp"></span>
+        <button class="fbtn accent" id="sbtnGo" data-pass disabled>同步</button>
       </div>
     </div>
   </div>
@@ -372,6 +420,7 @@
   const I_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
   const I_PLUG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>';
   const I_RESTORE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>';
+  const I_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21.5 3.5 21.5 9.5 15.5 9.5"/><polyline points="2.5 20.5 2.5 14.5 8.5 14.5"/><path d="M4.6 9a8 8 0 0 1 13.2-3l3.7 3.5"/><path d="M2.5 14.5 6.2 18a8 8 0 0 0 13.2-3"/></svg>';
   // 文字标注跟随全局修图模式（控制台-设置里的新手/盲人）：
   // glass.js收ui-vars给body挂/摘blindmode类，标注由CSS显隐，悬停提示glass.js统一摘还
 
@@ -392,7 +441,8 @@
       $('faceB').style.display = v === 'list' ? 'flex' : 'none';
       $('faceC').style.display = v === 'edit' ? 'flex' : 'none';
       $('faceD').style.display = v === 'import' ? 'flex' : 'none';
-      if (v !== 'edit' && v !== 'import') renderAll();   // 编辑面/导入面的内容各自铺好，不重渲
+      $('faceE').style.display = v === 'sync' ? 'flex' : 'none';
+      if (v !== 'edit' && v !== 'import' && v !== 'sync') renderAll();   // 编辑面/导入面/同步面的内容各自铺好，不重渲
       w.style.transition = 'transform 0.16s cubic-bezier(0.34, 1.4, 0.64, 1)';
       w.style.transform = 'scaleX(1)';
       setTimeout(() => {
@@ -415,7 +465,7 @@
   function groupIcon(grp) {
     if (grp.icon && PI[grp.icon]) return PI[grp.icon];
     if (grp.id === 'forge') return PI.forgeF || IC.prompts;   // F组：字母F标
-    if (grp.id === 'factory') return IC.orange;               // 内置组：来福logo
+    if (grp.id === 'factory') return IC.orange;               // 内置组：橙子logo
     return PI.tag;
   }
 
@@ -488,6 +538,18 @@
     imp.title = '批量导入提示词：选文件夹 / 搬运来福魔改版插件（自动分组，导入前可手改）';
     imp.addEventListener('click', () => { delMode = false; openImport(); });
     g.appendChild(imp);
+
+    // 检查更新（1012）：和"加分组/减分组/批量导入"同排——都是全局操作，不属于任何分组。
+    // 刻意放在分组正面：用户打开提示词卡第一眼就能看见（放翻牌里要先进组才看得到，空库时更别扭）
+    const upd = document.createElement('div');
+    upd.className = 'gtile op';
+    upd.setAttribute('data-pass', '');
+    upd.id = 'gtileUpd';
+    upd.innerHTML = I_REFRESH;
+    upd.appendChild(mkLab('更新词条'));
+    upd.title = '同步云端提示词：列出云端有哪些，自己挑要哪几条';
+    upd.addEventListener('click', () => { delMode = false; openSync(); });
+    g.appendChild(upd);
   }
 
   // 点分组面板空白处=退出删除模式（抖动取消的自然出口）
@@ -518,14 +580,19 @@
   }
 
   // ---------- 列表 ----------
+  // 排序键统一走 pinyin.js 的 rank()：原文命中优先，其次拼音/首字母（不分平翘舌），模块异常自动退化为原文匹配
+  function nameRank(name, q) {
+    return window.ORANGE_PINYIN.rank(name, q);
+  }
   function visiblePrompts() {
     if (query) {
       // 0910用户裁定：只搜标题（搜正文会把"内容里顺带提到"的词条混进来）；按匹配位置排——标题以搜索词开头的最前，
-      // 其次出现位置靠前的，同位再甄选优先、时间倒序
+      // 其次出现位置靠前的，同位再甄选优先、时间倒序。
+      // 1011用户需求：再支持拼音/首字母，且不分平翘舌（pinyin.js，原文命中优先于拼音命中）
       const q = query.toLowerCase();
       return lib.prompts
-        .map((p) => ({ p, at: (p.name || '').toLowerCase().indexOf(q) }))
-        .filter((x) => x.at >= 0)
+        .map((p) => ({ p, at: nameRank(p.name, q) }))
+        .filter((x) => x.at !== null)
         .sort((a, b) => (a.at - b.at) || ((b.p.fav ? 1 : 0) - (a.p.fav ? 1 : 0)) || ((b.p.ts || 0) - (a.p.ts || 0)))
         .map((x) => x.p);
     }
@@ -773,6 +840,137 @@
     save(); renderList();
   });
 
+  // ---------- 同步页（1012）：点「更新词条」格 → 翻牌 → 列出云端条目 → 勾选 → 同步 ----------
+  // UI 与「搬运提示词」那面完全一致（用户裁定）：.irow + .ick + .imeta(.iname/.iprev) + 右侧徽标
+  const sync = { items: [], picked: new Set(), busy: false };
+  const S_TAG = { new: '新', chg: '可更新', same: '已最新', mine: '你改过' };
+  // 徽标配色：新的/可更新=高亮；已最新/你改过=灰（跟搬运面的 .ibadge 一个调子）
+  const S_BADGE = { new: 'accent', chg: 'accent', same: '', mine: 'mute' };
+
+  function syncCount() {
+    const n = sync.items.filter((x) => sync.picked.has(x.key)).length;
+    $('sbarCnt').textContent = sync.items.length ? '（' + sync.items.length + ' 条）' : '';
+    $('sfootCnt').textContent = sync.items.length ? '已勾选 ' + n + ' / ' + sync.items.length : '';
+    $('sbtnGo').disabled = !n || sync.busy;
+    $('sbtnGo').textContent = sync.busy ? '同步中…' : '同步';
+  }
+
+  function renderSync() {
+    const list = $('slist');
+    list.innerHTML = '';
+    if (!sync.items.length) {
+      list.innerHTML = '<div id="sempty">云端还没有词条<br><span style="font-size:10px;opacity:0.75">（发布词条后这里就能看到）</span></div>';
+      syncCount();
+      return;
+    }
+    // 分组名（预览行里显示"会进哪个组"）——和搬运面显示分组选择器同一个信息位
+    const gname = (id) => { const g = (lib.groups || []).find((x) => x.id === id); return g ? (g.name || g.id) : (id || '其他'); };
+    sync.items.forEach((it) => {
+      const on = sync.picked.has(it.key);
+      const row = document.createElement('div');
+      // 复用搬运面的类：.off=没勾的变暗；.done=这次同步过的亮边；.nopick=你改过的不可点
+      row.className = 'irow' + (on ? '' : ' off') + (it.done ? ' done' : '') + (it.state === 'mine' ? ' nopick' : ' pick');
+      row.dataset.key = it.key;
+      row.setAttribute('data-pass', '');
+
+      const ck = document.createElement('span');
+      ck.className = 'ick' + (on ? ' on' : '');
+      row.appendChild(ck);
+
+      const meta = document.createElement('div');
+      meta.className = 'imeta';
+      const nm = document.createElement('div');
+      nm.className = 'iname-st';
+      nm.textContent = it.name;
+      nm.title = it.name;
+      const pv = document.createElement('span');
+      pv.className = 'iprev';
+      // 预览行 = 状态说明（跟搬运面的"预览正文"同一个位置，给的是这条会怎样）
+      pv.textContent = it.state === 'mine' ? '你改过它 — 同步不会覆盖你的版本'
+        : it.state === 'new' ? '云端新词条 · 同步后进「' + gname(it.group) + '」'
+        : it.state === 'chg' ? '云端有更新 · 同步后覆盖（你没改过）'
+        : '与云端一致 · 无需更新';
+      meta.append(nm, pv);
+      row.appendChild(meta);
+
+      const b = document.createElement('span');
+      b.className = 'ibadge' + (S_BADGE[it.state] ? ' ' + S_BADGE[it.state] : '');
+      b.textContent = S_TAG[it.state] || '';
+      if (it.state === 'mine') b.title = '你改过这条，点它同步也不会覆盖';
+      row.appendChild(b);
+
+      if (it.state !== 'mine') {
+        row.addEventListener('click', () => {
+          if (sync.busy) return;
+          if (sync.picked.has(it.key)) sync.picked.delete(it.key); else sync.picked.add(it.key);
+          row.classList.toggle('off', !sync.picked.has(it.key));
+          ck.classList.toggle('on', sync.picked.has(it.key));
+          syncCount();
+        });
+      }
+      list.appendChild(row);
+    });
+    syncCount();
+  }
+
+  async function openSync() {
+    sync.items = []; sync.picked = new Set(); sync.busy = false; sync.touched = new Set();
+    flipTo('sync');
+    $('slist').innerHTML = '<div id="sempty">正在检查云端…</div>';
+    syncCount();
+    let r;
+    try { r = await window.orange.plibUpdatePreview(); }
+    catch (e) { r = { ok: false, message: (e && e.message) || '检查失败' }; }
+    if (!r || !r.ok) {
+      $('slist').innerHTML = '<div id="sempty">' + ((r && r.message) || '检查失败') +
+        '<br><span style="font-size:10px;opacity:0.75">连不上云端不影响你用现有词条</span></div>';
+      syncCount();
+      return;
+    }
+    sync.items = r.items || [];
+    // 默认全勾上（用户裁定）；"你改过"的不勾（同步也不会动它）
+    sync.picked = new Set(sync.items.filter((x) => x.state !== 'mine').map((x) => x.key));
+    renderSync();
+  }
+
+  $('sbarIco').innerHTML = I_REFRESH;
+  $('sbtnBack').innerHTML = I_BACK;
+  $('sbtnAll').innerHTML = I_CHECKALL;
+  $('sbtnBack').addEventListener('click', () => flipTo('groups'));
+  $('sbtnAll').addEventListener('click', () => {
+    if (sync.busy) return;
+    const selectable = sync.items.filter((x) => x.state !== 'mine');
+    const allOn = selectable.every((x) => sync.picked.has(x.key));
+    sync.picked = new Set(allOn ? [] : selectable.map((x) => x.key));
+    renderSync();
+  });
+  $('sbtnGo').addEventListener('click', async () => {
+    const keys = [...sync.picked];
+    if (!keys.length || sync.busy) return;
+    sync.busy = true;
+    syncCount();
+    let r;
+    try { r = await window.orange.plibUpdateApply(keys); }
+    catch (e) { r = { ok: false, message: (e && e.message) || '同步失败' }; }
+    sync.busy = false;
+    if (r && r.ok) {
+      // 刚同步过的这几条打 done 标（跟搬运面的「已导入」亮边一个意思），再刷新状态
+      const did = new Set(keys);
+      try {
+        const p = await window.orange.plibUpdatePreview();
+        if (p && p.ok) {
+          sync.items = (p.items || []).map((x) => Object.assign({}, x, { done: did.has(x.key) && (r.added || r.updated) }));
+          sync.picked = new Set();
+        }
+      } catch (_) {}
+      renderSync();
+      $('sfootCnt').textContent = (r.message || '完成') + '（详见生图日志）';
+    } else {
+      syncCount();
+      $('sfootCnt').textContent = (r && r.message) || '同步失败';
+    }
+  });
+
   $('btnExport').addEventListener('click', async () => {
     await window.orange.plibExport();
   });
@@ -852,7 +1050,7 @@
       $('ibtnGo').disabled = true;
       return;
     }
-    // 搬运插件选单（0908用户裁定）：本机来福系列插件全列出来，只有魔改版那行可点（.pick），其余灰掉不可点（.nopick）
+    // 搬运插件选单（0908用户裁定）：本机橙子系列插件全列出来，只有魔改版那行可点（.pick），其余灰掉不可点（.nopick）
     if (imp.picks.length) {
       imp.picks.forEach((p) => {
         const row = document.createElement('div');
@@ -955,7 +1153,7 @@
     imp.source = 'dir';
     takeScan(r, r && r.label ? '文件夹「' + r.label + '」' : '文件夹');
   });
-  // 搬运插件（0908改）：先列本机来福系列插件，只有魔改版可点、其余灰掉只看名字；点了才扫（主进程同样只认魔改版）
+  // 搬运插件（0908改）：先列本机橙子系列插件，只有魔改版可点、其余灰掉只看名字；点了才扫（主进程同样只认魔改版）
   $('ibtnPlugin').addEventListener('click', async () => {
     if (imp.busy) return;
     const r = await window.orange.plibListPlugins();

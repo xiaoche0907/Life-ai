@@ -139,7 +139,10 @@ async function detectRegions(img, parts, det) {
 }
 
 async function detectRegionsOnce(img, parts, det) {
-  // 0908 识图渠道改走对话渠道表 chatProviders（与生图渠道解耦）：det.provider 是对话渠道 id（aji/grs/cc_*）
+  // 识图渠道走对话渠道表 chatProviders（与生图渠道解耦）：det.provider 是对话渠道 id（aji/grs/cc_*）。
+  // ⚠1011：det 由**调用方**给出，一律是 config.autofix.det —— 自动修图卡的卡面选择器就是写这个字段；
+  //   「对话模型分配」表里的这条路已删除，只留一个入口，免得两处互相打架。
+  //   （det 缺席时仍回落到全局对话渠道，保证旧配方/未设过的用户照常能跑。）
   const wantProv = (det && det.provider) || config.chat.provider || 'grs';
   const cp = (config.chatProviders && config.chatProviders[wantProv]) || (config.chatProviders && config.chatProviders.grs) || {};
   const base = (cp.base || '').replace(/\/+$/, '');

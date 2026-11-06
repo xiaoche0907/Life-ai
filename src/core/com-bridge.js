@@ -114,15 +114,22 @@ function jsxPlaceBatch(paths, docId, selection, group) {
     + 'function place(p){var ds=new ActionDescriptor();ds.putPath(charIDToTypeID("null"),new File(p));'
     + 'ds.putEnumerated(charIDToTypeID("FTcs"),charIDToTypeID("QCSt"),charIDToTypeID("Qcsa"));'
     + 'executeAction(charIDToTypeID("Plc "),ds,DialogModes.NO);return d.activeLayer;}'
-    // 贴回原选区：非等比精确填满（宽高各自缩放到选区），不是 min 等比居中——等比会留边/对不齐（0908用户反馈）。
-    // 两次收敛：第一次按 bounds 算比例+位移；bounds 含透明边时会偏，读回再纠一次
+    // 贴回对位（1010 定案：【逐轴精确配准】，与 UXP 桥接件 fitLayerToSel 同口径）：
+    // kx=sw/bw、ky=sh/bh 各轴独立缩放（TOPLEFT 锚），再把左上角 translate 到选区左上角 → 映射恒等，误差 0px。
+    // ⚠中间那版"k=max() 等比盖满+居中裁剪"已废：它治不了位移只是把位移换了形状——
+    //   画布 6336×9504(r=.66667) 对渠道回图 1696×2528(r=.67089) 差 0.633%，k=3.75949 → 宽 6376，
+    //   左右各裁 20px：中心不动但边缘物体整体挪 20px（用户实报的"还是会出现位移"）。
+    //   0.633% 的非等比拉伸人眼不可见，20px 错位肉眼可见——宁可 0.63% 形变，不要 20px 位移。
     + 'function fit(L){if(!sel)return;var sw=sel[2]-sel[0],sh=sel[3]-sel[1];'
-    + 'for(var it=0;it<2;it++){var b=L.bounds;'
+    + 'for(var it=0;it<3;it++){var b=L.bounds;'
     + "var bw=b[2].as('px')-b[0].as('px'),bh=b[3].as('px')-b[1].as('px');"
     + 'if(bw<1||bh<1)return;'
-    + 'var kx=sw/bw*100,ky=sh/bh*100;if(Math.abs(kx-100)>0.05||Math.abs(ky-100)>0.05)L.resize(kx,ky,AnchorPosition.TOPLEFT);'
-    + "b=L.bounds;var dx=sel[0]-b[0].as('px'),dy=sel[1]-b[1].as('px');"
-    + 'if(Math.abs(dx)>0.5||Math.abs(dy)>0.5)L.translate(dx,dy);}}'
+    // 尺寸还没配准（容差1px）→ 各轴独立 resize；DOM的resize锚TOPLEFT，缩放不改左上角
+    + 'if(Math.abs(bw-sw)>1||Math.abs(bh-sh)>1){L.resize(sw/bw*100,sh/bh*100,AnchorPosition.TOPLEFT);b=L.bounds;'
+    + "bw=b[2].as('px')-b[0].as('px');bh=b[3].as('px')-b[1].as('px');}"
+    // 配准：左上角对齐到选区左上角（不是居中——居中只在比例相同时才等价）
+    + "var mx=sel[0]-b[0].as('px'),my=sel[1]-b[1].as('px');"
+    + 'if(Math.abs(mx)>0.5||Math.abs(my)>0.5)L.translate(mx,my);}}'
     + 'var ps=[' + paths.map(jsStr).join(',') + '];'
     + 'for(var i=0;i<ps.length;i++){try{var L=place(ps[i]);fit(L);ids.push(L.id);}catch(e){}}'
     + 'function selLayer(id,add){var d1=new ActionDescriptor();var r1=new ActionReference();'

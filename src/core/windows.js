@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut } =
 const path = require('path');
 const fs = require('fs');
 const ctx = require('./ctx');
+const { cardMinW } = require('./layout-scale');   // 卡片最小宽公式唯一出处（出厂布局折算也用它）
 
 const config = ctx.config;
 const MODULES = ctx.MODULES;
@@ -54,17 +55,68 @@ function clampToWork(x, y, w, h) {
   return [nx | 0, ny | 0];
 }
 
-// 显示器拓扑/分辨率/DPI变化后：逐窗校验，跑出屏幕外的拉回来并写回config
-function recoverAllWindows() {
-  const fix = (w, save) => {
-    if (!w || w.isDestroyed()) return;
-    const b = w.getBounds();
-    const [nx, ny] = clampToWork(b.x, b.y, b.width, b.height);
-    if (nx !== b.x || ny !== b.y) {
-      try { w.setPosition(nx, ny); } catch {}
-      save(nx, ny);
+// ⚠1010 竖屏副屏"重启打散+大缝隙"根因（两处叠加）：
+//  ①clampToWork 是**逐窗**夹取：跨在两屏接缝上的卡，按各自矩形命中主屏→被推到主屏边 x=0；
+//    完全在副屏的卡命中副屏→原地不动。两张原本紧贴的卡被打到两块屏的不同边界=相对间距被拆散（大缝隙）。
+//  ②moved 事件在**程序化移动**时也触发（开机绽放每8ms一次 setPosition），把夹取后的坐标写回 config，
+//    于是错位被固化，且上一轮"只写未夹取坐标"的修法当场被覆盖=反馈"还在"。
+// 修法：夹取改为"可达就不动 + 要动就整组平移"，并让 moved 只认真正的用户拖动（_progMove 时间戳）。
+
+// 够不够"抓得住"：标题栏要能点到。可见宽≥MIN_VIS 且 可见高≥MIN_VIS_H 才算可达。
+const MIN_VIS = 48, MIN_VIS_H = 30;
+function isReachable(x, y, w, h) {
+  w = Number.isFinite(w) && w > 0 ? w : 1;
+  h = Number.isFinite(h) && h > 0 ? h : 1;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  let bestW = 0, bestH = 0;
+  try {
+    for (const d of screen.getAllDisplays()) {
+      const wa = d.workArea;
+      const ow = Math.min(x + w, wa.x + wa.width) - Math.max(x, wa.x);
+      const oh = Math.min(y + h, wa.y + wa.height) - Math.max(y, wa.y);
+      if (ow > 0 && oh > 0 && ow * oh > bestW * bestH) { bestW = ow; bestH = oh; }
     }
-  };
+  } catch (e) { return true; }   // 拿不到屏幕信息时保守放行，绝不动用户的窗
+  return bestW >= MIN_VIS && bestH >= MIN_VIS_H;
+}
+// 把矩形搬回最近一块屏所需的最小位移（不夹到边缘，只保证可达：四角留 8px 余量）
+function nudgeIntoView(x, y, w, h) {
+  let best = null;
+  try {
+    for (const d of screen.getAllDisplays()) {
+      const wa = d.workArea;
+      const ow = Math.min(x + w, wa.x + wa.width) - Math.max(x, wa.x);
+      const oh = Math.min(y + h, wa.y + wa.height) - Math.max(y, wa.y);
+      const area = (ow > 0 && oh > 0) ? ow * oh : 0;
+      if (!best || area > best.area) best = { wa, area };
+    }
+  } catch (e) { return [0, 0]; }
+  if (!best) return [0, 0];
+  const wa = best.wa;
+  const nx = Math.min(Math.max(x, wa.x - w + MIN_VIS + 8), wa.x + wa.width - MIN_VIS - 8);
+  const ny = Math.min(Math.max(y, wa.y), wa.y + wa.height - MIN_VIS_H - 8);
+  return [(nx - x) | 0, (ny - y) | 0];
+}
+
+// 程序化移动标记：窗口的任何"非用户"移动（开机绽放开卡/布局应用/堆牌/找回）都打一次戳，
+// moved 处理器见到新鲜戳就只更新内存、不落盘。用户拖动（grip/drag/bubble-drag）不打戳。
+const PROG_MOVE_MS = 900;
+function markProgMove(w) {
+  if (!w || w.isDestroyed()) return w;
+  try { w._progMoveAt = Date.now(); } catch (e) {}
+  return w;
+}
+function isProgMove(w) {
+  try { return !!w && (Date.now() - (w._progMoveAt || 0) < PROG_MOVE_MS); } catch (e) { return false; }
+}
+
+
+// 显示器拓扑/分辨率/DPI变化后：逐窗校验，跑出屏幕外的拉回来。
+// ⚠1010：拉回 = 只把窗口摆回可见区（setPosition），**不写回config**——这里若把夹取后的坐标落盘，
+//   与开机 openCard/applyLayoutData 同款病（真坐标被夹取版覆盖）。用户真实位置只由拖动(moved)写；
+//   球窗是唯一例外：它按球心口径换算，落位后必须同步一次 ballPos，否则下次重启按旧球心恢复（口径不一致）。
+//   副屏热插拔拉回的坐标不落盘也安全：屏回来了，config 里原坐标自动复位（这正是我们要的）。
+function recoverAllWindows() {
   // 球按球心夹取（窗口是560×460大画布，按整窗夹会把球心逼离屏幕边缘280px）
   if (ballWin && !ballWin.isDestroyed()) {
     const b = ballWin.getBounds();
@@ -79,9 +131,33 @@ function recoverAllWindows() {
       }
     } catch {}
   }
-  fix(hubWin, (x, y) => { config.hubPos = [x, y]; });
-  for (const id in cardWins) {
-    fix(cardWins[id], (x, y) => { config.cards[id] = Object.assign(config.cards[id] || {}, { x, y }); });
+  // 卡牌/控制台：**整组平移**，绝不逐窗夹取。
+  // 1010 教训：逐窗 clampToWork 会把跨两屏接缝的卡推到各自命中屏的边界→相对间距被拆散（用户看到的"大缝隙"）。
+  // 规则：①任一窗完全跑到所有屏之外（副屏被拔）→ 算出它回到最近屏所需的最小位移 d，
+  //        把**全体**窗按同一个 d 平移（相对间距一个像素不变，整组一起回来）。
+  //      ②所有窗都还够得着（含跨缝的）→ 一个都不动，位置存的就是位置。
+  const group = [];
+  if (hubWin && !hubWin.isDestroyed()) group.push(hubWin);
+  for (const id in cardWins) { const w = cardWins[id]; if (w && !w.isDestroyed()) group.push(w); }
+  const unreachable = group.filter((w) => { const b = w.getBounds(); return !isReachable(b.x, b.y, b.width, b.height); });
+  if (unreachable.length) {
+    // 位移取"最需要回家"的那张（位移最大者），保证整组一步回到可达区
+    let best = null;
+    for (const w of unreachable) {
+      const b = w.getBounds();
+      const [dx, dy] = nudgeIntoView(b.x, b.y, b.width, b.height);
+      if (!best || (Math.abs(dx) + Math.abs(dy)) > (Math.abs(best.dx) + Math.abs(best.dy))) best = { dx, dy, w };
+    }
+    if (best && (best.dx || best.dy)) {
+      for (const w of group) {
+        try {
+          const b = w.getBounds();
+          markProgMove(w);
+          w.setPosition((b.x + best.dx) | 0, (b.y + best.dy) | 0);
+        } catch (e) {}
+      }
+      try { ctx.dlog('[recover] 整组平移 dx=' + best.dx + ' dy=' + best.dy + '（不可达 ' + unreachable.length + '/' + group.length + ' 张）'); } catch (e) {}
+    }
   }
   saveConfig();
 }
@@ -222,6 +298,19 @@ ctx.finishBootChoreo = () => {
     }
     bootDeferring = false;
     if (!items.length) { setTimeout(endBootFx, 400); return; }
+    // ---------- 1010 开机位置诊断（竖屏副屏排障用）----------
+    // 报告未加此日志前，副屏"重启打散"只能靠推理。这里把三组坐标一次打全，任何一次反馈都能直接看出是谁挪的：
+    //   cfg=config 里存档的坐标 / real=窗口此刻真实坐标 / moved=两者是否已被开机过程改动
+    try {
+      const tops = (() => { try { return screen.getAllDisplays().map((d) => d.workArea.x + ',' + d.workArea.y + ' ' + d.workArea.width + 'x' + d.workArea.height).join(' | '); } catch (e) { return '?'; } })();
+      ctx.dlog('[boot-pos] 工作区: ' + tops);
+      for (const it of items) {
+        const b = it.win.getBounds();
+        const c = it.id === '__hub' ? { x: (config.hubPos || [])[0], y: (config.hubPos || [])[1] } : (config.cards[it.id] || {});
+        const off = (c.x !== undefined && c.y !== undefined) ? ((c.x | 0) !== b.x || (c.y | 0) !== b.y) : false;
+        ctx.dlog('[boot-pos] ' + it.id + ' cfg=(' + c.x + ',' + c.y + ') real=(' + b.x + ',' + b.y + ')' + (off ? ' ⚠已偏移' : ''));
+      }
+    } catch (e) {}
     // 稍候片刻让进度环收满，再从球心绽放（复用收纳/释放的飞行动画）；
     // 波纹+描边陪跑整段飞行，卡牌落位后再熄灭复原球窗
     setTimeout(() => {
@@ -340,7 +429,17 @@ ipcMain.on('deck-wheel', (e, dir) => {
   if (!s || deckAnim) return;
   deckStepCut(s, Number(dir) > 0 ? 1 : -1, '滚轮');
 });
-setInterval(() => {
+// 光标轮询频率：常规30ms（≈33次/秒，保证热区翻转跟手）；流畅优先120ms（≈8次/秒，低端机省CPU）。
+// 1011 实测空闲CPU仅5.3%单核——它不是主凶，但低端机（4核老U）上仍是白给的开销，顺手降下来。
+// perfLite() 每次取值（不在顶层解构），开关一改就生效。
+const cursorPollMs = () => ((ctx.config && ctx.config.perf && ctx.config.perf.lite) ? 120 : 30);
+let cursorTimer = null;
+function startCursorPoll() {
+  clearInterval(cursorTimer);
+  cursorTimer = setInterval(cursorTick, cursorPollMs());
+}
+ctx.restartCursorPoll = () => { try { startCursorPoll(); } catch (e) {} };
+function cursorTick() {
   if (!app.isReady()) return;   // screen模块在app ready前调用会直接抛错闪退
   const p = screen.getCursorScreenPoint();
   if (ballWin && !ballWin.isDestroyed()) {
@@ -352,6 +451,11 @@ setInterval(() => {
       wantIgnore = inside ? !cursorOnPassRect(ballWin, p) : true;
       if (!inside) { if (++menuAwayTicks > 25) openBallMenu(false); }
       else menuAwayTicks = 0;
+    } else if (ballDragOff) {
+      // ⚠1014：拖动会话进行中**绝不切穿透**。原来这里只看"光标离球心 46px"→ 拖起来必然超 46px
+      //   → 球窗切成穿透 → 收不到 mouseup → 主进程那个 8ms 跟随循环停不下来 = "球粘鼠标一直跑"
+      //   （用户实报）。正在拖它，它就必须继续接鼠标事件，这不只是"要不要穿透"的问题。
+      wantIgnore = false;
     } else {
       const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
       const dx = p.x - cx, dy = p.y - cy;
@@ -409,7 +513,8 @@ setInterval(() => {
       }
     }
   }
-}, 30);
+}
+startCursorPoll();
 
 // ====== 交互门禁（唯一出口）======
 // 两态模型：锁定=布局冻结+鼠标穿透；未锁定=拖动缩放全开。
@@ -432,10 +537,100 @@ ctx.canLayout = canLayout;
 function applyMinSize(win, on) {
   if (!win || win.isDestroyed() || !win._rz) return;
   try {
-    if (on) win.setMinimumSize(Math.max(136, Math.round(win._rz.baseW * win._rz.minZ)), 40);
+    if (on) win.setMinimumSize(cardMinW(win._rz.baseW, win._rz.minZ), 40);
     else win.setMinimumSize(0, 0);
   } catch (e) {}
 }
+
+// 尺寸看门狗暂停（1012）：收纳/释放/布局飞行这类"批量程序化挪窗"期间不压尺寸——
+// 150% 屏上每 8ms 一步 setPosition 都会被 Windows 取整改掉 1~2 DIP，看门狗逐窗压回=每步十几次重排重绘（用户实报卡顿真凶，
+// 开发机切 150% 复现：吸入 0.45 秒内 18 张卡全部被压）。动画收尾各路径都会按 _authSize 统一落一次权威尺寸。
+let sizeGuardPauseUntil = 0;
+function pauseSizeGuard(ms) { sizeGuardPauseUntil = Math.max(sizeGuardPauseUntil, Date.now() + ms); }
+
+// ---------- 只挪不变形（1012）：高频程序化挪窗一律走这里 ----------
+// Electron setPosition/setBounds 走「DIP 整矩形→物理像素」换算：125%/150%/175% 屏上同一个 DIP 尺寸落在不同位置，
+// 物理宽高会差 1px → 每挪一步窗口都被顺手改了尺寸 → Chromium 要等 GPU 进程按新尺寸重建表面，主线程原地干等。
+// 开发机切 150% 实测：收纳一次 17 张卡被改尺寸 58 次、主线程最长卡 119ms、吸入只跑出 85 步（计划 600+）= 一顿一顿；
+// 100%/200% 整数倍换算没有余数，所以开发机平时永远复现不出来。
+// 解法：DIP 左上角换成物理坐标，原生 SetWindowPos(SWP_NOSIZE) 只挪位置，尺寸一个像素都不碰；koffi 不可用退回 setPosition。
+const SWP_MOVE_ONLY = 0x0001 | 0x0004 | 0x0010;   // NOSIZE | NOZORDER | NOACTIVATE
+// 物理像素对齐步长：缩放写成最简分数 p/q，物理坐标（相对所在屏原点）取 p 的倍数时，反算回 DIP 恰好整除、没有余数。
+// 光 NOSIZE 不够：Electron 把物理矩形反算 DIP 时余数时进时舍，同一张卡宽在 176/177 间跳=照样报 resize、页面重排
+// （150% 实测同一张卡任意位置挪 60 次跳 39 次，对齐到 3px 倍数只跳 1 次）。150%→3，125%→5，175%→7；整数倍不需要对齐→1
+const gcdInt = (a, b) => (b ? gcdInt(b, a % b) : a);
+function pxStepOf(sf) {
+  if (!sf || Math.abs(sf - Math.round(sf)) < 1e-6) return 1;
+  const p = Math.round(sf * 100);
+  return p / gcdInt(p, 100);
+}
+// snap=true：批量动画（收纳/释放）用，按上面的步长对齐；用户拖动不对齐（慢拖要逐像素跟手，一次只动一两张卡代价小）
+function physOf(x, y, snap) {
+  const p = screen.dipToScreenPoint({ x, y });
+  let px = Math.round(p.x), py = Math.round(p.y);
+  if (snap) {
+    const d = screen.getDisplayNearestPoint({ x, y });
+    const P = pxStepOf(d.scaleFactor);
+    if (P > 1) {
+      const o = screen.dipToScreenPoint({ x: d.bounds.x, y: d.bounds.y });   // 所在屏的物理原点（副屏原点未必是 P 的倍数）
+      px = Math.round(o.x) + Math.round((px - Math.round(o.x)) / P) * P;
+      py = Math.round(o.y) + Math.round((py - Math.round(o.y)) / P) * P;
+    }
+  }
+  return [px, py];
+}
+function hwndOf(nat, win) {
+  if (!win._hwndPtr) win._hwndPtr = nat.as(win.getNativeWindowHandle().readBigUInt64LE(0), 'void*');
+  return win._hwndPtr;
+}
+function moveWin(win, x, y, snap) {
+  x = x | 0; y = y | 0;
+  try {
+    const nat = ctx.win32 && ctx.win32();
+    if (nat) {
+      const [px, py] = physOf(x, y, snap);
+      if (nat.SetWindowPos(hwndOf(nat, win), null, px, py, 0, 0, SWP_MOVE_ONLY)) return;
+    }
+  } catch (e) {}
+  try { win.setPosition(x, y); } catch (e) {}
+}
+// 一步挪一批（1012）：17 张卡逐个 SetWindowPos 一步平均 9.2ms——比 8ms 一步的动画节拍还长，主线程整段被占满；
+// 交给 DeferWindowPos 一次提交平均 4.5ms（150% 开发机实测）。批量接口不可用/中途失败就逐个挪，结果一样
+let deferApi = null;
+function deferFns() {
+  if (deferApi !== null) return deferApi;
+  try {
+    const u = require('koffi').load('user32.dll');
+    deferApi = {
+      begin: u.func('void* __stdcall BeginDeferWindowPos(int n)'),
+      defer: u.func('void* __stdcall DeferWindowPos(void* hdwp, void* h, void* after, int x, int y, int cx, int cy, uint32 flags)'),
+      end: u.func('bool __stdcall EndDeferWindowPos(void* hdwp)'),
+    };
+  } catch (e) { deferApi = false; }
+  return deferApi;
+}
+function moveMany(items, snap) {   // items: [{ win, x, y }]（DIP）
+  const live = items.filter((it) => it.win && !it.win.isDestroyed());
+  if (!live.length) return;
+  try {
+    const nat = ctx.win32 && ctx.win32();
+    const D = nat && deferFns();
+    if (D) {
+      let hd = D.begin(live.length);
+      for (const it of live) {
+        if (!hd) break;
+        const [px, py] = physOf(it.x | 0, it.y | 0, snap);
+        hd = D.defer(hd, hwndOf(nat, it.win), null, px, py, 0, 0, SWP_MOVE_ONLY);
+      }
+      if (hd && D.end(hd)) return;
+    }
+  } catch (e) {}
+  for (const it of live) moveWin(it.win, it.x, it.y, snap);
+}
+ctx.moveWin = moveWin;
+// ⚠容差保持 1，别放宽：1012 试过非整数缩放放到 2——实际尺寸可长期比权威多 2 不被纠正，而出堆复原等处会把
+// 实际尺寸抄回 _authSize，每进出一次堆涨 2（smoke 150% 实测 pee 114→116→118）=亲手造了个棘轮。
+// 卡顿只发生在批量动画期间，靠上面的暂停解决；平时的取整拉锯是低频事件，照旧压回
 
 // 缩放引擎（统一等比，0907#7/#9）：所有卡只走一条缩放路径。
 // Win上透明无边框窗口没有系统边缘拖拽，全部由页面自绘手柄驱动：
@@ -489,15 +684,33 @@ function bindScale(win, baseW, baseH, initialZoom, onResized) {
     if (Date.now() - (win._userRz || 0) < 800) {   // 被will-resize放行的一瞬（极少）：不视为授权
       return;
     }
+    if (Date.now() < sizeGuardPauseUntil) return;   // 批量动画中（1012）：收尾统一落权威尺寸
+    if (win._sgBusy) return;   // 压回本身也会触发 resize，别重入
     const [cw2, ch2] = win.getSize();
     const [aw, ah] = win._authSize;
-    if (Math.abs(cw2 - aw) > 1 || Math.abs(ch2 - ah) > 1) {
+    const tol = 1;
+    if (Math.abs(cw2 - aw) > tol || Math.abs(ch2 - ah) > tol) {
       // 日志限频：每窗每秒最多一条（真DPI偷改是低频事件，刷屏说明误杀了谁）
       if (Date.now() - (win._sgLogT || 0) > 1000) {
         win._sgLogT = Date.now();
         try { ctx.dlog('[sizeguard] 未授权尺寸变化 ' + aw + 'x' + ah + '→' + cw2 + 'x' + ch2 + ' 已压回'); } catch {}
       }
-      try { win.setSize(aw, ah); } catch {}
+      win._sgBusy = true;
+      try { win.setSize(aw, ah); } catch {} finally { win._sgBusy = false; }
+      // 系统不让压回（窗口最小宽）：再压也是拉锯，接受系统尺寸当权威（1012，150% 屏实测 151→174、159→182 这类
+      // 每次收纳释放都要顶一轮）。只认这一种签名——权威宽本就窄于本窗最小宽、系统把宽撑到最小宽附近、高没变；
+      // 取整残差一律不接受（接受=账跟着实际漂，一次挪几个像素就是新的棘轮），坑54 的 ×1.33 跨屏大跳更不接受。
+      // 不可缩放的被压卡 Windows 本来就拒绝程序化改尺寸，不算"系统不让"
+      try {
+        const [rw, rh] = win.getSize();
+        if (win.isResizable() && (Math.abs(rw - aw) > tol || Math.abs(rh - ah) > tol)) {
+          const minW = (win.getMinimumSize() || [0])[0] || 0;
+          if (aw < minW && rw > aw && rw <= minW + tol + 2 && Math.abs(rh - ah) <= tol) {
+            win._authSize = [rw, rh];
+            try { ctx.dlog('[sizeguard] 系统不让压回 ' + aw + 'x' + ah + '（窄于最小宽' + minW + '），接受系统尺寸 ' + rw + 'x' + rh); } catch {}
+          }
+        }
+      } catch {}
     }
   });
   win.webContents.on('did-finish-load', () => {
@@ -886,7 +1099,7 @@ ipcMain.on('drag-start', (e, alone) => {
     const [sx2, sy2] = applySnap(w, nx, ny, st.group);   // 只吸附组外目标
     const dx = Math.round(sx2) - st.x, dy = Math.round(sy2) - st.y;
     for (const m of st.members) {
-      if (!m.w.isDestroyed()) deckSetBounds(m.w, { x: m.x + dx, y: m.y + dy, width: m.aw, height: m.ah });   // 堆牌被压卡不可缩放，裸setBounds会被拒
+      if (!m.w.isDestroyed()) holdBounds(m.w, m.x + dx, m.y + dy, m.aw, m.ah);   // 1012：保持尺寸只挪（150% 屏每帧不再被改 1px）；堆牌被压卡也能挪
     }
     // 融合预览：压住另一卡>60%→双方持续发光示意"松手即融合"；离开→熄灭
     if (dragFuseSrc && !dragFuseSrc.isDestroyed()) {
@@ -957,6 +1170,7 @@ function toggleHub(forceOpen) {
     if (gatherState) {
       const i = gatherState.items.findIndex((it) => it.id === '__hub');
       if (i >= 0) {
+        markProgMove(hubWin);
         hubWin.setPosition(gatherState.items[i].x, gatherState.items[i].y);
         hubWin.setOpacity(1);
         gatherState.items.splice(i, 1);
@@ -970,13 +1184,20 @@ function toggleHub(forceOpen) {
     enforceZOrder();
     return;
   }
-  // 无记忆位置时默认出现在屏幕正中；有记忆位置也要夹进当前工作区(历史坐标可能在已消失的屏上)
+  // 无记忆位置时默认出现在屏幕正中；有记忆位置时**够得着就不动**（1010：与卡牌同一规则，
+  // 逐窗 clampToWork 会把副屏上的控制台推到主屏边界；够不着才搬到最近屏可见位）。
   const wa = screen.getPrimaryDisplay().workArea;
   const [hw, hh] = config.hubSize || [HUB_W, HUB_H];
   const [rhx, rhy] = config.hubPos || [Math.round(wa.x + (wa.width - hw) / 2), Math.round(wa.y + (wa.height - hh) / 2)];
-  const [hx, hy] = clampToWork(rhx, rhy, hw, hh);
+  let hx = rhx | 0, hy = rhy | 0;
+  if (!isReachable(hx, hy, hw, hh)) {
+    const [dx, dy] = nudgeIntoView(hx, hy, hw, hh);
+    hx += dx; hy += dy;
+    try { ctx.dlog('[hub] 存档坐标不可达 (' + (rhx | 0) + ',' + (rhy | 0) + ') → 搬到 (' + hx + ',' + hy + ')'); } catch (e) {}
+  }
   // resizable必须为true——Win上不可调尺寸的窗口连程序化setSize都会被拒绝
   hubWin = new BrowserWindow(glassWinOpts({ width: hw, height: hh, x: hx, y: hy, resizable: true, show: !bootDeferring }));
+  markProgMove(hubWin);
   bootTrack(hubWin);
   guardZoomKeys(hubWin);
   hubWin.loadFile(path.join(ctx.SRC, 'renderer', 'hub.html'));
@@ -998,11 +1219,12 @@ function toggleHub(forceOpen) {
   hubWin.webContents.on('did-finish-load', () => enforceZOrder());
 }
 
-// ---------- 关卡回收：气泡收回的卡片闲置5分钟后销毁窗口，内存还给系统 ----------
-// 每张卡=独立渲染进程(30-80MB)，隐藏≠释放；闲置够久就close()，重开时openCard按config恢复位置尺寸
+// ---------- 关卡回收：气泡收回的卡片闲置后销毁窗口，内存还给系统 ----------
+// 每张卡=独立渲染进程(实测单个78-160MB,均值93MB)，隐藏≠释放；闲置够久就close()，重开时openCard按config恢复位置尺寸
 // 例外不回收：当前武装模块(总控生成要向隐藏窗executeJavaScript收负载)/Forge(面板参数未落盘)/收纳中的窗口(要飞回来)
 const reapTimers = {};
-const REAP_MS = 5 * 60 * 1000;
+// 常规5分钟（用户可能马上又要点开，太短会频繁重建）；流畅优先45秒（低端机内存紧张，宁可重开也别占着）
+const REAP_MS = () => ((ctx.config && ctx.config.perf && ctx.config.perf.lite) ? 45 * 1000 : 5 * 60 * 1000);
 function cancelReap(id) { clearTimeout(reapTimers[id]); delete reapTimers[id]; }
 function scheduleReap(id) {
   cancelReap(id);
@@ -1015,8 +1237,26 @@ function scheduleReap(id) {
     if (gatherState && gatherState.items.some((it) => it.id === id)) return;
     if (stackOf(id)) return;   // 融合叠成员（藏在叠下）不回收
     w.close();   // closed钩子会清cardWins/open标记/广播状态
-  }, REAP_MS);
+  }, REAP_MS());
 }
+// 把当前所有"隐藏着、还在等回收"的卡按新时限重新排一次——切到流畅优先时已隐藏的卡立刻改用45秒
+ctx.rearmReaps = () => {
+  for (const id in cardWins) {
+    const w = cardWins[id];
+    if (!w || w.isDestroyed() || w.isVisible()) continue;
+    scheduleReap(id);
+  }
+};
+// ---------- 流畅优先（低配电脑）总闸：一处切换，全部生效 ----------
+// 用户开着开关改设置时要立刻感受到效果，所以：①光标轮询改频 ②已隐藏的卡按新时限重排
+// ③广播给所有卡（停装饰动画、穿透上报降频）④追加日志说明本次做了什么
+ctx.applyPerf = (why) => {
+  const lite = !!(ctx.config && ctx.config.perf && ctx.config.perf.lite);
+  try { startCursorPoll(); } catch (e) {}
+  try { ctx.rearmReaps(); } catch (e) {}
+  try { ctx.broadcast('perf-vars', ctx.config.perf); } catch (e) {}
+  try { ctx.dlog('[perf] 流畅优先=' + lite + (why ? ' (' + why + ')' : '')); } catch {}
+};
 
 // ---------- 功能卡片 ----------
 function openCard(id, atPos, byUser) {
@@ -1051,10 +1291,23 @@ function openCard(id, atPos, byUser) {
   const ch = (saved && saved.h) || def.height;
   const rx = atPos ? atPos[0] : (saved ? saved.x : Math.round((sw - cw) / 2));
   const ry = atPos ? atPos[1] : (saved ? saved.y : Math.round((sh - ch) / 2));
-  // 拖出跟手中(atPos)不夹取；从保存坐标恢复时夹进当前工作区（历史坐标可能在已消失的屏上）
-  const [x, y] = atPos ? [rx | 0, ry | 0] : clampToWork(rx, ry, cw, ch);
+  // 拖出跟手中(atPos)不夹取；从保存坐标恢复时**只在完全够不着时才搬**。
+  // ⚠1010 竖屏副屏"重启打散+大缝隙"根因：旧写法无条件 clampToWork = 逐窗夹到各自命中屏的边界，
+  //   跨两屏接缝的卡被推到主屏 x=0、全在副屏的卡原地不动→两张紧贴的卡被拆开（大缝隙）。
+  //   新规则：①卡在任何一块屏上还剩 ≥48×30 可见 → 一律不动（位置存的就是位置）；
+  //          ②真的完全跑到所有屏之外（副屏被拔）→ 搬到最近屏的可见位。
+  // 落盘一律写**未搬动**的原始 [rx,ry]（首次出现除外）——搬动只是"这次摆哪"，绝不回写，副屏插回来即自动归位。
+  let x, y;
+  if (atPos) { x = rx | 0; y = ry | 0; }
+  else if (isReachable(rx, ry, cw, ch)) { x = rx | 0; y = ry | 0; }
+  else {
+    const [dx, dy] = nudgeIntoView(rx | 0, ry | 0, cw, ch);
+    x = (rx | 0) + dx; y = (ry | 0) + dy;
+    try { ctx.dlog('[openCard] ' + id + ' 存档坐标不可达 (' + (rx | 0) + ',' + (ry | 0) + ') → 搬到 (' + x + ',' + y + ')'); } catch (e) {}
+  }
 
   const win = new BrowserWindow(glassWinOpts({ width: cw, height: ch, x, y, resizable: true, show: !bootDeferring }));
+  markProgMove(win);   // 建窗即打戳：紧随其后的位置同步不该被当成用户拖动
   bootTrack(win);
   guardZoomKeys(win);
   win._cardId = id;
@@ -1072,6 +1325,11 @@ function openCard(id, atPos, byUser) {
     saveConfig();
   });
   win.on('moved', () => {
+    // ⚠1010 竖屏副屏"重启打散"第二根因：moved 在**程序化移动**时也触发（开机绽放每8ms一次 setPosition、
+    //   布局应用、堆牌重排、找回拉回…），旧写法无条件把当时的坐标写回 config → 把"开机过程的中转坐标"
+    //   当成"用户摆的位置"落盘，错位就此固化（上一轮"只写未夹取坐标"的修法正是被这条覆盖掉的）。
+    //   修法：非用户移动（markProgMove 打戳后 900ms 内）只更新内存、绝不落盘。
+    //   真正的用户拖动走 grip/drag/bubble-drag，它们不打戳，且由各自收尾显式落盘。
     const [wx, wy] = win.getPosition();
     // ⚠只有"用户看得见时被移动"才算用户把它摆在了这、才算它开着（0917 多用户实报"甄选卡莫名跳出来、重启也有"）。
     // 原写法无条件写 open:true：关掉的卡只是 hide() 不销毁（还有5分钟回收倒计时），这期间
@@ -1079,6 +1337,11 @@ function openCard(id, atPos, byUser) {
     // moved 钩子把 open 改写成 true 并落盘 → 用户毫不知情，下次启动 index.js 见 open=true 就 openCard() → 卡自己跳出来，
     // 且配置已被改脏，从此每次重启都犯。隐藏窗口的移动只记坐标，绝不动 open。
     const vis = !win.isDestroyed() && win.isVisible();
+    if (isProgMove(win)) {
+      // 程序化移动：只同步内存坐标（内存与真实窗口保持一致），**不落盘**——落盘会让中转坐标顶掉用户真位置
+      config.cards[id] = Object.assign(config.cards[id] || {}, { x: wx, y: wy });
+      return;
+    }
     config.cards[id] = Object.assign(config.cards[id] || {}, vis ? { x: wx, y: wy, open: true } : { x: wx, y: wy });
     saveConfig();
   });
@@ -1089,7 +1352,11 @@ function openCard(id, atPos, byUser) {
     if (config.cards[id]) { config.cards[id].open = false; saveConfig(); }
     broadcastOpenStates();
   });
-  config.cards[id] = Object.assign(config.cards[id] || {}, { x, y, open: true });
+  // ⚠1010：落盘写**未夹取**的原始坐标（rx/ry），不写夹取后的 x/y——
+  //   夹取只是"这次摆到哪"的显示兜底；把夹后值写回配置=副屏坐标被永久覆盖（见上方根因注释）。
+  //   首次出现（无历史配置）才直接采用这次算出的位置。
+  const persist = saved ? { x: rx | 0, y: ry | 0, open: true } : { x, y, open: true };
+  config.cards[id] = Object.assign(config.cards[id] || {}, persist);
   saveConfig();
   cardWins[id] = win;
   raiseCard(win);   // 新建的卡当下浮到控制台之上（开在控制台底下=开了看不见）
@@ -1134,7 +1401,17 @@ ipcMain.on('bubble-drag-move', (_e, { sx, sy }) => {
   }
 });
 ipcMain.on('bubble-drag-end', () => {
-  if (dragTarget && !dragTarget.isDestroyed()) reassertZoom(dragTarget);
+  if (dragTarget && !dragTarget.isDestroyed()) {
+    reassertZoom(dragTarget);
+    // ⚠1010：气泡拖出是**用户**拖动（grip/drag 之外的第三条），以前靠 moved 钩子落盘；
+    //   现在 moved 会拦程序化移动，这条路径必须显式落盘，否则拖出来的位置下次重启就丢。
+    const id = dragTarget._cardId;
+    if (id) {
+      const [px, py] = dragTarget.getPosition();
+      config.cards[id] = Object.assign(config.cards[id] || {}, { x: px, y: py, open: true });
+      saveConfig();
+    }
+  }
   dragTarget = null;
 });
 
@@ -1160,19 +1437,38 @@ function assertTopmost(tag, hard) {
   try {
     // ⚠重申必须用与创建同级的'screen-saver'带——0905晚实锤：普通setAlwaysOnTop(true)=floating低带，
     // PS全屏时被系统每3秒压下去→看门狗低带再救→再被压=827次死循环，面板永沉PS底（球在screen-saver安然）
+    //
+    // ⚠1014 逐窗状态去重（修"腾讯会议拖出的置顶窗下卡牌一直闪"）：原来这里对每一扇窗**无条件**
+    //   setAlwaysOnTop(true)，后面还跟着 deckRestackAll + enforceZOrder（逐窗 moveTop 重排全部卡）。
+    //   前端只要有一处每 100ms 抖一下（fgwatch 前台归属抖动就会），就是每秒多次 17 窗重排 = 肉眼可见的闪。
+    //   去重判据用 Windows 真实位（ctx.win32IsTopmost）：true=确定在顶 → 跳过。
+    //   注意是三态：它返回 false 表示"确实没在顶"（要重申），返回 null/undefined 表示读不到（保守重申）。
+    const isTop = (w) => {
+      if (!hard) {
+        try {
+          const real = ctx.win32IsTopmost && ctx.win32IsTopmost(w);
+          if (real === true && w.isAlwaysOnTop && w.isAlwaysOnTop()) return true;
+        } catch (e) {}
+      }
+      return false;
+    };
     const re = (w) => {
       if (!w || w.isDestroyed()) return;
+      if (isTop(w)) return;                                    // 已在顶：一个字都不改
       if (hard) { try { w.setAlwaysOnTop(false); } catch (e) {} }
       w.setAlwaysOnTop(true, 'screen-saver');
     };
     // 「卡牌只浮在PS之上」模式主动撤下卡牌置顶时（fgwatch.js），全员重申跳过卡牌——否则与它打架；球/控制台照常
     const sup = !!(ctx.cardsTopSuppressed && ctx.cardsTopSuppressed());
-    if (!sup) for (const id in cardWins) { try { re(cardWins[id]); } catch (e) {} }   // 单窗异常不连累后面的窗（铁律4）
-    re(hubWin);
-    re(ballWin);
-    deckRestackAll();   // 逐窗重申会按遍历序洗z序：堆牌先按堆序排回
-    enforceZOrder();
-    if (tag) { try { ctx.dlog('[aot] 置顶重申(' + tag + ')' + (hard ? ' [硬]' : '') + (sup ? ' [卡牌撤顶中,仅球/控制台]' : '')); } catch (e) {} }
+    let touched = 0;
+    if (!sup) for (const id in cardWins) { try { if (!cardWins[id] || !cardWins[id].isDestroyed()) { const before = cardWins[id].isAlwaysOnTop(); re(cardWins[id]); if (!before) touched++; } } catch (e) {} }   // 单窗异常不连累后面的窗（铁律4）
+    if (!isTop(hubWin)) { re(hubWin); touched++; }
+    if (!isTop(ballWin)) { re(ballWin); touched++; }
+    // 层序整理：**硬重申照旧无条件做**（hard 的语义就是"拆装一遍彻底重写"，这里跳过等于把语义改了）；
+    // 软重申只在真的动过窗时才做——它会把 17 张卡逐个 moveTop 重排（重绘级），
+    // 在"什么都没改"的空转轮里跑它 = 白制造闪烁（1014 闪烁 bug 的放大器）。
+    deckRestackAll(); enforceZOrder();
+    if (tag) { try { ctx.dlog('[aot] 置顶重申(' + tag + ')' + (hard ? ' [硬]' : '') + ' 实际改动 ' + touched + ' 窗' + (sup ? ' [卡牌撤顶中,仅球/控制台]' : '')); } catch (e) {} }
   } catch (e) {}
 }
 ctx.assertTopmost = assertTopmost;   // 供对话框/子进程收场后主动重申（坑61"案发现场无条件重申"模式）
@@ -1204,9 +1500,16 @@ ctx.applyCardsTop = (on, reason) => {
   if (on) { assertTopmost('回到PS:' + (reason || ''), false); scheduleTopmostVerify('回到PS'); return; }   // ⚠软重申：硬拆装会让个别卡真实位留 0（见上）
   for (const t of verifyTimers) clearTimeout(t);
   verifyTimers = [];
+  // ⚠1014 去重：已经摘了顶的窗不再重复摘。原来无条件逐窗 setAlwaysOnTop(false)，
+  //   而"撤顶"会被 fgwatch 反复触发（前台归属每 100ms 抖一下就来一次），
+  //   每次都是 17 次原生调用 + 重绘 —— 就是"卡牌一直闪"的来源之一。
   for (const id in cardWins) {
     const w = cardWins[id];
-    try { if (w && !w.isDestroyed()) w.setAlwaysOnTop(false); } catch (e) {}
+    try {
+      if (!w || w.isDestroyed()) continue;
+      if (w.isAlwaysOnTop && !w.isAlwaysOnTop()) continue;    // 已经摘了
+      w.setAlwaysOnTop(false);
+    } catch (e) {}
   }
 };
 // 置顶看门狗（1秒验伤）：失守即重申；连续失守=系统在反复压我们（PS全屏等）→升级为硬重申，
@@ -1368,7 +1671,7 @@ ipcMain.on('open-card', (_e, id) => {
   } else if (w && !w.isDestroyed()) {
     cancelReap(id);
     const fp = hubFollowPos(id);
-    if (fp) { try { w.setPosition(fp[0], fp[1]); } catch (e) {} saveConfig(); }
+    if (fp) { try { markProgMove(w); w.setPosition(fp[0], fp[1]); } catch (e) {} saveConfig(); }
     w.show();
     raiseCard(w);
     revealForUser('点气泡·show ' + id);
@@ -1396,9 +1699,22 @@ ipcMain.on('close-self', (e) => {
 });
 // 球拖动=主进程光标采样跟随（渲染端增量在双屏DPI不一致时坐标断层=乱跳,坑7同族）；
 // 夹取按「光标所在屏」的工作区——球才能跟着光标跨到副屏
-let ballDragTimer = null, ballDragOff = null;
+let ballDragTimer = null, ballDragOff = null, ballTick = 0;
 function ballFollowTick() {
   if (!ballWin || ballWin.isDestroyed() || !ballDragOff) { clearInterval(ballDragTimer); ballDragTimer = null; return; }
+  // ⚠1014 自检：每 5 拍（≈40ms）问系统一句"鼠标左键还按着吗"。
+  //   为什么必须主进程自查、不能等页面发结束信号（用户实报"没点球球却跟着鼠标跑"的真因，两条叠加）：
+  //   ① 球窗是 focusable:false（永不聚焦，避免抢 PS 焦点），ball.html 那条 blur 兜底**永远不会触发**；
+  //   ② 拖动中光标必然离开球心 46px → cursorTick 把球窗切成穿透 → 球窗**收不到 mouseup**。
+  //   于是结束信号送不送得到全看 Windows 的隐式捕获给不给面子 —— 给了就正常、切过程序就丢
+  //   （用户说"偶发"的真因）。这里直接问系统，不依赖任何事件送达：切程序、鼠标飞出屏幕、
+  //   系统弹窗抢焦点，全部能收住。GetAsyncKeyState 项目里已在用（fgwatch 的按键沿检测），不新增依赖。
+  if (++ballTick % 5 === 0) {
+    const nat = ctx.win32 && ctx.win32();
+    if (nat && nat.GetAsyncKeyState) {
+      if ((nat.GetAsyncKeyState(1) & 0x8000) === 0) { endBallDrag('主进程检测到已松手'); return; }
+    }
+  }
   const p = screen.getCursorScreenPoint();
   let cx = p.x + ballDragOff.dx, cy = p.y + ballDragOff.dy;
   try {
@@ -1407,7 +1723,12 @@ function ballFollowTick() {
     cy = Math.min(Math.max(cy, wa.y + 20), wa.y + wa.height - 20);
   } catch {}
   // setBounds带常驻画布尺寸：跨DPI屏拖动时系统撑大的窗口16ms内被踩回（坑54尺寸棘轮）
-  ballWin.setBounds({ x: (cx - BALL_WW / 2) | 0, y: (cy - BALL_WH / 2) | 0, width: BALL_WW, height: BALL_WH });
+  // 1012：尺寸没变就只挪（150% 屏上每帧 setBounds 都会顺手改 1px=球窗 560x460→560x462 拉锯、拖球发涩）
+  const bx = (cx - BALL_WW / 2) | 0, by = (cy - BALL_WH / 2) | 0;
+  let bsz = [0, 0];
+  try { bsz = ballWin.getSize(); } catch (e) {}
+  if (Math.abs(bsz[0] - BALL_WW) <= 1 && Math.abs(bsz[1] - BALL_WH) <= 1) moveWin(ballWin, bx, by);
+  else ballWin.setBounds({ x: bx, y: by, width: BALL_WW, height: BALL_WH });
   config.ballPos = [(cx - BALL_WIN / 2) | 0, (cy - BALL_WIN / 2) | 0];   // 存96口径，兼容老配置
 }
 ipcMain.on('ball-drag-start', () => {
@@ -1415,12 +1736,17 @@ ipcMain.on('ball-drag-start', () => {
   const c0 = screen.getCursorScreenPoint();
   const b = ballWin.getBounds();
   ballDragOff = { dx: b.x + b.width / 2 - c0.x, dy: b.y + b.height / 2 - c0.y };   // 抓取点偏移
+  ballTick = 0;
   clearInterval(ballDragTimer);
   ballDragTimer = setInterval(ballFollowTick, 8);
 });
-ipcMain.on('ball-drag-end', () => {
+// 收尾抽成函数：正常收到 ball-drag-end 走这里，主进程自检发现已松手也走这里 ——
+// 两条路必须做**完全一样**的收尾（压回尺寸/重申zoom/存位置），否则自检那条会留下尺寸漂移。
+function endBallDrag(why) {
+  const was = !!ballDragOff;
   clearInterval(ballDragTimer);
   ballDragTimer = null; ballDragOff = null;
+  if (!was) return;
   // DPI守卫收尾：按常驻画布尺寸压回+重申zoom=1（球窗跨屏后的尺寸/文字棘轮兜底）
   if (ballWin && !ballWin.isDestroyed()) {
     try {
@@ -1429,8 +1755,11 @@ ipcMain.on('ball-drag-end', () => {
       ballWin.webContents.setZoomFactor(1);
     } catch {}
   }
+  // 落指纹：用户反馈"球粘鼠标"时，日志里能看到是哪条路收的尾（正常松手不记，免得刷屏）
+  if (why) { try { ctx.dlog('[ball] 拖动收尾：' + why); } catch (e) {} }
   saveConfig();
-});
+}
+ipcMain.on('ball-drag-end', () => { endBallDrag(''); });
 
 // ---------- 球全局快捷菜单：右键小球展开（Beta反馈：小橙子=Global Launcher） ----------
 // 实现方式=原窗口就地扩展(96→330×400)并保持球心屏幕坐标不变，页面在球旁画菜单；
@@ -1484,6 +1813,7 @@ function animateFly(moves, dur, done) {
     && Number.isFinite(m.x0) && Number.isFinite(m.y0)
     && Number.isFinite(m.x1) && Number.isFinite(m.y1));
   if (!list.length) { if (done) done(); return; }
+  pauseSizeGuard(dur + 400);   // 1012：逐帧 setPosition 期间不让看门狗逐窗压尺寸（收尾按 _authSize 统一落位）
   const t0 = Date.now();
   let fc = 0;
   gatherAnim = setInterval(() => {
@@ -1491,12 +1821,22 @@ function animateFly(moves, dur, done) {
     if (t > 1) t = 1;
     fc++;
     const k = easeOutQuint(t);
+    const batch = [];
+    for (const m of list) {
+      if (m.win.isDestroyed()) continue;
+      markProgMove(m.win);   // 1010：飞行动画每帧 setPosition 都会触发 moved，必须打戳（否则中转坐标落盘）
+      batch.push({ win: m.win, x: Math.round(m.x0 + (m.x1 - m.x0) * k), y: Math.round(m.y0 + (m.y1 - m.y0) * k) });
+    }
+    moveMany(batch, true);   // 1012：整批一次提交 + 只挪不变形 + 像素对齐
     for (const m of list) {
       if (m.win.isDestroyed()) continue;
       try {
-        m.win.setPosition(Math.round(m.x0 + (m.x1 - m.x0) * k) | 0, Math.round(m.y0 + (m.y1 - m.y0) * k) | 0);
-        // 透明度隔帧更新（0905丝滑）：分层窗改alpha是额外合成开销，带宽让给位置
-        if ((fc & 1) === 0 || t >= 1) m.win.setOpacity(Math.min(1, 0.06 + 0.94 * Math.min(1, t * 1.8)));
+        // 透明度隔帧更新（0905丝滑）：分层窗改alpha是额外合成开销，带宽让给位置。
+        // 1012：值没变就不调（飞到 55% 处已经满 1，后半程原先每两步白改一轮=17 张 4ms）
+        if ((fc & 1) === 0 || t >= 1) {
+          const op = Math.min(1, 0.06 + 0.94 * Math.min(1, t * 1.8));
+          if (m._op !== op) { m._op = op; m.win.setOpacity(op); }
+        }
       } catch {}
     }
     if (t >= 1) {
@@ -1513,6 +1853,7 @@ function animateSpiral(moves, dur, done) {
   const list = moves.filter((m) =>
     m.win && !m.win.isDestroyed() && Number.isFinite(m.r0) && Number.isFinite(m.th0));
   if (!list.length) { if (done) done(); return; }
+  pauseSizeGuard(dur + 400);   // 1012：同 animateFly
   const t0 = Date.now();
   let fc = 0;
   gatherAnim = setInterval(() => {
@@ -1520,17 +1861,16 @@ function animateSpiral(moves, dur, done) {
     if (t > 1) t = 1;
     fc++;
     const k = easeInCubic(t);
+    const batch = [];
     for (const m of list) {
       if (m.win.isDestroyed()) continue;
-      try {
-        const r = m.r0 * (1 - k);
-        const th = m.th0 + k * 1.9;   // 顺时针扫≈110°
-        m.win.setPosition(
-          Math.round(m.bx + r * Math.cos(th) - m.hw) | 0,
-          Math.round(m.by + r * Math.sin(th) - m.hh) | 0);
-        if ((fc & 1) === 0 || t >= 1) m.win.setOpacity(Math.max(0.05, 1 - 0.95 * k));
-      } catch {}
+      const r = m.r0 * (1 - k);
+      const th = m.th0 + k * 1.9;   // 顺时针扫≈110°
+      markProgMove(m.win);   // 1010：吸入动画同上，每帧移动都要打戳
+      batch.push({ win: m.win, x: Math.round(m.bx + r * Math.cos(th) - m.hw), y: Math.round(m.by + r * Math.sin(th) - m.hh) });
     }
+    moveMany(batch, true);   // 1012：整批一次提交 + 只挪不变形 + 像素对齐
+    // 淡出由卡片页面自己用 CSS 做（glass.js gather 模式），这里不再逐窗改窗口透明度（17 张一轮 4ms，见 glass.js）
     if (t >= 1) {
       clearInterval(gatherAnim);
       gatherAnim = null;
@@ -1589,7 +1929,7 @@ function ungather(id) {
   const i = gatherState.items.findIndex((it) => it.id === id);
   if (i < 0) return false;
   const it = gatherState.items[i];
-  try { if (it.win && !it.win.isDestroyed() && Number.isFinite(it.x) && Number.isFinite(it.y)) it.win.setPosition(it.x | 0, it.y | 0); } catch (e) {}
+  try { if (it.win && !it.win.isDestroyed() && Number.isFinite(it.x) && Number.isFinite(it.y)) { markProgMove(it.win); it.win.setPosition(it.x | 0, it.y | 0); } } catch (e) {}
   gatherState.items.splice(i, 1);
   if (!gatherState.items.length) { destroyGatherProxy(gatherState); gatherState = null; }
   return true;
@@ -1610,6 +1950,7 @@ function gatherAll(after) {
     if (w && !w.isDestroyed() && w.isVisible()) wins.push({ id, win: w });
   }
   if (!wins.length) return;
+  pauseSizeGuard(100 + 340 + 500);   // 1012：前奏+螺旋吸入+快照采集全程（吸入本身 animateSpiral 也会续上）
   // 0907#2 折中：距上次收纳<6s内的重复触发，跳过快照+代理层（capturePage×17+建全屏透明窗=掉帧大头），
   // 直接走真窗动画。前几次仍完整走丝滑代理飞行；连点之后以稳定为先。
   const now = Date.now();
@@ -1713,6 +2054,7 @@ function gatherAll(after) {
 // ⚠归位目标必须逐一Number.isFinite校验：脏坐标会让个别卡飞不回去（"forge不复位"级bug温床）
 function releaseAll() {
   if (gatherAnim || gatherPhase || !gatherState) return;
+  pauseSizeGuard(320 + 600);   // 1012：代理飞行/真窗飞行+落位全程（落位按 _authSize 统一给尺寸）
   const b = ballWin.getBounds();
   const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
   const gs = gatherState;
@@ -1776,9 +2118,9 @@ function releaseAll() {
     for (const m of moves) {
       try {
         sendFx(m.win, { mode: 'reset' });
+        markProgMove(m.win);
         const [aw, ah] = m.win._authSize || [0, 0];
-        if (aw) deckSetBounds(m.win, { x: m.x1 | 0, y: m.y1 | 0, width: aw, height: ah });
-        else m.win.setPosition(m.x1 | 0, m.y1 | 0);
+        holdBounds(m.win, m.x1 | 0, m.y1 | 0, aw, ah, true);   // 1012：藏着时尺寸没变就只挪+像素对齐（150% 屏原先这一步 17 张卡全被改尺寸、主线程卡 123ms）
         reassertZoom(m.win);
         // 透明度0现身（0905闪烁修）：飞行期真窗就位且保持热渲染——藏着的窗被合成器节流，
         // 收尾才show会补画一帧=闪；opacity 0→1是原子翻转，且不与幻影叠出双重玻璃
@@ -1793,7 +2135,8 @@ function releaseAll() {
   for (const m of moves) {
     try {
       sendFx(m.win, { mode: 'reset' });   // 内容复位到正常尺寸
-      m.win.setPosition(m.x0 | 0, m.y0 | 0);
+      markProgMove(m.win);
+      moveWin(m.win, m.x0, m.y0, true);   // 1012：只挪不变形+像素对齐
       m.win.setOpacity(0.06);
       m.win.showInactive();   // 不抢焦点
     } catch {}
@@ -1805,9 +2148,9 @@ function releaseAll() {
       try { m.win.setOpacity(1); } catch {}
       try {
         // 终点落位带权威尺寸+重申zoom：球在副屏时飞行跨DPI边界，同坑54
+        markProgMove(m.win);   // 1010：终点落位同样打戳（飞行尾帧的坐标不许落盘）
         const [aw, ah] = m.win._authSize || [0, 0];
-        if (aw) deckSetBounds(m.win, { x: m.x1 | 0, y: m.y1 | 0, width: aw, height: ah });
-        else m.win.setPosition(m.x1 | 0, m.y1 | 0);
+        holdBounds(m.win, m.x1 | 0, m.y1 | 0, aw, ah, true);   // 1012：尺寸没变就只挪+像素对齐
         reassertZoom(m.win);
       } catch {}
     }
@@ -1935,17 +2278,38 @@ function deckUnifyWidth(s) {
 // 所以凡是可能落到被压卡上的落位一律走这里：尺寸没变=setPosition；尺寸要变=临时打开可缩放再关回
 function deckSetBounds(w, b) {
   if (!w || w.isDestroyed()) return;
+  // ⚠1010（修A核心）：这里是**所有程序化落位**（布局应用/堆牌就位/切牌/找回/出堆复原…）的唯一出口，
+  //   grip 拖动会话（w._rz.start 非空）与 drag 拖拽（dragActive）才是用户移动——那两种不打戳。
+  //   打戳后 moved 钩子只同步内存、不落盘，杜绝"开机中转坐标"顶掉用户真位置。
+  if (!(w._rz && w._rz.start) && !dragActive) markProgMove(w);
+  // 1012：尺寸不变=只挪。非整数缩放屏上 setBounds 会顺手改 1px 尺寸=主线程等 GPU 重建表面；
+  // 尺寸真变了（跨屏被系统撑大、出堆复原、收条、布局换尺寸）才走下面的 setBounds，坑54 的压回保护不受影响
+  const [cw, ch] = w.getSize();
+  if ((b.width == null || b.width === cw) && (b.height == null || b.height === ch)) {
+    moveWin(w, b.x, b.y);
+    return;
+  }
   let resizable = true;
   try { resizable = w.isResizable(); } catch (e) {}
   if (resizable) { try { w.setBounds(b); } catch (e) {} return; }
-  const [cw, ch] = w.getSize();
-  if ((b.width == null || b.width === cw) && (b.height == null || b.height === ch)) {
-    try { w.setPosition(b.x | 0, b.y | 0); } catch (e) {}
-    return;
-  }
   try { w.setResizable(true); } catch (e) {}
   try { w.setBounds(b); } catch (e) {}
   try { w.setResizable(false); } catch (e) {}
+}
+// 一边挪一边"保持"权威尺寸（1012）：拖卡每帧 / 切牌动画每帧 / 释放落位——这些调用的本意是"尺寸别变"，不是"改成这个尺寸"。
+// 150% 屏上实际尺寸可能长期比权威差 1（换算余数），按 deckSetBounds 的严格相等判=这张卡每帧都走 setBounds 慢路；
+// 差 ≤1 就只挪。差得多（坑54 跨屏 ×1.33 撑大）照旧 deckSetBounds 压回。只决定"挪还是改"，不回写 _authSize，不造棘轮。
+// ⚠真要改尺寸的调用（收条/出堆复原/布局换尺寸）别用这个，用 deckSetBounds（它要求严格相等才只挪）
+function holdBounds(w, x, y, aw, ah, snap) {
+  if (!w || w.isDestroyed()) return;
+  let cw = 0, ch = 0;
+  try { [cw, ch] = w.getSize(); } catch (e) {}
+  if (aw && ah && Math.abs(aw - cw) <= 1 && Math.abs(ah - ch) <= 1) {
+    if (!(w._rz && w._rz.start) && !dragActive) markProgMove(w);
+    moveWin(w, x, y, snap);
+    return;
+  }
+  deckSetBounds(w, aw && ah ? { x, y, width: aw, height: ah } : { x, y });
 }
 // 出堆还原：入堆统一过的宽（_deckW0）、被压时收成标题条的高（_deckH0）、被压时借用的前卡缩放（_deckZ0）一起还原，可缩放恢复
 function deckSetZoom(w, z) {
@@ -2159,7 +2523,7 @@ function deckTween(moves, dur, detourId, done) {
       const side = m.id === detourId ? Math.sin(Math.PI * t) * m.detour : 0;
       try {
         const [aw, ah] = m.win._authSize || m.win.getSize();
-        deckSetBounds(m.win, { x: Math.round(m.x0 + (m.x1 - m.x0) * k + side) | 0, y: Math.round(m.y0 + (m.y1 - m.y0) * k) | 0, width: aw, height: ah });
+        holdBounds(m.win, Math.round(m.x0 + (m.x1 - m.x0) * k + side) | 0, Math.round(m.y0 + (m.y1 - m.y0) * k) | 0, aw, ah);   // 1012：保持尺寸只挪
       } catch (e) {}
     }
     if (t >= 1) { clearInterval(deckAnim); deckAnim = null; if (done) done(); }
@@ -2602,11 +2966,16 @@ function applyLayoutData(data, persist) {
       if (!hubWin || hubWin.isDestroyed()) { toggleHub(true); if (hubWin) hubWin.hide(); }
       if (hubWin && !hubWin.isDestroyed()) {
         prep(hubWin, data.hub);
-        // 布局快照可能录自更大的屏幕：落位前夹进当前工作区
-        const [chx, chy] = clampToWork(data.hub.x, data.hub.y, data.hub.w, data.hub.h);
-        data.hub.x = chx; data.hub.y = chy;
+        // 1010：同 openCard 的新规则——够得着就原地落，够不着才搬（整组平移交给下面统一处理）。
+        // 逐窗 clampToWork 会把跨两屏接缝的卡推到命中屏边界→布局里紧贴的卡被拆开。
+        let chx = data.hub.x | 0, chy = data.hub.y | 0;
+        if (!isReachable(chx, chy, data.hub.w, data.hub.h)) {
+          const [dx, dy] = nudgeIntoView(chx, chy, data.hub.w, data.hub.h);
+          chx += dx; chy += dy;
+          try { ctx.dlog('[layout] hub 快照坐标不可达 → 搬到 (' + chx + ',' + chy + ')'); } catch (e) {}
+        }
         items.push({ id: '__hub', win: hubWin, x: chx, y: chy });
-        config.hubPos = [data.hub.x, data.hub.y];
+        config.hubPos = [data.hub.x | 0, data.hub.y | 0];
         config.hubSize = [data.hub.w, data.hub.h];
         config.hubZoom = Math.min(2.2, Math.max(0.45, data.hub.zoom || 1));
         config.hubOpen = true;
@@ -2621,9 +2990,16 @@ function applyLayoutData(data, persist) {
       const w = cardWins[id];
       if (!w || w.isDestroyed()) continue;
       prep(w, t);
-      const [ctx2, cty2] = clampToWork(t.x, t.y, t.w, t.h);   // 快照坐标夹进当前工作区
-      items.push({ id, win: w, x: ctx2, y: cty2 });
-      config.cards[id] = Object.assign(config.cards[id] || {}, { x: ctx2, y: cty2, w: t.w, h: t.h, zoom: t.zoom || 1, open: true });
+      // ⚠1010：同 openCard —— 够得着就原地落（不再逐窗夹取，防拆散紧贴的卡）；
+      // 夹取版坐标绝不回写 config（config 记快照原始值，防快照被应用过程改脏）。
+      let cx2 = t.x | 0, cy2 = t.y | 0;
+      if (!isReachable(cx2, cy2, t.w, t.h)) {
+        const [dx, dy] = nudgeIntoView(cx2, cy2, t.w, t.h);
+        cx2 += dx; cy2 += dy;
+        try { ctx.dlog('[layout] ' + id + ' 快照坐标不可达 → 搬到 (' + cx2 + ',' + cy2 + ')'); } catch (e) {}
+      }
+      items.push({ id, win: w, x: cx2, y: cy2 });
+      config.cards[id] = Object.assign(config.cards[id] || {}, { x: t.x | 0, y: t.y | 0, w: t.w, h: t.h, zoom: t.zoom || 1, open: true });
     }
     // 快速布局卡豁免：不在布局快照里也留在原位（跟着释放动画飞回自己的位置）
     const lw = cardWins['layout'];

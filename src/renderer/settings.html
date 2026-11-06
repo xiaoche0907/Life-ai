@@ -31,7 +31,7 @@
   }
   .hbtn:hover { background: var(--btn-bg-hover); }
 
-  #body { flex: 1; overflow-y: auto; padding: 6px 18px 16px; display: flex; flex-direction: column; gap: 16px; }
+  #body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 14px 16px; display: flex; flex-direction: column; gap: 16px; }
   /* 苹果开关（布尔设置项通用，0905用户裁定） */
   .aswitch {
     position: relative; flex: none;
@@ -201,6 +201,15 @@
     </div>
 
     <div>
+      <div class="label">性能</div>
+      <div class="swrow">
+        <span class="swlab">流畅优先（低配电脑）</span>
+        <div class="sw" id="swPerf" data-pass></div>
+      </div>
+      <div class="modeDesc">给内存小、核显的老电脑用。开启后：①点气泡收起的卡从 5 分钟缩短到 45 秒就真释放（每张卡是一个独立进程，实测单个吃 78-160MB）②光标跟随轮询降频省 CPU ③停掉主题扫光/漂移等装饰动画省 GPU ④锁定穿透的热区上报降频。功能一个不少，只是响应稍微钝一点。内存 8GB 以下建议开</div>
+    </div>
+
+    <div>
       <div class="label">生成行为</div>
       <div class="swrow">
         <span class="swlab">PS无选区时默认跑全图</span>
@@ -221,6 +230,11 @@
         <div class="sw" id="swPsDlg" data-pass></div>
       </div>
       <div class="modeDesc">默认开启（需上面开关开着）：Camera Raw、滤镜库、液化、曲线这类弹窗和拖出来的浮动面板一打开，卡牌自动让到它们下面、仍浮在 PS 主界面上；关掉弹窗卡牌自动回到最上面。弹窗在前时「拉回最前」不生效</div>
+    </div>
+
+    <div>
+      <div class="label">更新</div>
+      <div class="modeDesc">软件更新与提示词库更新都搬进了控制台的<b>「更新」卡</b>（球右键 → 更新）。<br>那里有两个开关：<b>自动更新软件</b>、<b>提示词库自动更新</b>——默认都是关闭，你自己开；有新版时那张卡会闪。</div>
     </div>
 
     <div>
@@ -290,9 +304,9 @@
     <div>
       <div class="label">PS插件</div>
       <div class="row">
-        <button class="mbtn" id="btnBridge" style="flex:1;height:32px">清理旧版并安装新版</button>
+        <button class="mbtn" id="btnBridge" style="flex:1;height:32px">重新安装PS插件</button>
       </div>
-      <div class="modeDesc" id="bridgeStat" role="status" aria-live="polite">自动检查插件更新。PS 运行时等待退出，退出后清理旧版并安装新版；请保持来福运行，看到安装完成后再打开 PS。</div>
+      <div class="modeDesc" id="bridgeStat">软件启动时会自动把桥接插件装进PS（重启PS生效）；装了新版PS或连不上时点上面重装</div>
     </div>
 
     <button id="btnReset" title="改动实时应用到所有窗口并自动保存；不透明度决定玻璃底色浓淡">恢复默认</button>
@@ -301,7 +315,7 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const DEFAULTS = { tint: 0.32, accent: '#19b5bc', style: 'classic', bgFile: '', bgOpacity: 0.6 };
+  const DEFAULTS = { tint: 0.32, accent: '#ff9f0a', style: 'classic', bgFile: '', bgOpacity: 0.6 };
 
   function save(patch) { window.orange.setConfig({ ui: patch }); }
 
@@ -434,7 +448,7 @@
   // ---------- 预设主题：颜色+底板材质整套换装（styles见theme.css的data-style段） ----------
   // 一横排4个（0907）：第一行=基础四款；第二行=硬边四兄弟(硬边黑/琥珀断层/冷钢刻线/石墨极光)整行；之后动效系
   const THEMES = [
-    { name: '来福青绿', accent: '#19b5bc', tint: 0.32, style: 'classic',
+    { name: '经典橙', accent: '#ff9f0a', tint: 0.32, style: 'classic',
       prev: 'border-radius:11px;background:linear-gradient(165deg, rgba(74,74,88,0.95), rgba(18,18,26,0.98))' },
     { name: '磨砂灰', accent: '#0a84ff', tint: 0.40, style: 'frost',
       prev: 'border-radius:11px;background:linear-gradient(170deg, #565a68, #3a3d4a)' },
@@ -521,6 +535,16 @@
     });
   });
 
+  // ---------- 流畅优先（低配电脑，1011）：主进程按 config.perf.lite 调轮询/回收，渲染端按它停动画 ----------
+  const swPerf = $('swPerf');
+  let perfLite = false;
+  function syncPerf() { swPerf.classList.toggle('on', perfLite); }
+  swPerf.addEventListener('click', () => {
+    perfLite = !perfLite;
+    syncPerf();
+    window.orange.setConfig({ perf: { lite: perfLite } });
+  });
+
   // ---------- 无选区默认跑全图（苹果式开关） ----------
   const swNoSel = $('swNoSel');
   let noSelFull = false;
@@ -550,7 +574,7 @@
     save({ psDialogTop });
   });
 
-  // ---------- 生图提示音：开关/音量/自定义音效（音频文件放文档目录来福/sounds） ----------
+  // ---------- 生图提示音：开关/音量/自定义音效（音频文件放文档目录橙子/sounds） ----------
   const swSound = $('swSound'), sndSel = $('sndSel');
   let sndOn = true, sndVol = 60, sndFile = '', sndDir = '';
   function playTest() {
@@ -628,20 +652,22 @@
   // ---------- PS插件重装 ----------
   const btnBridge = $('btnBridge');
   btnBridge.setAttribute('data-pass', '');
-  function showBridgeStatus(r) {
-    const busy = r.status === 'installing';
-    btnBridge.disabled = busy;
-    btnBridge.textContent = busy ? '正在替换…' : r.pending ? '等待 PS 退出（已排队）' : r.needsAdmin ? '授权清理并安装新版' : '清理旧版并安装新版';
-    $('bridgeStat').textContent = (r.pending ? '⏳ ' : r.ok ? '✓ ' : '✗ ') + (r.detail || r.error || '安装失败');
-  }
-  window.orange.onBridgeInstallStatus(showBridgeStatus);
-  window.orange.bridgeInstallStatus().then(showBridgeStatus).catch(() => {});
   btnBridge.addEventListener('click', async () => {
     btnBridge.disabled = true;
-    btnBridge.textContent = '检查中…';
-    try { showBridgeStatus(await window.orange.bridgeReinstall()); }
-    catch (error) { showBridgeStatus({ ok: false, error: '安装请求失败：' + error.message }); }
+    btnBridge.textContent = '安装中…';
+    const r = await window.orange.bridgeReinstall();
+    $('bridgeStat').textContent = r.ok
+      ? '✓ ' + r.detail + '（重启PS后生效）'
+      : '✗ ' + (r.detail || r.error || '安装失败');
+    btnBridge.disabled = false;
+    btnBridge.textContent = '重新安装PS插件';
   });
+
+  // ---------- 提示词更新（1012）的界面已搬到控制台「更新」卡（1013 用户裁定）----------
+  // 这里只留一句指路文案（见 HTML 的「更新」块）。**通道一个没删**：
+  //   plibUpdateCheck / plibUpdateStatus / onPlibUpdateVars / plibUpdatePreview / plibUpdateApply
+  //   全部还在，提示词卡的同步页照常用 plibUpdatePreview/Apply。
+  // ⚠删这块时别碰下面初始化里同一行的 sndVol——它和 syncPlibUpd() 挤在一行（已处理）。
 
   // ---------- 初始化 ----------
   (async () => {
@@ -654,6 +680,8 @@
     syncBgOp(ui.bgOpacity != null ? Number(ui.bgOpacity) : DEFAULTS.bgOpacity);
     noSelFull = !!(cfg.gen && cfg.gen.noSelFull);
     syncNoSel();
+    perfLite = !!(cfg.perf && cfg.perf.lite);
+    syncPerf();
     psOnlyTop = !!ui.psOnlyTop;
     syncPsTop();
     psDialogTop = ui.psDialogTop !== false;

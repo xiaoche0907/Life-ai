@@ -80,6 +80,7 @@ const API = {
   setTheme: (theme) => ipcRenderer.send('set-theme', theme),
   onTheme: (cb) => ipcRenderer.on('theme', (_e, t) => cb(t)),
   onUIVars: (cb) => ipcRenderer.on('ui-vars', (_e, u) => cb(u)),
+  onPerfVars: (cb) => ipcRenderer.on('perf-vars', (_e, p) => cb(p)),   // 流畅优先（低配电脑）：停装饰动画/降穿透上报频率
   onLockState: (cb) => ipcRenderer.on('lock-state', (_e, s) => cb(s)),
   onZoomVar: (cb) => ipcRenderer.on('zoom-var', (_e, z) => cb(z)),
   setPassRects: (rects) => ipcRenderer.send('pass-rects', rects),
@@ -117,6 +118,7 @@ const API = {
   onGenVars: (cb) => ipcRenderer.on('gen-vars', (_e, g) => cb(g)),
   onPromptForceFill: (cb) => ipcRenderer.on('prompt-force-fill', (_e, txt) => cb(txt)),   // 进度卡/聊天等"点击填入提示词"专用，无视输入框焦点状态强制覆盖（0919）
   aiModels: () => ipcRenderer.invoke('ai-models'),
+  aiModelsFor: (prov) => ipcRenderer.invoke('ai-models-for', prov),   // 1013：按渠道名拉（momo 等）
   aiBalance: () => ipcRenderer.invoke('ai-balance'),
   getProviders: () => ipcRenderer.invoke('get-providers'),
   onProvidersChanged: (cb) => ipcRenderer.on('providers-changed', () => cb()),   // 渠道增删/显隐（0908）
@@ -142,8 +144,6 @@ const API = {
   soundOpenFolder: () => ipcRenderer.invoke('sound-open-folder'),
   // --- PS桥接插件自动安装 ---
   bridgeReinstall: () => ipcRenderer.invoke('bridge-reinstall'),
-  bridgeInstallStatus: () => ipcRenderer.invoke('bridge-install-status'),
-  onBridgeInstallStatus: (cb) => ipcRenderer.on('bridge-install-status', (_e, status) => cb(status)),
 
   // --- 提示词库（存文档目录，卸载重装不丢） ---
   plibGet: () => ipcRenderer.invoke('plib-get'),
@@ -170,7 +170,21 @@ const API = {
   autofixShutdownStatus: () => ipcRenderer.invoke('autofix-shutdown-status'),
   onAutofixShutdown: (cb) => ipcRenderer.on('autofix-shutdown', (_e, p) => cb(p || {})),
   plibRestoreTrash: () => ipcRenderer.invoke('plib-restore-trash'),
+  plibUpdateCheck: () => ipcRenderer.invoke('plib-update-check'),
+  plibUpdatePreview: () => ipcRenderer.invoke('plib-update-preview'),
+  plibUpdateApply: (keys) => ipcRenderer.invoke('plib-update-apply', keys),
+  plibUpdateStatus: () => ipcRenderer.invoke('plib-update-status'),
+  onPlibUpdateVars: (cb) => ipcRenderer.on('plib-update-vars', (_e, p) => cb(p || {})),
   onPlibChanged: (cb) => ipcRenderer.on('plib-changed', (_e, lib) => cb(lib)),
+  // --- 软件更新（1013，更新卡）---
+  updaterStatus: () => ipcRenderer.invoke('updater-status'),
+  updaterCheck: () => ipcRenderer.invoke('updater-check'),
+  updaterDownload: () => ipcRenderer.invoke('updater-download'),
+  updaterRun: () => ipcRenderer.invoke('updater-run'),
+  updaterOpenFolder: () => ipcRenderer.invoke('updater-open-folder'),
+  updaterSeen: () => ipcRenderer.invoke('updater-seen'),
+  onUpdaterVars: (cb) => ipcRenderer.on('updater-vars', (_e, p) => cb(p || {})),
+  onUpdaterProgress: (cb) => ipcRenderer.on('updater-progress', (_e, p) => cb(p || {})),
   // 释放飞行代理层（0905丝滑）：主进程发快照+起止坐标，代理页rAF飞行
   onFlyData: (cb) => ipcRenderer.on('fly-data', (_e, d) => cb(d)),
   onFlyPrep: (cb) => ipcRenderer.on('fly-prep', (_e, d) => cb(d)),   // 收纳时逐张预热快照位图（0906）

@@ -23,11 +23,17 @@ ctx.cleanKey = KH.cleanKey;
 ctx.keyIssue = KH.keyIssue;
 
 // ---------- 生图日志：全局日志流，日志卡实时订阅 ----------
+// ⚠1013：**同时落盘到 glass.log**。原来只进内存（genLog 数组），重启即清、也不在诊断文件里，
+//   导致"色卡/贴回"这类问题排查时只能靠猜（本机连猜三轮才意识到日志根本看不到）。
+//   glass.log 本来就承载桥接握手/capture/回图 note 等诊断行，生图日志跟它同一个文件、同一时间轴，
+//   出问题的时刻两边能对上。前缀 [olog] 便于过滤。
 const genLog = [];
 function olog(msg, type) {
-  const entry = { ts: Date.now(), msg: (type === 'err' ? humanizeErr(msg) : msg), type: type || 'info' };
+  const text = (type === 'err' ? humanizeErr(msg) : msg);
+  const entry = { ts: Date.now(), msg: text, type: type || 'info' };
   genLog.push(entry);
   if (genLog.length > 500) genLog.shift();
+  try { fs.appendFileSync(glassLogPath(), new Date().toISOString() + ' [olog]' + (type ? '(' + type + ')' : '') + ' ' + text + '\n'); } catch (e) {}
   ctx.broadcast('olog', entry);
 }
 ipcMain.handle('get-olog', () => genLog);

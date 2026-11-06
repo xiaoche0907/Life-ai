@@ -64,11 +64,10 @@
     font-size: 12px; padding: 0 8px; outline: none;
   }
   #settings select option { background: var(--option-bg); }
-  .setRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .setRow { display: flex; align-items: center; gap: 8px; }
   .setRow .grow { flex: 1; min-width: 0; }
   /* 渠道两列并排（0908用户裁定）：AJI|GRS 一横排，其后自定义/用户新增渠道两两一排 */
   #provGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  @media (max-width: 400px) { #provGrid { grid-template-columns: 1fr; } }
   .provBox { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); }
   .provBox.off { opacity: 0.45; }
   .provHead { display: flex; align-items: center; gap: 6px; min-height: 22px; }
@@ -81,6 +80,24 @@
   .xdel { font-size: 12px; }
   .xdel:hover { color: var(--err); }
   .provBox input, .provBox select { height: 28px; font-size: 11.5px; }
+  /* Key 行 + 小眼睛（1013）：眼睛贴在输入框右端，睁眼=明文 */
+  .keyRow { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .keyRow input { flex: 1; min-width: 0; }
+  .keyEye {
+    width: 26px; height: 26px; border-radius: 8px; flex: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: var(--text-dim);
+  }
+  .keyEye svg { width: 14px; height: 14px; }
+  .keyEye:hover { background: var(--btn-bg-hover); }
+  .keyEye.on { color: var(--accent-text); background: var(--accent-soft); }
+  /* 拉取模型（动态渠道） */
+  .fetchM {
+    height: 26px; border-radius: 8px; border: 1px dashed var(--inset-border); cursor: pointer;
+    background: transparent; color: var(--text-dim); font-size: 10.5px; white-space: nowrap;
+  }
+  .fetchM:hover { border-color: var(--accent-border); color: var(--accent-text); }
+  .fetchM:disabled { opacity: 0.6; cursor: default; }
   #btnAddProv { border: 1px dashed var(--inset-border); background: transparent; color: var(--text-dim); height: 34px; border-radius: 12px; cursor: pointer; font-size: 12px; }
   #btnAddProv:hover { border-color: var(--accent-border); color: var(--accent-text); }
   .mini {
@@ -168,9 +185,9 @@
 
   <div id="body">
     <div id="settings">
-      <div class="setLabel">渠道（小眼睛控制显示；自定义渠道可增删）</div>
+      <div class="setLabel">渠道（小眼睛=是否出现在渠道胶囊里；AJI/GRS内置，其余可增删）</div>
       <div id="provGrid"></div>
-      <button id="btnAddProv" data-pass>＋ 新增自定义渠道</button>
+      <button id="btnAddProv" data-pass>＋ 新增自定义渠道（Gemini兼容中转）</button>
 
       <div class="setLabel">生成超时（秒）</div>
       <div class="setRow">
@@ -249,7 +266,7 @@
   bindWheelCycle('pSize', 'pSizeVal', SIZES, 'size');
   bindWheelCycle('pRatio', 'pRatioVal', RATIOS, 'ratio', () => queueRatioSync());
 
-  // 比例联动PS矩形选框工具：切比例 → 桥接件按名选工具预设（tpl自带"来福预设_<比例>"，跨PS版本稳定）
+  // 比例联动PS矩形选框工具：切比例 → 桥接件按名选工具预设（tpl自带"橙子预设_<比例>"，跨PS版本稳定）
   // 首次切比例前先让桥接件把插件内 presets/marquee.tpl 导入一次（老插件同款机制；本会话只导一次）
   // 防抖300ms——点击/滚轮快速滑过中间档位时不逐个下发（滚轮从bindWheelCycle的onStep进来）
   let ratioSyncTimer = null, presetsImported = false;
@@ -287,18 +304,23 @@
     setCount(count + (e.deltaY > 0 ? -step : step));
   });
 
-  // ---------- 渠道系统：AJI / GRS(静态模型+价格表) / custom + cus_*(动态模型，Gemini兼容中转) ----------
+  // 渠道系统：AJI / GRS（静态模型+价格表）/ momo / custom + cus_*（动态模型，Gemini兼容中转）
   let PROV = null;
-  let curProv = 'custom';
+  let curProv = 'aji';
   let curModelId = '';
-  const BUILTIN = ['custom'];   // momo已休眠不进列表
+  // 1013：momo（墨墨）复活进列表。地址内置（providers.js 里写死），卡片上只给 Key 框 + 拉取模型
+  const BUILTIN = ['aji', 'grs', 'momo', 'custom'];
+  const BUILTIN_LABEL = { momo: '墨墨' };   // 内置渠道的显示名（meta.label 是代号时用它）
   // 渠道胶囊可轮换的集合：内置+自定义里没被小眼睛关掉的（0908）
   function provOrder() {
     const all = BUILTIN.concat(Object.keys(PROV.conf).filter((k) => /^cus_/.test(k)));
     const vis = all.filter((k) => PROV.meta[k] && !(PROV.conf[k] && PROV.conf[k].hidden));
-    return vis.length ? vis : ['custom'];
+    return vis.length ? vis : ['aji'];
   }
-  function provLabel(k) { return (PROV.conf[k] && PROV.conf[k].label) || (PROV.meta[k] && PROV.meta[k].label) || k; }
+  function provLabel(k) {
+    if (BUILTIN_LABEL[k]) return BUILTIN_LABEL[k];
+    return (PROV.conf[k] && PROV.conf[k].label) || (PROV.meta[k] && PROV.meta[k].label) || k;
+  }
 
   function modelList() {
     if (PROV.meta[curProv].dynamicModels) {
@@ -319,7 +341,7 @@
     return (mm && mm.name) || id || '未选择';
   }
   function applyProviderUI() {
-    if (!provOrder().includes(curProv)) curProv = provOrder()[0];
+    if (!PROV.meta[curProv]) curProv = provOrder()[0];
     $('pChannel').textContent = provLabel(curProv);
     curModelId = PROV.conf[curProv].model || '';
     $('pModelName').textContent = modelDisplay(curModelId);
@@ -335,7 +357,12 @@
   $('pChannel').addEventListener('wheel', (e) => { e.preventDefault(); setProvider(cycle(provOrder(), curProv, e.deltaY > 0 ? 1 : -1)); });
 
   // ---------- 设置页渠道网格：两列并排 + 小眼睛显隐 + 自定义渠道增删（0908用户裁定） ----------
-  const EYE = window.ORANGE_ICONS && window.ORANGE_ICONS.eye;
+  // ⚠ eye 在 window.PLIB_ICONS（提示词库分组图标集）里，ORANGE_ICONS 里没有它——
+  //   以前写 ORANGE_ICONS.eye 取回 undefined，靠 '◉' 兜底才没炸（1013 查实）
+  const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  // Key 框的小眼睛（1013 用户要求）：睁眼=明文，闭眼=圆点。走线描风格，和渠道显隐那只眼区分开
+  const EYE_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.15 18.15 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+  const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   function provBox(k) {
     const conf = PROV.conf[k] || {};
     const isCus = /^cus_/.test(k);
@@ -364,30 +391,58 @@
       head.appendChild(x);
     }
     box.appendChild(head);
-    if (k === 'grs') {
-      const sel = document.createElement('select');
-      sel.dataset.field = 'base'; sel.setAttribute('data-pass', '');
-      sel.innerHTML = '<option value="https://grsai.dakka.com.cn">国内直连 · grsai.dakka.com.cn</option><option value="https://grsaiapi.com">海外 · grsaiapi.com</option>';
-      sel.value = conf.base || 'https://grsai.dakka.com.cn';
-      box.appendChild(sel);
-    } else {
-      const b = document.createElement('input');
-      b.dataset.field = 'base'; b.placeholder = k === 'aji' ? '网址（默认 https://ai.ajiai.top）' : '网址 https://…'; b.value = conf.base || ''; b.setAttribute('data-pass', '');
-      box.appendChild(b);
+    // 墨墨：地址内置（写死在 providers.js，用户只填 Key）——不给地址框，免得改坏了拉不到模型
+    if (k !== 'momo') {
+      if (k === 'grs') {
+        const sel = document.createElement('select');
+        sel.dataset.field = 'base'; sel.setAttribute('data-pass', '');
+        sel.innerHTML = '<option value="https://grsai.dakka.com.cn">国内直连 · grsai.dakka.com.cn</option><option value="https://grsaiapi.com">海外 · grsaiapi.com</option>';
+        sel.value = conf.base || 'https://grsai.dakka.com.cn';
+        box.appendChild(sel);
+      } else {
+        const b = document.createElement('input');
+        b.dataset.field = 'base'; b.placeholder = k === 'aji' ? '网址（默认 https://ai.ajiai.top）' : '网址 https://…'; b.value = conf.base || ''; b.setAttribute('data-pass', '');
+        box.appendChild(b);
+      }
     }
+    // Key 行：输入框 + 小眼睛（睁眼=看明文，闭眼=圆点）。1013 用户要的
+    const keyRow = document.createElement('div');
+    keyRow.className = 'keyRow';
     const key = document.createElement('input');
     key.type = 'password'; key.dataset.field = 'key'; key.placeholder = 'API Key'; key.value = conf.key || ''; key.setAttribute('data-pass', '');
-    box.appendChild(key);
-    const protocolRow = document.createElement('label');
-    protocolRow.style.cssText = 'display:flex;align-items:center;gap:8px;color:var(--text-dim);font-size:11px';
-    protocolRow.appendChild(document.createTextNode('接口协议'));
-    const protocol = document.createElement('select');
-    protocol.dataset.field = 'protocol'; protocol.setAttribute('data-pass', '');
-    protocol.setAttribute('aria-label', provLabel(k) + '接口协议');
-    protocol.style.cssText = 'flex:1;min-width:0';
-    protocol.innerHTML = '<option value="gemini">Gemini</option><option value="openai">OpenAI（图片接口）</option>';
-    protocol.value = conf.protocol || 'gemini';
-    protocolRow.appendChild(protocol); box.appendChild(protocolRow);
+    const keyEye = document.createElement('div');
+    keyEye.className = 'keyEye';
+    keyEye.dataset.act = 'keyeye';
+    keyEye.setAttribute('data-pass', '');
+    keyEye.title = '睁眼 = 显示 Key 明文；闭眼 = 隐藏';
+    keyEye.innerHTML = EYE_CLOSED;
+    keyEye.addEventListener('click', () => {
+      const on = key.type === 'password';
+      key.type = on ? 'text' : 'password';
+      keyEye.classList.toggle('on', on);
+      keyEye.innerHTML = on ? EYE_OPEN : EYE_CLOSED;
+      keyEye.title = on ? '已显示明文，点击隐藏' : '睁眼 = 显示 Key 明文；闭眼 = 隐藏';
+    });
+    keyRow.appendChild(key); keyRow.appendChild(keyEye);
+    box.appendChild(keyRow);
+    // 动态渠道（含 momo）：加「拉取模型」按钮 —— 写死模型名是错的（老插件实测踩过）
+    if (k === 'momo' || conf.dynamicModels) {
+      const fr = document.createElement('button');
+      fr.className = 'fetchM'; fr.type = 'button';
+      fr.setAttribute('data-pass', '');
+      fr.textContent = conf.models && conf.models.length ? ('↻ 重新拉取模型（' + conf.models.length + '）') : '↻ 拉取模型';
+      fr.title = '从该渠道 /v1/models 拉取模型列表（只保留生图模型）';
+      fr.addEventListener('click', async () => {
+        if (fr.disabled) return;
+        fr.disabled = true; const old = fr.textContent; fr.textContent = '拉取中…';
+        try {
+          const r = await window.orange.aiModelsFor(k);
+          fr.textContent = r && r.ok ? ('✓ 拉到 ' + r.models.length + ' 个生图模型') : ('✗ ' + ((r && r.error) || '失败'));
+        } catch (e) { fr.textContent = '✗ ' + ((e && e.message) || '失败'); }
+        setTimeout(() => { fr.disabled = false; fr.textContent = conf.models && conf.models.length ? ('↻ 重新拉取模型（' + conf.models.length + '）') : '↻ 拉取模型'; }, 2500);
+      });
+      box.appendChild(fr);
+    }
     return box;
   }
   function renderProvGrid() {
@@ -429,10 +484,10 @@
     const box = e.target.closest('.provBox'); const f = e.target.dataset.field; if (!box || !f) return;
     const k = box.dataset.prov;
     const v = e.target.value.trim();
-    PROV.conf[k][f] = v;
+    PROV.conf[k][f] = (f === 'base' && k === 'aji' && !v) ? 'https://ai.ajiai.top' : v;
     clearTimeout(fieldTimer);
     fieldTimer = setTimeout(async () => {
-      const patch = {}; patch[k] = Object.assign({}, PROV.conf[k]);
+      const patch = {}; patch[k] = {}; patch[k][f] = PROV.conf[k][f];
       await window.orange.setConfig({ providers: patch });
       if (f === 'label') { PROV.meta[k].label = v || k; if (curProv === k) $('pChannel').textContent = provLabel(k); }
       if (f === 'key' && curProv === k) refreshBalance();
@@ -444,17 +499,17 @@
   $('btnAddProv').addEventListener('click', async () => {
     const k = 'cus_' + Math.random().toString(36).slice(2, 8);
     const n = Object.keys(PROV.conf).filter((x) => /^cus_/.test(x)).length + 1;
-    const patch = {}; patch[k] = { base: '', key: '', model: '', models: [], label: '自定义' + n, hidden: false, protocol: 'gemini' };
+    const patch = {}; patch[k] = { base: '', key: '', model: '', models: [], label: '自定义' + n, hidden: false };
     await window.orange.setConfig({ providers: patch });
     PROV = await window.orange.getProviders();
     renderProvGrid();
-    setStatus('已新增渠道「自定义' + n + '」：填写网址、Key并选择协议，模型用胶囊里的↻拉取', 'ok');
+    setStatus('已新增渠道「自定义' + n + '」：填网址和Key，模型用胶囊里的↻拉取', 'ok');
   });
   // 别的窗口改了渠道（对话设置等）→ 重拉表刷新
   if (window.orange.onProvidersChanged) window.orange.onProvidersChanged(async () => {
     const wasOpen = $('settings').classList.contains('show');
     PROV = await window.orange.getProviders();
-    if (!provOrder().includes(curProv)) curProv = provOrder()[0];
+    if (!PROV.meta[curProv]) curProv = provOrder()[0];
     if (wasOpen) renderProvGrid();
     $('pChannel').textContent = provLabel(curProv);
   });
@@ -543,10 +598,7 @@
     toast(on ? '自动回传已开启' : '自动回传已关闭（手动点图贴回）');
   });
   $('btnSaveApi').addEventListener('click', async () => {
-    clearTimeout(fieldTimer);
-    const patch = {};
-    for (const k of BUILTIN.concat(Object.keys(PROV.conf).filter(k => /^cus_/.test(k)))) patch[k] = Object.assign({}, PROV.conf[k]);
-    await window.orange.setConfig({ providers: patch });
+    // 字段已在 input 时即时落库；这里只收口：退出设置页 + 重查余额
     setSettingsMode(false);
     setStatus('设置已保存', 'ok');
     refreshBalance();
@@ -556,7 +608,7 @@
   let soundOn = true;
   let soundVol = 60;
   let soundFile = '';       // 自定义音效文件名（空=内置合成音）
-  let soundDirPath = '';    // 文档目录来福/sounds
+  let soundDirPath = '';    // 文档目录橙子/sounds
   if (window.orange.soundList) window.orange.soundList().then((r) => { soundDirPath = r.dir || ''; });
   function playCustom() {
     try {

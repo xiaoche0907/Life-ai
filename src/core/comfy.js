@@ -127,7 +127,7 @@ function readWorkflow(name) {
   if (isUiWorkflow(j)) {
     try { j = convertUiToApi(j); } catch (e) { return { ok: false, error: 'UI 格式转换失败：' + (e.message || e) }; }
   }
-  if (!isApiWorkflow(j)) return { ok: false, error: '无法识别的工作流格式（既不是 API 也不是 UI 格式）' };
+  if (!isApiWorkflow(j)) return { ok: false, error: '无法识别的工作流格式（既不是 API 格式也不是 UI 格式）' };
   return { ok: true, wf: j, file: f };
 }
 const titleOf = (n) => String((n._meta && n._meta.title) || '');

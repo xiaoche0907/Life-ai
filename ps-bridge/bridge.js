@@ -46,15 +46,26 @@ async function readSelection() {
   return readSelectionDOM() || (await readSelectionBP());
 }
 
-// ---------- 贴回对位（老插件 placeImageToSpecificDoc 同款序列；0908 真机 PS27 七组用例收敛到零残差） ----------
-// 每轮：读 boundsNoEffects → transform 百分比（锚左上，宽高各自缩放到选区尺寸）→ 读 bounds → move 取整位移。
-// PS 对百分比缩放会留 ±1~3px 取整残差，一轮后 |残差|≥1px 就再来一轮（读 bounds 重算），最多 3 轮。
-// ⚠比例与选区不符的图会被拉伸填满（老插件同款）——比例该在生图请求端保证（软件端 Auto=跟选区）。
+// ---------- 贴回对位（1010 定案：【逐轴精确配准】，零裁切零位移） ----------
+// 目标：图上任意一点，贴回后必须落在它原本的位置——不是"差不多居中"，是精确配准。
+// 做法：kx = sw/lw、ky = sh/lh 各轴独立，transform 锚 QCSCorner0（左上角不动），
+//   再把图层左上角 move 到选区左上角。两步都是精确值 → 映射成立方图恒等，误差 0px。
+//
+// ⚠两次翻车的完整账（别再走回头路）：
+//   ①旧写法 kx/ky 独立系数、但**从不 move**：placeEvent 是把图层居中放下的，左上角本来就不在选区左上角，
+//     缩放锚在图层自身左上角 → 那个初始偏移被原样留下，图上越靠右下错得越多（用户报"轻度位移"根因之一）。
+//   ②0910 改成 k=max(sw/lw,sh/lh) 等比盖满 + 居中裁剪：不再变形了，但**位移没消失只是换了形状**——
+//     真机实测画布 6336×9504（r=0.66667）、渠道回 1696×2528（r=0.67089）差 0.633%，
+//     k=3.75949 → 宽 6376 对画布 6336，左右各裁 20px：中心不动，但边缘物体整体挪了约 20px。
+//     用户第二次报"还是会出现位移"，就是这 20px。
+//   结论：**裁剪治不了位移，只有逐轴精确配准能**。0.633% 的非等比拉伸人眼不可见，
+//   20px 的边缘位移肉眼可见——宁可 0.63% 的形变，不要 20px 的错位（用户 1010 裁定）。
 async function fitLayerToSel(layer, sel, notes) {
   const T = [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }];
   const sw = sel.right - sel.left, sh = sel.bottom - sel.top;
   if (!(sw > 0 && sh > 0)) return;
   await action.batchPlay([{ _obj: 'select', _target: [{ _ref: 'layer', _id: layer.id }], makeVisible: false }], {});
+  // 读"不含效果"的边界：图层若带投影/描边，bounds 会外扩，拿它配准必然偏
   const readB = async (prop) => {
     try {
       const r = await action.batchPlay([{ _obj: 'get', _target: [{ _property: prop }, ...T] }], {});
@@ -67,35 +78,45 @@ async function fitLayerToSel(layer, sel, notes) {
     const d = layer.bounds;
     return { left: d.left, top: d.top, right: d.right, bottom: d.bottom };
   };
-  const resid = (b) => ({ dx: sel.left - b.left, dy: sel.top - b.top, dw: sw - (b.right - b.left), dh: sh - (b.bottom - b.top) });
-  const bad = (r) => Math.abs(r.dx) >= 1 || Math.abs(r.dy) >= 1 || Math.abs(r.dw) >= 1 || Math.abs(r.dh) >= 1;
+  // 收敛判据：尺寸 = 选区（容差 1px 吸收百分比取整）+ 左上角 = 选区左上角（容差 1px）
+  const converged = (b) => {
+    const lw = b.right - b.left, lh = b.bottom - b.top;
+    if (!(lw > 0 && lh > 0)) return true;
+    return Math.abs(lw - sw) < 1 && Math.abs(lh - sh) < 1
+      && Math.abs(b.left - sel.left) < 1 && Math.abs(b.top - sel.top) < 1;
+  };
   let b = await readB('boundsNoEffects');
-  let r = resid(b);
-  for (let pass = 0; pass < 3 && bad(r); pass++) {
+  for (let pass = 0; pass < 3; pass++) {
+    if (converged(b)) break;
     const lw = b.right - b.left, lh = b.bottom - b.top;
     if (!(lw > 0 && lh > 0)) break;
-    const kx = sw / lw * 100, ky = sh / lh * 100;
-    if (Math.abs(kx - 100) > 0.01 || Math.abs(ky - 100) > 0.01) {
+    // 各轴独立系数（>1=放大，<1=缩小）；QCSCorner0 使左上角在缩放中保持不动，下一步只需平移
+    const kx = sw / lw, ky = sh / lh;
+    if (Math.abs(kx - 1) > 0.0005 || Math.abs(ky - 1) > 0.0005) {
       await action.batchPlay([{
         _obj: 'transform', _target: T,
         freeTransformCenterState: { _enum: 'quadCenterState', _value: 'QCSCorner0' },
-        width: { _unit: 'percentUnit', _value: kx },
-        height: { _unit: 'percentUnit', _value: ky },
+        width: { _unit: 'percentUnit', _value: kx * 100 },
+        height: { _unit: 'percentUnit', _value: ky * 100 },
         interfaceIconFrameDimmed: { _enum: 'interpolationType', _value: 'bicubicAutomatic' },
       }], {});
+      b = await readB('boundsNoEffects');
     }
-    b = await readB('bounds');
+    // 配准：把图层左上角精确挪到选区左上角（不是"居中对齐"——居中只在比例相同时才等价于配准）
     const mx = sel.left - b.left, my = sel.top - b.top;
     if (Math.abs(mx) > 0.5 || Math.abs(my) > 0.5) {
       await action.batchPlay([{
         _obj: 'move', _target: T,
         to: { _obj: 'offset', horizontal: { _unit: 'pixelsUnit', _value: Math.round(mx) }, vertical: { _unit: 'pixelsUnit', _value: Math.round(my) } },
       }], {});
-      b = await readB('bounds');
+      b = await readB('boundsNoEffects');
     }
-    r = resid(b);
   }
-  if (bad(r)) notes.push('对位残差 dx=' + Math.round(r.dx) + ' dy=' + Math.round(r.dy) + ' dw=' + Math.round(r.dw) + ' dh=' + Math.round(r.dh));
+  if (!converged(b)) {
+    const lw = b.right - b.left, lh = b.bottom - b.top;
+    notes.push('对位残差 宽' + Math.round(lw) + '/' + Math.round(sw) + ' 高' + Math.round(lh) + '/' + Math.round(sh)
+      + ' 偏移' + Math.round(b.left - sel.left) + ',' + Math.round(b.top - sel.top));
+  }
 }
 
 // ---------- 命令执行器：后续所有模块（校色/特效/放大）都注册到这里 ----------
@@ -116,6 +137,47 @@ const handlers = {
   // 列出PS当前打开的全部文档（批处理用）
   async listDocs() {
     return { docs: app.documents.map((d) => ({ id: d.id, name: d.title || ('文档' + d.id) })) };
+  },
+
+  // 只读：整个图层栈（含组内，带深度与父名）。1013 加给"色卡曲线剪贴到哪层"这类排查用
+  // —— 只用 DOM 只读属性，不改任何东西。
+  async listLayerStack() {
+    const doc = app.activeDocument;
+    if (!doc) return { ok: false, error: '没有打开的文档' };
+    const out = [];
+    const walk = (layers, depth, parent) => {
+      for (const L of layers) {
+        let kind = '';
+        try { kind = String(L.kind); } catch (e) {}
+        out.push({ id: L.id, name: L.name || '', kind: kind, depth: depth, parent: parent, clipped: !!L.isClippingMask });
+        try { if (L.layers && L.layers.length) walk(L.layers, depth + 1, L.name || ''); } catch (e) {}
+      }
+    };
+    walk(doc.layers, 0, '');
+    return { ok: true, docId: doc.id, count: out.length, layers: out };
+  },
+
+  // 只读：当前选中层在**它自己所在父集合**里的下一层（=剪贴/蒙版目标）。
+  // 色卡结算靠 groupEvent 把曲线剪贴到选中层；打组贴回时图在组里，必须按同一父集合找兄弟。
+  async chartDebugClip() {
+    const doc = app.activeDocument;
+    if (!doc) return { ok: false, error: '没有打开的文档' };
+    let cur = null;
+    try { cur = (doc.activeLayers && doc.activeLayers.length) ? doc.activeLayers[0] : null; } catch (e) {}
+    if (!cur) return { ok: false, error: '没有选中层' };
+    let sib = null, where = '';
+    try {
+      const par = cur.parent;
+      if (par && par.layers && par.layers.length) { sib = par.layers; where = '组的子层'; }
+      else { sib = doc.layers; where = '文档顶层'; }
+    } catch (e) { sib = doc.layers; where = '文档顶层(取parent失败)'; }
+    let next = null;
+    for (let i = 0; i < sib.length; i++) {
+      if (sib[i].id === cur.id) { next = sib[i + 1] || null; break; }
+    }
+    return { ok: true, where: where, cur: { id: cur.id, name: cur.name || '' },
+      next: next ? { id: next.id, name: next.name || '', kind: String(next.kind || '') } : null,
+      clipTargetIsImage: !!(next && String(next.kind || '') === 'pixel') };
   },
 
   // 自动对齐：选中图层(上=返图)与其下一层(下=原图)跑PS官方「自动对齐图层」内容引擎；
@@ -389,14 +451,17 @@ const handlers = {
           if (sel && layer) {
             try { await fitLayerToSel(layer, sel, notes); }
             catch (eFit) {
-              // 描述符路径被拒（个别版本不认 transform 字段）→ 退回老的两步 DOM 法，至少不比以前差
+              // 描述符路径被拒（个别版本不认 transform 字段）→ 退回两步 DOM 法。
+              // 1010：同样改【逐轴精确配准】（与主路径同口径）。
+              //   DOM 的 scale 锚点不由我们控制，所以缩放后**重读 bounds 再按左上角平移**——
+              //   不依赖锚点在哪，配准结果一样精确。
               notes.push('transform对位失败，退回两步法: ' + (eFit.message || eFit));
               try {
                 const b = layer.bounds;
                 const lw = b.right - b.left, lh = b.bottom - b.top;
                 const sw = sel.right - sel.left, sh = sel.bottom - sel.top;
                 if (lw > 0 && lh > 0 && sw > 0 && sh > 0) {
-                  await layer.scale(sw / lw * 100, sh / lh * 100);
+                  await layer.scale((sw / lw) * 100, (sh / lh) * 100);
                   const b2 = layer.bounds;
                   const dx = sel.left - b2.left, dy = sel.top - b2.top;
                   if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) await layer.translate(dx, dy);
@@ -754,6 +819,14 @@ const hostCtx = {
   sendToPanel(channel, data) {
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ push: channel, data }));
   },
+  // ⚠1013 补：colorcal.host.js 里有 6 处 ctx.logToPanel(...)，但 hostCtx **从来没提供过它** →
+  //   每次都抛 TypeError，被外层的 try{}catch{} 吞掉，一个字都没进日志（"LUT烘焙开始/完成"
+  //   "贴卡完成"这些进程信息全是哑的，排查时完全看不见）。接到 logToPanel 推流通道上修好。
+  logToPanel(msg, type) {
+    try {
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ push: 'logToPanel', data: { message: String(msg), type: type || 'info' } }));
+    } catch (e) {}
+  },
 };
 
 // 文档级命令串行队列（v54）：软件端多个批次并发（用户连点 A/B/C 三张图生成），采集/贴回在这里会交错——
@@ -802,7 +875,7 @@ function connect() {
     // 版本握手：软件端据此判断桥接件是否为旧版（提醒Reload）
     try {
       ws.send(JSON.stringify({
-        hello: true, version: 59,
+        hello: true, version: 66,
         presetImport: presetImportState,
         colorcal: Object.keys(hostRegistry).join(','),
         hostErr: hostLoadErr || undefined,

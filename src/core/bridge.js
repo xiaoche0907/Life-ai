@@ -53,16 +53,11 @@ function startBridgeServer() {
         const CUR_BRIDGE_VER = ctx.curBridgeVer || 28;
         const fatal = ctx.bridgeFatalVers && ctx.bridgeFatalVers[psBridgeVer];
         if (fatal) {
-          ctx.olog('🛑 PS里运行的来福插件 v' + psBridgeVer + ' 有致命bug（' + fatal + '）。已安排替换，请保存作品并退出 PS，等待来福提示安装完成后再打开。', 'err');
+          ctx.olog('🛑 PS里跑的来福插件 v' + psBridgeVer + ' 有致命bug（' + fatal + '）。本软件已带 v' + CUR_BRIDGE_VER + '：请**完全退出并重启一次 PS**（任务管理器里确认没有 Photoshop.exe 再开）', 'err');
         } else if (psBridgeVer < CUR_BRIDGE_VER) {
-          ctx.olog('🔌 检测到旧版桥接（v' + psBridgeVer + '→v' + CUR_BRIDGE_VER + '），已安排清理替换。请保存作品并退出 PS，保持来福运行，安装完成后再打开 PS。', 'info');
+          ctx.olog('🔌 PS桥接已连接，但PS里跑的是旧版插件（v' + psBridgeVer + '→v' + CUR_BRIDGE_VER + '）——完全退出并重启一次PS才会加载新版', 'err');
         } else {
           ctx.olog('🔌 PS桥接已连接（插件 v' + psBridgeVer + '）', 'ok');   // 0908用户要求：连上要在生图日志里明说
-        }
-        if ((fatal || psBridgeVer < CUR_BRIDGE_VER) && ctx.installBridge) {
-          ctx.installBridge({ force: true }).then((r) => {
-            if (!r.ok) ctx.olog('🔌 ' + r.error, 'err');
-          });
         }
         if (msg.presetImport && msg.presetImport !== 'pending') logPresetImport(msg.presetImport);
         else if (psBridgeVer >= 52) pollPresetImport(socket, 0);   // 握手时还在查/导：稍后主动问（开机阶段的推送实证丢过）
@@ -85,6 +80,12 @@ function startBridgeServer() {
         else if (msg.push === 'lutCalResult') ctx.olog('[LUT精修] ' + (d.message || ''), d.success ? 'ok' : 'err');
         else if (msg.push === 'chartStampResult') ctx.olog('[色卡] ' + (d.ok ? '贴卡完成' : '贴卡失败: ' + (d.message || '')), d.ok ? 'info' : 'err');
         else if (msg.push === 'chartFinishResult') ctx.olog('[色卡] ' + (d.message || ''), d.success ? 'ok' : 'err');
+        // 1013：桥接件的进程日志（LUT烘焙/贴卡/色卡测量等）。以前 hostCtx 没有 logToPanel，
+        // 这些行全被吞了——排查"曲线没作用"这类问题时完全看不见中间数据。
+        else if (msg.push === 'logToPanel') {
+          const ty = (d.type === 'err' || d.type === 'warn') ? 'err' : 'info';
+          ctx.olog(d.message || '', ty);
+        }
         ctx.broadcast('ps-reply', msg);
         return;
       }
@@ -177,6 +178,32 @@ ipcMain.handle('restore-selection', (_e, ctx2) =>
   sendToPSAwait({ action: 'restoreSelection', params: { docId: ctx2.docId || null, selection: ctx2.selection || null } }, 30000)
 );
 
+// 色卡结算（手动贴回通道专用）：色卡模式下"回图后测偏→生成校正层→遮卡"这一步，
+// 原先只在**自动回传/提前贴回**成功后才触发（gen.js 里 `if (chartOn && (placedOk || held))`）。
+// 而 autoReturn=false 时那两条都不成立 → 用户手动点图贴回，色卡一直留在文档上、永远不出曲线
+// （1013 用户实测报的 bug）。这里补上：手动贴回成功后也结算一次。
+// ⚠重复调用是安全的：colorcal.host.js 的 chartFinish 结算完就 `delete _charts[docId]`，
+//   第二次只会回"没有待结算的色卡任务"；而且它结算的是**文档上所有新增图层**（不是单张），
+//   所以贴回第一张时就该结算，不必等整批贴完。
+async function settleChartIfOn(docId) {
+  try {
+    if (!ctx.config || !ctx.config.gen || !ctx.config.gen.chartOn) return;
+    await new Promise((r) => setTimeout(r, 700));   // 等 PS 落完图层（与 gen.js 同款等待）
+    // 结果日志不用在这里写：桥接端会推 chartFinishResult，bridge.js 的 push 分支已经把它写进生图日志
+    // （成功=ok、失败=err）。这里再加一句就是同一件事两行。
+    // ⚠重复调用安全：PS 端结算完会把"当前图层"重新登记成底账（不再删状态），第二次进来不会重复建层。
+    // 1013 诊断（落盘）：把"哪条链、拿哪个 docId 去结算、PS 回话"记下来。
+    //   用户实报"提前回图没曲线、手动单点有曲线"，两条链只差这个 docId 的来源——
+    //   不落盘就没法比对，所以这一行必须留。
+    const r = await sendToPSAwait({ action: 'chartFinish', params: { docId: docId || null } }, 120000);
+    try { ctx.dlog('[chart] settle doc=' + String(docId) + ' ok=' + !!(r && r.ok) + (r && r.error ? ' err=' + r.error : '')); } catch (e2) {}
+    return r;
+  } catch (e) {
+    try { if (ctx.olog) ctx.olog('[色卡] 结算异常: ' + ((e && e.message) || e), 'err'); } catch (e2) {}
+  }
+}
+ctx.settleChartIfOn = settleChartIfOn;
+
 ipcMain.handle('place-in-ps', async (_e, payload) => {
   // 兼容两种调用：纯文件路径 / {file, ctx:{docId, selection}}
   const file = typeof payload === 'string' ? payload : payload.file;
@@ -189,6 +216,8 @@ ipcMain.handle('place-in-ps', async (_e, payload) => {
     const note = r.result && r.result.note;
     if (note) fs.appendFileSync(ctx.glassLogPath(), new Date().toISOString() + ' [place] ' + note + '\n');
   } catch {}
+  // 色卡模式下：手动贴回成功后也要结算，否则不出曲线（老版本只有自动回传那条链会结算）
+  if (r && r.ok) await settleChartIfOn(pctx.docId || null);
   return r;
 });
 
@@ -221,7 +250,7 @@ ctx.startBridgeServer = startBridgeServer;
 ctx.sendToPSAwait = sendToPSAwait;
 ctx.psConnected = () => !!(psSocket && psSocket.readyState === 1);   // COM兜底探测据此让位
 ctx.bridgeVer = () => psBridgeVer;
-ctx.curBridgeVer = 59;   // 期望的桥接件版本（与ps-bridge/bridge.js的hello version同步抬；58=贴回图层无条件转内嵌智能对象+辉光采集可传maxEdge）
+ctx.curBridgeVer = 66;   // 期望的桥接件版本（与ps-bridge/bridge.js的hello version同步抬；66=P0修复：色卡结算建曲线前先清选区——残留选区会把下一条曲线套成"只作用于色卡带"的蒙版，治"只有最上边那张的曲线生效"）
 // v56 是致命版：captureInput 必抛 "fullMode is not defined"（有没有选区都采不到）。握手撞见它要用最响的话说清楚——
 // 用户在 v5.18.39~42 安装包上重启过 PS 才会加载到它，"重启也没用"就是这个
 ctx.bridgeFatalVers = { 56: 'v56 采集选区必失败（fullMode 作用域错误）' };

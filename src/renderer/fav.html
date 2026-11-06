@@ -107,6 +107,8 @@
 </head>
 <body>
 <script src="icons.js"></script>
+<script src="pinyin-map.js"></script>
+<script src="pinyin.js"></script>
 <div id="card" class="lg">
   <div id="head">
     <span class="title"><span id="ico"></span>甄选</span>
@@ -143,11 +145,12 @@
     let arr;
     if (kw) {
       // 0910用户裁定：搜索时在整个提示词库里找（不只甄选），只搜标题，按匹配位置排（与提示词库卡同口径）；
-      // 未甄选的命中项爱心空心，点一下即加入甄选
+      // 未甄选的命中项爱心空心，点一下即加入甄选。
+      // 1011用户需求：同提示词库卡一样支持拼音/首字母、不分平翘舌（共用 pinyin.js 的打分）
       const k = kw.toLowerCase();
       arr = lib.prompts
-        .map((p) => ({ p, at: (p.name || '').toLowerCase().indexOf(k) }))
-        .filter((x) => x.at >= 0)
+        .map((p) => ({ p, at: window.ORANGE_PINYIN.rank(p.name, k) }))
+        .filter((x) => x.at !== null)
         .sort((a, b) => (a.at - b.at) || ((b.p.fav ? 1 : 0) - (a.p.fav ? 1 : 0)) || ((b.p.ts || 0) - (a.p.ts || 0)))
         .map((x) => x.p);
     } else {

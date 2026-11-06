@@ -12,7 +12,7 @@
   #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
   #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
   #head .sp { flex: 1; }
-  #body { flex: 1; overflow-y: auto; padding: 2px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+  #body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
   #body::-webkit-scrollbar { width: 5px; }
   #body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 3px; }
 
@@ -206,6 +206,8 @@
 </head>
 <body data-arm-id="">
 <script src="icons.js"></script>
+<script src="pinyin-map.js"></script>
+<script src="pinyin.js"></script>
 <script src="param-controls.js"></script>
 <div id="card" class="lg">
   <div id="head">
@@ -672,9 +674,19 @@
     let arr = plibPrompts.slice();
     let whereIco = '', whereName = '';
     if (kw) {
+      // 1011：标题支持拼音/首字母（不分平翘舌）；正文仍只做原文子串——正文是几千字的提示词，
+      // 转拼音既慢也没有意义。命中排序：标题命中优先于正文命中，标题内再按 pinyin.js 的分档。
       const k = kw.toLowerCase();
-      arr = arr.filter((p) => ((p.name || '') + ' ' + (p.text || '')).toLowerCase().includes(k));
-      arr.sort((a, b) => ((b.fav ? 1 : 0) - (a.fav ? 1 : 0)) || ((b.ts || 0) - (a.ts || 0)));
+      arr = arr
+        .map((p) => {
+          const nr = window.ORANGE_PINYIN.rank(p.name, k);
+          if (nr !== null) return { p, at: nr };
+          if ((p.text || '').toLowerCase().includes(k)) return { p, at: 90000 };   // 正文命中：排在所有标题命中之后
+          return { p, at: null };
+        })
+        .filter((x) => x.at !== null)
+        .sort((a, b) => (a.at - b.at) || ((b.p.fav ? 1 : 0) - (a.p.fav ? 1 : 0)) || ((b.p.ts || 0) - (a.p.ts || 0)))
+        .map((x) => x.p);
       whereIco = PI.tag || ''; whereName = '搜索结果';
     } else if (groupId === '__fav') {
       arr = arr.filter((p) => p.fav).sort(favCmp);

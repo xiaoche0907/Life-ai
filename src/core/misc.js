@@ -134,7 +134,7 @@ ipcMain.handle('pee-start', (_e, seconds) => {
       if (w.isDestroyed()) continue;
       w.webContents.send('pee-alarm', { phrase: pool[i++ % pool.length] });
     }
-    ctx.olog('🚽 橙子提醒你该尿尿了！');
+    ctx.olog('🚽 来福提醒你该尿尿了！');
   }, ms);
   return { ok: true, deadline: peeDeadline };
 });

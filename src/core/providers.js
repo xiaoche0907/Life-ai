@@ -1,13 +1,14 @@
 // 渠道与模型价格表（魔改版MODEL_CONFIG移植）+ 余额/模型列表查询
-const { ipcMain, net } = require('electron');
-const { requestModels } = require('./model-request');
+const { ipcMain } = require('electron');
 const ctx = require('./ctx');
 const { isImageModel } = require('./model-kind');   // 0908：拉取模型只留生图模型
 
 const config = ctx.config;
 
 const PROVIDERS = {
-  momo: { label: 'momo', base: 'https://api.momoapi.icu', currency: '¥', dynamicModels: true, models: {} },
+  // 墨墨：地址内置写死（用户只填 Key，卡片上不给地址框——防手抖改坏拉不到模型）。
+  // dynamicModels=true：模型靠"拉取模型"从 /v1/models 拿，不写死表（老插件写死过 GRS 的模型名，墨墨不认，翻车过）
+  momo: { label: '墨墨', base: 'https://api.momoapi.icu', currency: '¥', dynamicModels: true, models: {} },
   aji: {
     // 0909 新增 gpt-image 三款（AJI /v1/models 实列 gpt-image-2 / -2.5-flare / -2.5-sunburst，supported_endpoint_types 只有 openai）：
     // 走 OpenAI 图片接口（api:'openai'：/v1/images/generations 文生图、/v1/images/edits 多部件传图），不走 generateContent。
@@ -164,14 +165,19 @@ ipcMain.handle('ai-models', async () => {
   const meta = metaOf(prov);
   if (!meta || !meta.dynamicModels) return { ok: false, error: '该渠道模型为内置列表' };
   const pc = config.providers[prov];
-  const base = String(pc.base || meta.base || '').trim();
+  const base = (pc.base || '').replace(/\/+$/, '');
   const key = ctx.cleanKey(pc.key);
   if (!base || !key) return { ok: false, error: '请先填写该渠道的地址和Key' };
   const kerr = ctx.keyIssue(key, (meta && meta.label) || prov);
   if (kerr) return { ok: false, error: kerr };
   try {
-    const all = await requestModels((url, options) => net.fetch(url, options), base, key);
-    // 生图卡只展示生图模型；请求失败时保留原有模型列表。
+    const resp = await fetch(base + '/v1/models', {
+      headers: { 'Authorization': 'Bearer ' + key },
+    });
+    if (!resp.ok) return { ok: false, error: 'HTTP ' + resp.status };
+    const data = await resp.json();
+    // 0908用户裁定"绝对不允许"：生图卡只列生图模型（白名单判定见 model-kind.js），语言等其他模型一律不入
+    const all = (data.data || []).map((m) => m.id).filter(Boolean);
     const ids = all.filter(isImageModel).sort();
     pc.models = ids;
     if (pc.model && !ids.includes(pc.model)) pc.model = '';   // 选中的不是生图模型=清空，别带着错模型去跑
@@ -179,6 +185,38 @@ ipcMain.handle('ai-models', async () => {
     return { ok: true, models: ids, total: all.length };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
+  }
+});
+
+// 按渠道名拉模型（1013：给 momo 等多渠道用；老接口 ai-models 只认"当前渠道"）
+// 只读：拉回来过滤出生图模型后写进 config.providers[prov].models
+ipcMain.handle('ai-models-for', async (_e, prov) => {
+  const meta = metaOf(prov);
+  if (!meta) return { ok: false, error: '渠道不存在' };
+  const pc = config.providers[prov];
+  if (!pc) return { ok: false, error: '渠道不存在' };
+  // 内置渠道的地址：以 providers.js 里写死的为准（用户改不了，防手抖改坏）
+  const base = (meta.base || pc.base || '').replace(/\/+$/, '');
+  const key = ctx.cleanKey(pc.key);
+  if (!base || !key) return { ok: false, error: '请先填该渠道的 Key' };
+  const kerr = ctx.keyIssue(key, meta.label || prov);
+  if (kerr) return { ok: false, error: kerr };
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 25000);
+    const resp = await fetch(base + '/v1/models', { headers: { Authorization: 'Bearer ' + key }, signal: ctrl.signal });
+    clearTimeout(t);
+    if (!resp.ok) return { ok: false, error: 'HTTP ' + resp.status };
+    const data = await resp.json();
+    const all = (data.data || data.models || []).map((m) => (typeof m === 'string' ? m : (m.id || m.name))).filter(Boolean).map(String);
+    const ids = all.filter(isImageModel).sort();
+    pc.models = ids;
+    if (pc.model && !ids.includes(pc.model)) pc.model = '';
+    ctx.saveConfig();
+    if (ctx.broadcast) ctx.broadcast('providers-changed', {});
+    return { ok: true, models: ids, total: all.length };
+  } catch (e) {
+    return { ok: false, error: e.name === 'AbortError' ? '请求超时' : (e.message || String(e)) };
   }
 });
 

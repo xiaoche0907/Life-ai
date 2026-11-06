@@ -498,7 +498,13 @@ HostAPI.registerAction('chartFinish', async function(data, ctx) {
         var st = _charts[wantId];
         if (!st) { var ks = Object.keys(_charts); if (ks.length === 1) st = _charts[ks[0]]; }
         if (!st) { send(false, '没有待结算的色卡任务'); return; }
-        delete _charts[st.docId];
+        // ⚠1013 用户裁定：**不删状态**，改成"可重复结算"。
+        //   原来这里 `delete _charts[st.docId]` 是一次性设计：色卡模式下自动回传只结算一次，够用。
+        //   但关掉自动回传、进度卡逐张手动点贴回时，第一张结算完状态就没了 → 第二张找不着色卡、
+        //   再点第一张也照样找不着（用户实测：只有第一张出曲线，剩下的都不出）。
+        //   现在保留状态，结算完把"当前文档里的图层"重新登记成新底账 → 下次贴回来的图又算"新增图层"，
+        //   于是**每点一次就重算一次曲线**，正是用户要的"每次点击都会生成曲线"。
+        //   代价：状态常驻内存（很小，一条几十字节 × 打开过的文档数），软件重启即清。
         try { origId = psApp.activeDocument ? psApp.activeDocument.id : null; } catch (eO) {}
         var doc = null;
         var okN = 0, skipN = 0, lutN = 0, report = '', maskFail = 0, maskErr = '', backErr = '';
@@ -527,6 +533,11 @@ HostAPI.registerAction('chartFinish', async function(data, ctx) {
             var pw = st.patchW || Math.floor((st.rect.right - st.rect.left - tW) / NP);
             for (var n = 0; n < newLayers.length; n++) {
                 var lay = newLayers[n];
+                // 1013：进循环先清一次选区（双保险）。用户自己框过选区、或上一次结算残留，
+                //   都会让后面新建的调整图层被套上"You蒙版"。建曲线前还会再清一次（见下）。
+                try { await psApp.batchPlay([{ _obj: 'set',
+                    _target: [{ _ref: 'channel', _property: 'selection' }],
+                    to: { _enum: 'ordinal', _value: 'none' } }], {}); } catch (eNoSel0) {}
                 // 采样该层色卡带
                 var px;
                 try { px = await _grab(doc.id, lay.id, band); } catch (eG) { skipN++; continue; }
@@ -552,18 +563,20 @@ HostAPI.registerAction('chartFinish', async function(data, ctx) {
                 }
                 // 验卡:灰阶必须基本递增且跨度足够,彩块通道方向正确
                 var valid = !!meas;
+                var why = '';   // 1013：跳过原因（用户实报"只有最上边的图有校准，剩下的没有"——必须知道是为什么跳）
                 if (valid) {
                     var inv = 0;
                     var lum = function(c) { return (c[0] + c[1] + c[2]) / 3; };
                     for (var g1 = 1; g1 < gN; g1++) { if (lum(meas[g1]) < lum(meas[g1 - 1]) - 6) inv++; }
-                    if (inv > 1) valid = false;
-                    if (lum(meas[gN - 1]) - lum(meas[0]) < 60) valid = false;
+                    if (inv > 1) { valid = false; why = '灰阶不递增(inv=' + inv + ')'; }
+                    if (valid && lum(meas[gN - 1]) - lum(meas[0]) < 60) { valid = false; why = '灰阶跨度小(' + Math.round(lum(meas[gN - 1]) - lum(meas[0])) + ')'; }
                     var cOK = 0;
                     if (meas[iR][0] > meas[iR][1] + 15 && meas[iR][0] > meas[iR][2] + 15) cOK++;
                     if (meas[iG][1] > meas[iG][0] + 10 && meas[iG][1] > meas[iG][2] + 10) cOK++;
                     if (meas[iB][2] > meas[iB][0] + 10 && meas[iB][2] > meas[iB][1] + 10) cOK++;
-                    if (cOK < 2) valid = false;
+                    if (cOK < 2) { valid = false; why = '彩块方向不对(cOK=' + cOK + ')'; }
                 }
+                if (!valid && !why) why = meas ? '未知' : '一点像素都没取到';
                 if (valid) {
                     var adj = [], names = ['red', 'grain', 'blue'], mergedAll = [];
                     var dBefore = 0, dAfter = 0;
@@ -640,6 +653,17 @@ HostAPI.registerAction('chartFinish', async function(data, ctx) {
                                 _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }] }], {}); } catch (eRz) {}
                         } catch (eDup) { srcLayer = null; }
                     }
+                    // ⚠1013 P0 根因修复：**建曲线之前必须先清掉选区**。
+                    //   本循环每轮收尾都会"设矩形选区→把色卡带填黑"，而那个选区**从来没被清掉**，
+                    //   于是下一轮建调整图层时 PS 拿残留选区当蒙版 → 曲线被限制在色卡带那一条(132px 高)，
+                    //   对画面完全不起作用。用户实报现象："批量回图后组里只有最上面那张的曲线生效，其余3张没反应"
+                    //   —— 正是"第1条曲线建在无选区时(全画布)，第2~4条吃到上一轮残留选区(只剩色卡带)"。
+                    //   手动单点为什么正常：一次只处理一张，循环只跑一轮，没有残留。
+                    //   （本文件 colorCalibrate 的第5步早就为同一个坑写了"取消选区(否则调整图层带选区蒙版)"，
+                    //     这里当时漏了。）
+                    try { await psApp.batchPlay([{ _obj: 'set',
+                        _target: [{ _ref: 'channel', _property: 'selection' }],
+                        to: { _enum: 'ordinal', _value: 'none' } }], {}); } catch (eNoSel) {}
                     // 选中该层→曲线校正层(剪贴,插在出图层正上方、只读源之下)
                     await psApp.batchPlay([{ _obj: 'select', _target: [{ _ref: 'layer', _id: lay.id }],
                         makeVisible: false }], {});
@@ -651,6 +675,30 @@ HostAPI.registerAction('chartFinish', async function(data, ctx) {
                     await psApp.batchPlay([{ _obj: 'groupEvent',
                         _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }] }], {});
                     var curveLayerRef = doc.activeLayers[0];
+                    // 1013 诊断：确认这条曲线**剪贴到了哪一层**。
+                    //   用户实报"批量贴回的曲线不生效、手动单点的生效"——两者只差贴回方式（group 打组与否），
+                    //   如果剪贴挂错了层（挂到别的图上），画面上就是"这条曲线没用"。
+                    //   这里把"量的是哪层 / 曲线挂到哪层"一起打出来，对不上就是剪贴错位。
+                    try {
+                        var clipTo = '';
+                        // ⚠必须从曲线层**自己所在的兄弟集合**里找下一层：打组贴回的图在组里面，
+                        //   若去 doc.layers（只有顶层）找就会找不到、打出假的"(无下层!)"。
+                        try {
+                            var par = null;
+                            try { par = curveLayerRef.parent; } catch (eP) {}
+                            var sib = null;
+                            if (par && par.layers && par.layers.length) sib = par.layers;      // 父是组→组内图层数组
+                            else sib = doc.layers;                                             // 父是文档→顶层数组
+                            for (var si = 0; si < sib.length; si++) {
+                                if (sib[si].id === curveLayerRef.id) {
+                                    clipTo = sib[si + 1] ? ((sib[si + 1].name || '?') + '#' + sib[si + 1].id + ' ' + String(sib[si + 1].kind)) : '(无下层!)';
+                                    break;
+                                }
+                            }
+                            if (!clipTo) clipTo = '(没找到自己? 兄弟=' + sib.length + ')';
+                        } catch (eCp) { clipTo = '取不到(' + (eCp && eCp.message) + ')'; }
+                        ctx.logToPanel('[色卡] 量层「' + (lay.name || '?') + '#[' + lay.id + ']」→ 曲线「' + (curveLayerRef ? (curveLayerRef.name || '?') + '#' + curveLayerRef.id : '建失败') + '」剪贴到「' + clipTo + '」', 'info');
+                    } catch (eLg5) {}
                     // LUT精修:24色卡样本 → 17³网格 → 像素烘焙层(80%),校曲线管不了的交叉色偏
                     // (batchPlay数据直载.cube在部分PS版本不支持,故直接在内存应用LUT后写像素层,全版本可用)
                     if (st.mode === 'lut') {
@@ -803,7 +851,30 @@ HostAPI.registerAction('chartFinish', async function(data, ctx) {
                     }
                     report = '偏差 ' + dBefore.toFixed(1) + ' → ' + dAfter.toFixed(1);
                     okN++;
-                } else skipN++;
+                    // 1013 诊断：把"这一层量到了什么"说清楚。用户实报"提前批量回图后有几根曲线完全没作用
+                    // （颜色一点没变）"——只报"完成"看不出是哪一层、量得准不准。这里把层名+实测灰阶首尾
+                    // +校正前后偏差都打出来，下次一眼能分清是"量错区域"还是"曲线本身就是恒等"。
+                    try {
+                        var mg = meas ? ('灰阶实测 ' + Math.round(meas[0][0]) + '→' + Math.round(meas[gN - 1][0])) : '无实测';
+                        var npts = 0; try { npts = adj[0].curve.length; } catch (eNp) {}
+                        ctx.logToPanel('[色卡] 层「' + (lay.name || '?') + '」' + mg
+                            + ' | 偏差 ' + dBefore.toFixed(1) + '→' + dAfter.toFixed(1)
+                            + ' | 曲线 ' + npts + ' 点 | 带 ' + (band.right - band.left) + 'x' + st.stripH
+                            + ' @top' + band.top, dAfter >= dBefore - 0.5 ? 'warn' : 'info');
+                    } catch (eLg3) {}
+                } else {
+                    skipN++;
+                    // 1013 诊断：跳过的层原来是**哑的**——用户实报"只有最上边的图有色彩校准，剩下的没有"，
+                    //   而"剩下的没有"到底是没量到、还是量到但判为无效、还是压根没被当成新增图层，
+                    //   三种情况在日志里长得一模一样（都是"完成，跳过N张"）。这里把每层的跳过原因打出来。
+                    try {
+                        var m0 = meas ? ('实测首=' + meas.map(function(c) { return Math.round((c[0]+c[1]+c[2])/3); }).slice(0, 12).join(',')) : '无实测';
+                        ctx.logToPanel('[色卡] 跳过层「' + (lay.name || '?') + '」原因: ' + why
+                            + ' | 层尺寸 ' + Math.round(lay.bounds.right - lay.bounds.left) + 'x' + Math.round(lay.bounds.bottom - lay.bounds.top)
+                            + ' | 带 ' + (band.right - band.left) + 'x' + st.stripH + ' @top' + band.top
+                            + ' | ' + m0, 'warn');
+                    } catch (eLg4) {}
+                }
                 // 无论是否校准,都遮掉色卡带(透出底下原图)
                 // v54：贴回的图层自 0908 起自带白蒙版(组内每层一张)，再 make 一张蒙版会被 PS 拒绝 → 色卡带一直露着(用户实报)。
                 // 已有蒙版就在它上面把色卡带填黑，等价于 hideSelection
@@ -843,6 +914,13 @@ HostAPI.registerAction('chartFinish', async function(data, ctx) {
                 to: { _enum: 'ordinal', _value: 'none' } }], {}); } catch (eDS) {}
             try { await psApp.batchPlay([{ _obj: 'delete',
                 _target: [{ _ref: 'layer', _id: st.stripId }] }], {}); } catch (eDel) {}
+            // 可重复结算的收尾（1013）：把"此刻文档里的图层"重新登记成新底账。
+            // 下次手动贴回的那张图（连它自带的新色卡条）就成了"新增图层"，于是又能结算一次。
+            // 必须在删掉色卡层**之后**登记，否则下次会把已删的层当成"已有"。
+            try {
+                var allNow = []; _walkLayers(doc.layers, allNow);
+                st.existingIds = allNow.map(function(L) { return L.id; });
+            } catch (eRe) {}
             // 切回用户正看着的文档（与桥接 placeBatch 同语义）
             if (origId && origId !== st.docId) {
                 try { await _chartSelectDoc(origId); } catch (eBk) { backErr = eBk && eBk.message ? eBk.message : String(eBk); }

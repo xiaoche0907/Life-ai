@@ -48,6 +48,51 @@
       + '#' + blanks.map((b) => 'b:' + b.name + ':' + b.def).join('|');
   }
 
+  // ---------- 列数自适应（1011 用户反馈②：卡拉成竖长/缩很小之后滑块挤成一条缝，拖不动） ----------
+  // 判据两条，任一命中就降到"一横排一个"：
+  //   ①竖长卡（窗口高>宽）——自由拉伸只改宽不改zoom，竖长=卡内可用宽真的变窄了
+  //   ②横卡但卡内可用宽不够一列 110px（缩到极限 136 DIP×zoom0.45 时≈302 CSS px，三列每列仅 ~97px）
+  // 竖长卡一律 1 列；横卡按实测宽度分 3/2/1 档（不用 media query：这一列的宽度与视口无关，得实测容器）
+  // ⚠110 是实测标定的：出厂横卡内实测 226~328 CSS px（380×250 的卡在开发机上卡内宽 226，
+  //   出厂不缩放时 328），110 会把出厂横卡也压成 2 列——用户要的是"出厂横卡维持原样"。
+  //   取 100 后：出厂 328px→3列每列 105px（与改动前完全一致），226px→2列，竖长→1列
+  const MIN_COL_W = 100;
+  const COL_GAP = 6;
+  function colsFor(width, portrait, maxCols) {
+    const hi = Math.max(1, Math.min(3, maxCols || 3));
+    if (portrait) return 1;
+    const usable = Math.max(0, Number(width) || 0) + COL_GAP;
+    const n = Math.floor(usable / (MIN_COL_W + COL_GAP));
+    return Math.max(1, Math.min(hi, n));
+  }
+  function applyCols(c, n) {
+    if (c._pcCols === n) return;
+    c._pcCols = n;
+    c.style.gridTemplateColumns = 'repeat(' + n + ', minmax(0, 1fr))';
+    c.classList.toggle('pc-one', n === 1);   // 单列时把滑轨加粗（一行一个=有高度余量，好下手）
+  }
+  function watchCols(c) {
+    const sync = () => applyCols(c, colsFor(c.clientWidth, window.innerHeight > window.innerWidth, c._pcMaxCols));
+    // ⚠每次render都会走这里，监听必须只挂一次（否则重建N次=挂N个resize监听，退出时全泄漏）
+    if (!c._pcRO && window.ResizeObserver) {
+      c._pcRO = new ResizeObserver(() => {
+        if (!c.isConnected) {   // 容器已被宿主换掉/重渲：自己收摊，别留着监听
+          try { c._pcRO.disconnect(); } catch (e) {}
+          c._pcRO = null;
+          if (c._pcWinSync) window.removeEventListener('resize', c._pcWinSync);
+          return;
+        }
+        sync();
+      });
+      try { c._pcRO.observe(c); } catch (e) {}
+    }
+    if (!c._pcWinSync) {
+      c._pcWinSync = sync;   // 竖长⇄横长翻转只有窗口 resize 报得到（容器宽未必变）
+      window.addEventListener('resize', c._pcWinSync);
+    }
+    sync();
+  }
+
   // 样式注入一次（类名pc-前缀，避免与宿主页面冲突；玻璃内嵌风与params.html的.prow同款）
   let styleDone = false;
   function ensureStyle() {
@@ -55,11 +100,16 @@
     styleDone = true;
     const st = document.createElement('style');
     st.textContent = [
-      // 双列网格：一横排两个滑块，紧凑尺寸一屏见6个；填空框独占整行
+      // 多列网格：默认一横排三个，实测宽度不够时由 applyCols 降到 2/1 列；填空框独占整行
       '.pc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }',
       '.pc-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 9px; min-width: 0;',
       '  border-radius: 11px; background: var(--inset-bg); border: 1px solid var(--inset-border); }',
       '.pc-row.pc-wide { grid-column: 1 / -1; }',
+      // 一排一个时滑轨加粗到 22px：行矮了滑轨还细=还是拖不动，加粗才是"方便拉动"的关键
+      '.pc-grid.pc-one .pc-row { padding: 8px 11px; }',
+      '.pc-grid.pc-one input[type="range"] { height: 22px; }',
+      '.pc-grid.pc-one .pc-name { font-size: 11.5px; }',
+      '.pc-grid.pc-one .pc-val { min-width: 38px; font-size: 11px; }',
       '.pc-name { font-size: 10.5px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
       '.pc-line { display: flex; align-items: center; gap: 6px; }',
       '.pc-line input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); height: 14px; cursor: pointer; }',
@@ -73,18 +123,21 @@
   }
 
   // 渲染进container：值优先取ctl里已调值；用户改动写回ctl并回调onChange（防抖由宿主做）
-  function render(container, text, ctl, onChange) {
+  // opts.maxCols：宿主嫌 3 列太挤时自己压低上限（不传=3列，老宿主行为不变）
+  function render(container, text, ctl, onChange, opts) {
     ensureStyle();
     if (!ctl.params) ctl.params = {};
     if (!ctl.blanks) ctl.blanks = {};
     const { sliders, blanks } = parse(text || '');
     container.innerHTML = '';
-    // 双列网格用内联样式钉死——宿主页面的#id选择器（如#pcList的flex单列）优先级会压过.pc-grid类
+    // 网格列数用内联样式钉死——宿主页面的#id选择器（如#pcList的flex单列）优先级会压过.pc-grid类。
+    // ⚠列数不写死，交给 applyCols 按"容器实测宽 + 窗口长宽比"决定（1011用户反馈②：竖长卡要一排一个）
     container.classList.add('pc-grid');
     container.style.display = 'grid';
-    container.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
     container.style.gridAutoRows = 'min-content';
-    container.style.gap = '6px';
+    container.style.gap = COL_GAP + 'px';
+    container._pcCols = null;   // 强制重算（重建后 DOM 换了，宽要重新量）
+    container._pcMaxCols = (opts && opts.maxCols) || 3;
 
     for (const s of sliders) {
       const cur = (ctl.params[s.name] != null) ? ctl.params[s.name] : s.def;
@@ -137,6 +190,8 @@
       row.appendChild(name); row.appendChild(inp);
       container.appendChild(row);
     }
+    // 行都进 DOM 之后再量（此刻容器宽度才是最终值；空了再量会拿到上一轮的宽度）
+    watchCols(container);
     return { count: sliders.length + blanks.length };
   }
 
