@@ -118,7 +118,7 @@ const API = {
   onGenVars: (cb) => ipcRenderer.on('gen-vars', (_e, g) => cb(g)),
   onPromptForceFill: (cb) => ipcRenderer.on('prompt-force-fill', (_e, txt) => cb(txt)),   // 进度卡/聊天等"点击填入提示词"专用，无视输入框焦点状态强制覆盖（0919）
   aiModels: () => ipcRenderer.invoke('ai-models'),
-  aiModelsFor: (prov) => ipcRenderer.invoke('ai-models-for', prov),   // 1013：按渠道名拉（momo 等）
+  aiModelsFor: (prov) => ipcRenderer.invoke('ai-models-for', prov),   // 按渠道名拉模型（影策/万有引力各自卡片用））
   aiBalance: () => ipcRenderer.invoke('ai-balance'),
   getProviders: () => ipcRenderer.invoke('get-providers'),
   onProvidersChanged: (cb) => ipcRenderer.on('providers-changed', () => cb()),   // 渠道增删/显隐（0908）

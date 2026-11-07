@@ -25,12 +25,10 @@ const config = {
   // bgFile=背景图片/视频绝对路径(空=无)，bgOpacity=背景媒体不透明度
   ui: { theme: 'dark', blur: 36, tint: 0.32, accent: '#ff9f0a', style: 'classic', uiMode: 'novice', ballMiddle: 'layout', bgFile: '', bgOpacity: 0.6, psOnlyTop: true, psDialogTop: true },   // psOnlyTop: 卡牌只浮在PS之上（0909 晚改默认开：默认关时用户不知有此功能，照样反馈"挡浏览器"）；psDialogTop: PS 弹窗/浮动面板压在卡牌上（0910）
   api: { base: 'https://api.momoapi.icu', key: '', model: '', models: [] },   // 旧结构，迁移后作为momo镜像保留
-  provider: 'aji',
+  provider: 'yingce',
   providers: {
-    momo: { base: 'https://api.momoapi.icu', key: '', model: '', models: [], balance: null },
-    aji: { base: 'https://ai.ajiai.top', key: '', model: 'AJbanana3', balance: null },
-    grs: { base: 'https://grsai.dakka.com.cn', key: '', model: 'nano-banana-pro', balance: null },
-    custom: { base: '', key: '', model: '', models: [] },
+    yingce: { base: 'https://api.yingce.tv', key: '', model: '', models: [], balance: null },
+    wanyin: { base: 'https://lxmone.xyz', key: '', model: '', models: [], balance: null },
   },
   gen: { ratio: 'Auto', size: '2K', noSelFull: true, genTimeout: 600, autoCleanDays: 0 },   // noSelFull默认开：用户没框选区就按全图跑（关了会撞"没有选区"墙，用户找不到开关）；size 0908去Auto默认2K；genTimeout=生成超时秒数(0918)；autoCleanDays=缓存清理天数,0=永不(0918)
   cacheDir: null,
@@ -198,12 +196,7 @@ function loadConfig() {
       for (const k of Object.keys(config.providers)) {
         if (saved.providers[k]) Object.assign(config.providers[k], saved.providers[k]);
       }
-      // 用户自定义渠道 cus_*（0908）：不在默认表里，逐个回读——漏读=每次重启渠道消失（铁律19）
-      for (const k of Object.keys(saved.providers)) {
-        if (/^cus_[a-z0-9]{3,16}$/.test(k) && !config.providers[k]) {
-          config.providers[k] = Object.assign({ base: '', key: '', model: '', models: [], label: k, hidden: false }, saved.providers[k]);
-        }
-      }
+      // 1107 渠道精简：cus_* 自定义渠道已废除，不再回读（saved 里的旧渠道由 v27 迁移清掉）
     }
     if (saved.provider && config.providers[saved.provider]) config.provider = saved.provider;
     // 内置渠道的显隐（0908 小眼睛）：存在 providers[k].hidden 上，上面 Object.assign 已回读；无需额外字段
@@ -290,18 +283,16 @@ function loadConfig() {
 // 规则：saved.schemaV >= v 的跳过；每条自带幂等守卫（老用户没有schemaV但可能带着旧标志，
 // 靠守卫不重跑）；跑完写 config.schemaV = SCHEMA_V。新增迁移 = 表尾追加一条 + SCHEMA_V+1，
 // 禁止在loadConfig里散写"if (!saved.xxxV2)"式的一次性逻辑（那正是改A坏B的温床）
-const SCHEMA_V = 26;
+const SCHEMA_V = 27;
 const MIGRATIONS = [
   { v: 1, name: '无选区跑全图改默认开', up(saved) {
     // 老配置里存过false的也掰成开；此后用户自己的选择保留（守卫=老标志noSelFullV2）
     if (!saved.noSelFullV2) config.gen.noSelFull = true;
   } },
-  { v: 2, name: '老api字段→momo渠道', up(saved) {
+  { v: 2, name: '老api字段→生图渠道（1107 渠道精简后落到影策）', up(saved) {
     if (!saved.providers && saved.api && saved.api.key) {
-      config.providers.momo.key = saved.api.key;
-      config.providers.momo.base = saved.api.base || config.providers.momo.base;
-      config.providers.momo.model = saved.api.model || '';
-      config.providers.momo.models = saved.api.models || [];
+      config.providers.yingce.key = saved.api.key;
+      config.providers.yingce.base = 'https://api.yingce.tv';
     }
   } },
   { v: 3, name: '尿尿卡紧凑版：清掉老的宽高缩放', up(saved) {
@@ -547,11 +538,7 @@ const MIGRATIONS = [
     if (typeof config.plibUpdate.base !== 'string') config.plibUpdate.base = '';
     config.plibUpdate.auto = !!config.plibUpdate.auto;   // 老配置没有=false，绝不默认开
   } },
-  { v: 22, name: '墨墨（momo）渠道上线（1013）：生图侧 momo 从休眠唤醒、对话侧新增 momo——老配置补齐这两个槽位；地址一律用内置的，用户只填 Key', up(saved) {
-    // 生图侧：老的 momo 槽位（若有）补齐字段；没有就建一个空的
-    if (!config.providers.momo || typeof config.providers.momo !== 'object') {
-      config.providers.momo = { base: 'https://api.momoapi.icu', key: '', model: '', models: [], balance: null };
-    }
+  { v: 22, name: '墨墨（momo）对话渠道上线（1013）——生图侧已随 1107 渠道精简移除，只补对话侧槽位；地址内置，用户只填 Key', up(saved) {
     // 对话侧：0908 起对话渠道是独立表，momo 原来不在里面 → 补上
     if (!config.chatProviders.momo || typeof config.chatProviders.momo !== 'object') {
       config.chatProviders.momo = { label: '墨墨', base: 'https://api.momoapi.icu', key: '', models: [] };
@@ -634,6 +621,13 @@ const MIGRATIONS = [
     // autoApp 一律保持原值（新装=默认 false：不让用户默认背上下载流量）
     config.updater.autoApp = !!config.updater.autoApp;
   } },
+  { v: 27, name: '生图渠道精简（1107 用户裁定）：只留影策/万有引力两家 /v1 站，墨墨/AJI/GRS/自定义全部移除。旧渠道的 Key 不迁移（站点不同 Key 不通用），当前渠道指向已删渠道时改回默认影策', up() {
+    // 默认表已经是新的 yingce/wanyin（state 默认值），这里只清 saved 里回读过/将回读不到的旧渠道残留
+    for (const k of Object.keys(config.providers)) {
+      if (k !== 'yingce' && k !== 'wanyin') delete config.providers[k];
+    }
+    if (!config.providers[config.provider]) config.provider = 'yingce';
+  } },
 ];
 function runMigrations(saved) {
   const from = Number(saved.schemaV) || 0;
@@ -650,21 +644,18 @@ function runMigrations(saved) {
 }
 // 每次启动都要成立的不变量（不是迁移，别往MIGRATIONS里塞）
 function applyInvariants() {
-  // 1013：这条老规矩摘掉了——它写着"momo已从渠道轮换移除"，是墨墨休眠时代的产物。
-  // 墨墨这次复活进生图渠道列表（providers.js 有 momo、ai-gen 卡片上有），留着它 = 用户选了墨墨、
-  // 一重启就被无声改回 AJI（铁律19同族：配置回弹）。
   // 布局锁定已并入锁头（一键双锁）：启动时强制跟随locked——老配置里独立的layoutLock=true必须被覆盖
   config.layoutLock = config.locked;
   config.gen.forgePos = '';   // 一次性信使字段，清掉历史残留防重放
   config.ui.theme = 'dark';   // 只保留深色主题
   // 模型清单清洗（0908用户裁定"绝对不允许"）：生图渠道只留生图模型、对话渠道只留语言模型（老配置里混进的一并清掉）
   const MK = require('./model-kind');
+  const DYN_PROV = { yingce: 1, wanyin: 1 };   // 动态渠道（模型靠拉取，回读时校验；1107 渠道精简后只有这两家）
   for (const k of Object.keys(config.providers)) {
     const pc = config.providers[k];
     if (!pc) continue;
     if (Array.isArray(pc.models)) pc.models = pc.models.filter(MK.isImageModel);
-    const dynamic = k === 'momo' || k === 'custom' || /^cus_/.test(k);   // 内置aji/grs的模型是代码表，不动
-    if (dynamic && pc.model && !MK.isImageModel(pc.model)) pc.model = '';
+    if (DYN_PROV[k] && pc.model && !MK.isImageModel(pc.model)) pc.model = '';
   }
   for (const k of Object.keys(config.chatProviders)) {
     const cp = config.chatProviders[k];
@@ -735,15 +726,8 @@ ipcMain.handle('set-config', (e, patch) => {
   if (patch.providers) {
     for (const k of Object.keys(patch.providers)) {
       const v = patch.providers[k];
-      if (v === null) {   // 删自定义渠道（只许删 cus_ 前缀；内置四个不许删）
-        if (/^cus_/.test(k)) { delete config.providers[k]; if (config.provider === k) config.provider = 'aji'; }
-        continue;
-      }
+      if (v === null) continue;   // 1107 渠道精简：自定义渠道已废除，null 删除请求直接忽略
       if (config.providers[k]) Object.assign(config.providers[k], v);
-      else if (/^cus_[a-z0-9]{3,16}$/.test(k)) {
-        // 用户自定义渠道（0908）：Gemini兼容中转，字段与custom同构；label给渠道胶囊显示
-        config.providers[k] = Object.assign({ base: '', key: '', model: '', models: [], label: k, hidden: false }, v);
-      }
     }
     if (typeof ctx.broadcast === 'function') ctx.broadcast('providers-changed', {});   // 渠道增删/显隐→各卡刷新（broadcast 由 windows.js 稍后挂上，启动早期可能还没有）
   }

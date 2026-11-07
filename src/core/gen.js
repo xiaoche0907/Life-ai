@@ -184,12 +184,12 @@ ipcMain.handle('fire-armed', async (_e, { count }) => {
 });
 
 // ---------- AI生图（Gemini兼容 generateContent，三渠道） ----------
-// 渠道解析：地址/Key/模型/有效分辨率/请求模型名(AJI加-1k后缀)/单张价格
+// 渠道解析：地址/Key/模型/有效分辨率/请求模型名/单张价格
 function resolveGen(p) {
   const PROVIDERS = ctx.PROVIDERS;
-  const prov = (p && p.provider) || config.provider || 'momo';
-  // cus_* 自定义渠道走 providerMeta 合成的 meta（Gemini兼容/动态模型）；内置渠道原样
-  const meta = (ctx.providerMeta && ctx.providerMeta(prov)) || PROVIDERS[prov] || PROVIDERS.momo;
+  const prov = (p && p.provider) || config.provider || 'yingce';
+  // 内置渠道原样（1107 精简后只有影策/万有引力）
+  const meta = (ctx.providerMeta && ctx.providerMeta(prov)) || PROVIDERS[prov] || PROVIDERS.yingce;
   const pc = config.providers[prov] || {};
   const base = (pc.base || meta.base || '').replace(/\/+$/, '');
   const key = ctx.cleanKey(pc.key);   // 空格/换行/零宽=粘贴垃圾，静默清；中文字符留给keyIssue报人话
@@ -202,7 +202,11 @@ function resolveGen(p) {
     requestModel = model + '-' + effSize.toLowerCase();   // AJI规则：模型名带分辨率后缀
   }
   const cost = (mconf && mconf.prices && mconf.prices[effSize] != null) ? mconf.prices[effSize] : null;
-  return { prov, meta, pc, base, key, model, mconf, effSize, requestModel, cost };
+  // 1107 渠道精简：影策/万有引力都是 /v1 站（OpenAI 兼容），动态拉来的模型统一走 OpenAI 图片接口
+  // （/v1/images/generations 文生图、/v1/images/edits 传图）。模型表里写了 api 的（历史遗留）以表为准。
+  const forceApi = (meta && meta.openai) ? 'openai' : undefined;
+  const api2 = (mconf && mconf.api) || forceApi;
+  return { prov, meta, pc, base, key, model, mconf, effSize, requestModel, cost, api: api2 };
 }
 
 async function generateOne(p) {
@@ -217,10 +221,10 @@ async function generateOne(p) {
   const kerr = ctx.keyIssue(rv.key, rv.meta.label);
   if (kerr) return { ok: false, error: kerr };   // Key含中文字符：发请求前就拦，不让fetch抛ByteString天书
   if (!rv.model) return { ok: false, error: '请先选择模型' };
-  // 0909：按模型表 api 字段分流——'grs'=GRS 自家异步接口，'openai'=OpenAI 图片接口；缺省=Gemini generateContent
-  const api = rv.mconf && rv.mconf.api;
-  if (api === 'grs') return generateViaGrs(p, rv);
-  if (api === 'openai') return generateViaOpenAI(p, rv);
+  // 0909：按 api 字段分流——'grs'=GRS 自家异步接口（历史遗留），'openai'=OpenAI 图片接口；缺省=Gemini generateContent
+  // 1107 渠道精简后：影策/万有引力 resolveGen 已强制 api='openai'，grs/gemini 两路仅为兼容保留
+  if (rv.api === 'grs') return generateViaGrs(p, rv);
+  if (rv.api === 'openai') return generateViaOpenAI(p, rv);
   return generateViaGemini(p, rv);
 }
 
