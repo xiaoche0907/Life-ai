@@ -291,7 +291,7 @@
     height: 34px; padding: 0 14px; border: none; border-radius: 11px;
     background: var(--accent); color: #fff; font-size: 11px; cursor: pointer;
   }
-  /* 0908 对话渠道表：内置 AJI/GRS（名字/地址只读）+ 自定义 cc_*（可改名/地址/删）；每行 Key 即时落库 */
+  /* 1107 对话渠道表：内置 万有引力/Waw（名字/地址只读）+ 自定义 cc_*（可改名/地址/删）；每行 Key 即时落库 */
   .cprow {
     border: 1px solid var(--inset-border); border-radius: 11px; background: var(--inset-bg);
     padding: 8px 10px; margin-bottom: 7px; display: flex; flex-direction: column; gap: 6px;
@@ -318,6 +318,9 @@
   .cprow .cpname input[type="text"] { height: 28px; padding: 0 8px; }
   .cprow .cpx { font-size: 11px; opacity: 0.7; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
   .cprow .cpx:hover { opacity: 1; background: var(--btn-bg-hover); }
+  /* 拉取模型文字按钮（图标版没设 svg 宽高渲染不可见，1013~1107 一直没人看见过它） */
+  .cprow .cpxbtn { font-size: 10px; color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 7px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+  .cprow .cpxbtn:hover { filter: brightness(1.2); }
   .cprow .cpbadge { font-size: 10px; opacity: 0.7; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--inset-border); }
   .cprow .cpok { color: #7fe0a3; }
   .cpadd {
@@ -641,8 +644,10 @@
       setTyping(false);
       if (result.ok) {
         const m = { role: 'assistant', content: result.reply, ts: result.ts || Date.now(), id: result.id };
-        rendered.add(msgKey(m));
-        addMessage('assistant', m.content, m.ts);
+        // 广播（chat-message）先于 invoke 返回到达：发起窗口多半已由广播兜底画过这条回复，
+        // 这里必须查过 rendered 再画，否则同一条回复画两遍（1107 实证：永远双气泡）
+        const k = msgKey(m);
+        if (!rendered.has(k)) { rendered.add(k); addMessage('assistant', m.content, m.ts); }
       } else {
         addMessage('assistant', (result.error || '发送失败'), Date.now(), { error: true });
       }
@@ -759,7 +764,7 @@
     return pick;
   }
 
-  // ---- 拉取当前渠道的对话模型（自定义渠道/墨墨这类动态渠道才有意义）；成功后重画三个功能行
+  // ---- 拉取当前渠道的对话模型（内置两家/自定义这类动态渠道用）；成功后重画三个功能行
   async function pullModels(prov) {
     if (!prov) { roleHint('先选一个渠道'); return; }
     const r = await window.orange.chatModelsFetch(prov);
@@ -813,12 +818,11 @@
         nm.appendChild(ni);
       }
       head.appendChild(nm);
-      // 「拉取模型」按钮（1013：原来在「默认渠道/模型」那一行，那行删了 → 挪到每张渠道卡自己头上）。
-      // 只对动态渠道（自定义 cc_* / 墨墨）显示：内置 AJI/GRS 的模型是代码里的静态表，没有接口可拉。
-      if (!c.builtin || /^cc_/.test(id) || id === 'momo') {
-        const rb = document.createElement('span'); rb.className = 'cpx'; rb.title = '拉取该渠道的对话模型列表';
-        rb.innerHTML = ICO.refresh;
-        rb.style.display = 'inline-flex'; rb.style.alignItems = 'center';
+      // 「拉模型」按钮（1013：原来在「默认渠道/模型」那一行，那行删了 → 挪到每张渠道卡自己头上）。
+      // 内置两家（万有引力/Waw）和自定义 cc_* 都是动态渠道：模型靠「拉取模型」从 /v1/models 拿，没有静态表。
+      // 1107：改成文字按钮（原刷新图标 SVG 没设宽高，行内渲染不可见）；拉回来的列表只留 LLM（isChatModel 过滤）
+      if (!c.builtin || /^cc_/.test(id) || id === 'wanyin' || id === 'waw') {
+        const rb = document.createElement('span'); rb.className = 'cpxbtn'; rb.textContent = '拉模型'; rb.title = '拉取该渠道的对话（LLM）模型列表';
         rb.addEventListener('click', () => pullModels(id));
         head.appendChild(rb);
       }

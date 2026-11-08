@@ -43,7 +43,7 @@ const config = {
   autofix: { recipes: [], last: null },   // 自动修图：配方列表+上次整套设置（0905）
   qpresets: { hidden: [], overrides: {} },   // 快捷预设（0912）：hidden=用户删掉的出厂预设 id；overrides[id]={label,group,icon,params} 用户对出厂预设的改动（出厂文件每启覆盖，改动记这里）
   layouts: { default: null, custom: [] },   // 快速布局：默认(首启收录当前排布并自动对齐)+自定义
-  chat: { provider: 'grs', model: 'gemini-3.5-flash', base: '', key: '', history: [], systemPrompt: '', presets: [], roleModels: {},
+  chat: { provider: 'wanyin', model: '', base: '', key: '', history: [], systemPrompt: '', presets: [], roleModels: {},
     // caps（1011）：各"用对话模型"的功能各自指定渠道/模型，空=跟随默认（行为与加这个功能之前完全一致）。
     //   chat=AI对话（**1013新增**：原「默认渠道/模型」那块界面已删，它的槽位搬到「其它功能的模型」里，
     //         config.chat.provider/model 保留当兜底，老用户不填这行行为完全不变）；
@@ -55,14 +55,13 @@ const config = {
     //   '__none__'（=内置语料，半合成卡写死的那套看图用词）= 半合成识图 的默认，语义是"不叠加角色语料"。
     //   其余值 = 用户自建角色的名字。**没有"跟随当前角色"这一档**（第三轮已删）。
     corpus: { chat: 'b_corpus', json: 'b_corpus', ask: '__none__' } },
-  // 0908 对话渠道与生图渠道彻底解耦：对话有自己的一张渠道表（内置 aji/grs 各自的 Key + 用户自定义 cc_* 多个），
-  // 模型目录：内置的走 providers.js 的 chatModels 静态表；cc_* 靠"拉取模型"动态存进 models
+  // 1107 对话渠道精简（用户裁定）：AJI/GRS/墨墨 全部移除，只留「万有引力 / Waw」两家 /v1 站（OpenAI 兼容）。
+  // 地址内置写死（用户只填 Key）；模型不写死表，靠「拉取模型」从 /v1/models 拿（chat-models-fetch）。
   chatProviders: {
-    aji: { label: 'AJI', base: 'https://ai.ajiai.top', key: '', models: [] },
-    grs: { label: 'GRS', base: 'https://grsai.dakka.com.cn', key: '', models: [] },
-    // 1013：墨墨（对话侧）。与生图侧同一个渠道商、同一把 Key，但对话渠道是独立表
-    // （0908 用户裁定"对话与生图彻底解耦"）——所以在两处都要各填一次 Key
-    momo: { label: '墨墨', base: 'https://api.momoapi.icu', key: '', models: [] },
+    // ⚠ base 存主机地址、不带 /v1：代码在调用点自己拼 /v1/chat/completions、/v1/models 等
+    //（用户给的「https://lxmone.xyz/v1」「https://wawapii.com/v1」里的 /v1 就是这个用途，等价）
+    wanyin: { label: '万有引力', base: 'https://lxmone.xyz', key: '', models: [] },
+    waw: { label: 'Waw', base: 'https://wawapii.com', key: '', models: [] },
   },
   stacks: [],   // 卡牌融合叠：[{members:[卡id], active:卡id, hidden:bool}]
   // 提示词远程更新（1012）：base=更新地址（OSS，空=没配）；auto=开机自动（默认关，用户自己开）；
@@ -283,7 +282,7 @@ function loadConfig() {
 // 规则：saved.schemaV >= v 的跳过；每条自带幂等守卫（老用户没有schemaV但可能带着旧标志，
 // 靠守卫不重跑）；跑完写 config.schemaV = SCHEMA_V。新增迁移 = 表尾追加一条 + SCHEMA_V+1，
 // 禁止在loadConfig里散写"if (!saved.xxxV2)"式的一次性逻辑（那正是改A坏B的温床）
-const SCHEMA_V = 27;
+const SCHEMA_V = 28;
 const MIGRATIONS = [
   { v: 1, name: '无选区跑全图改默认开', up(saved) {
     // 老配置里存过false的也掰成开；此后用户自己的选择保留（守卫=老标志noSelFullV2）
@@ -628,6 +627,26 @@ const MIGRATIONS = [
     }
     if (!config.providers[config.provider]) config.provider = 'yingce';
   } },
+  { v: 28, name: '对话渠道精简（1107 用户裁定）：对话侧只留万有引力/Waw 两家 /v1 站，AJI/GRS/墨墨全部移除；指向已删渠道的槽位/兕底改回万有引力', up() {
+    // 旧渠道（aji/grs/momo/历史残留）直接清掉：站点不同 Key 不通用，不搬旧 Key。
+    // 万有引力与生图侧同站，若生图侧存过 Key 而对话侧没填过，顺手搬一份免得用户填两遍。
+    for (const k of Object.keys(config.chatProviders)) {
+      if (k !== 'wanyin' && k !== 'waw') delete config.chatProviders[k];
+    }
+    const gyImg = config.providers && config.providers.wanyin && config.providers.wanyin.key;
+    const gyChat = config.chatProviders.wanyin;
+    if (gyImg && gyChat && !gyChat.key && String(gyImg).trim()) gyChat.key = String(gyImg).trim();
+    // 指向已删渠道的地方全部改回 wanyin（caps 三个槽位 + 兕底 provider + 自动修图识图 det）
+    const ch = config.chat || {};
+    if (ch.provider && !config.chatProviders[ch.provider]) ch.provider = 'wanyin';
+    const caps = ch.caps || {};
+    for (const ck of Object.keys(caps)) {
+      const c = caps[ck];
+      if (c && c.provider && !config.chatProviders[c.provider]) { c.provider = ''; c.model = ''; }
+    }
+    const af = config.autofix || {};
+    if (af.det && af.det.provider && !config.chatProviders[af.det.provider]) { af.det.provider = ''; af.det.model = ''; }
+  } },
 ];
 function runMigrations(saved) {
   const from = Number(saved.schemaV) || 0;
@@ -662,6 +681,20 @@ function applyInvariants() {
     if (cp && Array.isArray(cp.models)) cp.models = cp.models.filter(MK.isChatModel);
   }
   if (config.chat.model && !MK.isChatModel(config.chat.model)) config.chat.model = '';
+  // 对话渠道表兜底清洗：残留的旧渠道（aji/grs/momo 等）一律剔除，指向它们的槽位改回万有引力
+  // （放在不变量而非 v28 迁移：老配置若从备份/手工编辑带进脏键，每次启动都兜住）
+  for (const k of Object.keys(config.chatProviders)) {
+    if (k !== 'wanyin' && k !== 'waw' && !/^cc_/.test(k)) delete config.chatProviders[k];
+  }
+  const ch = config.chat;
+  if (ch.provider && !config.chatProviders[ch.provider]) ch.provider = 'wanyin';
+  for (const ck of Object.keys(ch.caps || {})) {
+    const c = ch.caps[ck];
+    if (c && c.provider && !config.chatProviders[c.provider]) { c.provider = ''; c.model = ''; }
+  }
+  if (config.autofix && config.autofix.det && config.autofix.det.provider && !config.chatProviders[config.autofix.det.provider]) {
+    config.autofix.det.provider = ''; config.autofix.det.model = '';
+  }
 }
 
 // 写安全网：tmp+rename原子替换（写一半崩溃/断电不会截断正主文件）；
@@ -776,11 +809,11 @@ ipcMain.handle('set-config', (e, patch) => {
     ctx.broadcast('chat-vars', config.chat);   // 对话卡模型徽标等实时跟随（替代页面5秒轮询）
   }
   if (patch.chatProviders && typeof patch.chatProviders === 'object') {
-    // 对话渠道表（0908 与生图解耦）：内置 aji/grs 只许改字段；cc_* 可增/改/删（null=删，删当前渠道回落 grs）
+    // 对话渠道表（1107 精简后：内置 wanyin/waw 只许改字段；cc_* 可增/改/删，null=删，删当前渠道回落 wanyin）
     for (const k of Object.keys(patch.chatProviders)) {
       const v = patch.chatProviders[k];
       if (v === null) {
-        if (/^cc_/.test(k)) { delete config.chatProviders[k]; if (config.chat.provider === k) config.chat.provider = 'grs'; }
+        if (/^cc_/.test(k)) { delete config.chatProviders[k]; if (config.chat.provider === k) config.chat.provider = 'wanyin'; }
         continue;
       }
       if (!v || typeof v !== 'object') continue;

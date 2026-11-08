@@ -14,14 +14,16 @@ const CTX_CAP = 40;      // 每次请求带给模型的最近消息数（20轮�
 const chatHistPath = () => path.join(app.getPath('documents'), '橙子', 'chat-history.json');
 let histCache = null;
 
-// 聊天/识图统一请求器（0907#6/#8根治）：先走Gemini兼容端点，被拒/报错自动改道OpenAI端点。
+// 聊天/识图统一请求器（1108 用户裁定：全部直走 OpenAI 兼容端点）。
+// 背景：0907 起是「先 Gemini 兼容端点、被拒改道 OpenAI」；1107 实测中转站的 /v1beta 路由经常整条挂死
+// （503 no available accounts）而 /v1/chat/completions 一切正常——中转站对 OpenAI 端点的适配永远是最好的，
+// 没必要再先撞 Gemini。现在直接走 /v1/chat/completions，不再试 Gemini 端点。
 // ⚠body必须Buffer.from(JSON.stringify(...),'utf8')——JSON.stringify默认不转义中文，
 // 裸字符串含非ASCII字符(如"在"=22312)会被某些fetch当ByteString转换抛"Cannot convert argument
 // to a ByteString"（0907用户实测batch修图识图预检失败正是这条）。
-// 两套body格式按端点切换：Gemini=contents[{role,parts:[{text}|{inlineData}]}]；
-// 思考过程剥离（0909用户裁定：只要结果，不要思考）。三种来路一起挡：
-//   Gemini parts 里 thought:true 的段 / OpenAI 风格正文里的 <think>…</think>（含 <thinking>）/ 只剩收尾标签的残片
-// reasoning_content 这类独立字段本来就不取。剥完为空=走"模型返回空正文"报错路径（思考烧光额度）
+// 思考过程剥离（0909用户裁定：只要结果，不要思考）：剥 OpenAI 风格正文里的 <think>…</think>（含 <thinking>）
+// / 只剩收尾标签的残片；reasoning_content 这类独立字段本来就不取。
+// 剥完为空=走"模型返回空正文"报错路径（思考烧光额度）
 const { cleanModelText } = require('./llm-text');
 ctx.cleanModelText = cleanModelText;   // autofix 识图同用
 
@@ -65,17 +67,7 @@ async function callLLM({ base, key, model, contents, genCfg, image }, timeoutMs)
       return { ok: false, error: e.name === 'AbortError' ? '请求超时' : (e.message || String(e)) };
     } finally { clearTimeout(timer); }
   };
-  const pickGemini = (data) => {
-    const cand = data.candidates && data.candidates[0];
-    if (cand && cand.finishReason === 'SAFETY') return '';
-    const parts = (cand && cand.content && cand.content.parts) || [];
-    // 跳过 thought:true 的思考段，其余文本段拼起来（原来只取 parts[0]：思考段排第一时正文被丢/思考被当回复）
-    return cleanModelText(parts.filter((p) => p && p.text != null && !p.thought).map((p) => p.text).join(''));
-  };
-  // Gemini端点（首试）
-  const g = await post(baseUrl + '/v1beta/models/' + model + ':generateContent', { contents, generationConfig: cfg }, pickGemini);
-  if (g.ok) return g;
-  // GPT/Claude系或Gemini被拒：改道OpenAI风格 /v1/chat/completions（坑75：AJI的GPT/Claude只认这个端点）
+  // contents（Gemini结构，全程序统一输入格式）→ OpenAI messages，直走 /v1/chat/completions
   const messages = [];
   for (const c of contents) {
     const role = c.role === 'model' ? 'assistant' : 'user';
@@ -100,11 +92,11 @@ async function callLLM({ base, key, model, contents, genCfg, image }, timeoutMs)
   };
   const o = await post(baseUrl + '/v1/chat/completions', { model, messages, temperature: cfg.temperature, top_p: cfg.topP, max_tokens: cfg.maxOutputTokens }, pickOpenAI);
   if (o.ok) return o;
-  return { ok: false, error: g.error + '；改道OpenAI端点也失败: ' + (o.error || '') };
+  return { ok: false, error: 'OpenAI端点失败: ' + (o.error || '') };
 }
 
 // ---------- 对话渠道解析（0908 与生图彻底解耦；1013 去掉"角色专属模型"这一层）----------
-// 对话只认 config.chatProviders（内置 aji/grs/momo 各自的 Key + 用户自定义 cc_*），绝不碰 config.providers（生图渠道）。
+// 对话只认 config.chatProviders（1107 精简后内置 wanyin/waw 各自的 Key + 用户自定义 cc_*），绝不碰 config.providers（生图渠道）。
 // 模型目录：内置渠道=providers.js 的 chatModels 静态表（dead 的不列）；cc_*=拉取后存进 models。
 // 1013 用户裁定：**"角色专属模型"整块移除**（"多角色不管"）。原来看法 roleModels[角色] 这一层没了，
 //   解析顺序简化为：功能槽位(caps) → config.chat.provider/model 兜底。
@@ -151,9 +143,9 @@ function resolveChat(capId) {
     return { prov: cap.provider, label: cp0.label || cap.provider, base: (cp0.base || '').replace(/\/+$/, ''), key: ctx.cleanKey(cp0.key), model: m0, viaCap: capId };
   }
   // 兜底 = config.chat.provider/model（老配置一直带着这对值；界面不再单独露出它）
-  let prov = config.chat.provider || 'grs';
+  let prov = config.chat.provider || 'wanyin';
   let model = '';
-  if (!config.chatProviders[prov]) { prov = 'grs'; model = ''; }
+  if (!config.chatProviders[prov]) { prov = 'wanyin'; model = ''; }
   const cp = config.chatProviders[prov] || {};
   const list = chatModelList(prov);
   const alive = list.filter((m) => !m.dead).map((m) => m.id);

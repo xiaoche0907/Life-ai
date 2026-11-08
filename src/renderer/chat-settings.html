@@ -201,6 +201,7 @@
     // 填充渠道下拉
     providerSel.innerHTML = '';
     for (const k in meta) {
+      // 1107 生图侧渠道精简后，chat-settings 若还在用旧表过滤，保留 momo 跳过无害——先不动逻辑，只把 fallback 渠道改成 wanyin
       if (k === 'momo') continue;
       if (providers[k] && providers[k].hidden) continue;   // 生图卡小眼睛关掉的渠道，对话里也不列（0908）
       const opt = document.createElement('option');
@@ -209,7 +210,7 @@
       providerSel.appendChild(opt);
     }
 
-    currentProvider = cfg.chat.provider || provData.current || 'aji';
+    currentProvider = cfg.chat.provider || provData.current || 'wanyin';
     providerSel.value = currentProvider;
     // 0907#5 自定义渠道：读回已存的地址/Key，落进 providers.custom（chat.js的custom分支读它）
     const cc = (provData.conf && provData.conf.custom) || {};

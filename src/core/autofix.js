@@ -139,12 +139,12 @@ async function detectRegions(img, parts, det) {
 }
 
 async function detectRegionsOnce(img, parts, det) {
-  // 识图渠道走对话渠道表 chatProviders（与生图渠道解耦）：det.provider 是对话渠道 id（aji/grs/cc_*）。
+  // 识图渠道走对话渠道表 chatProviders（与生图渠道解耦）：det.provider 是对话渠道 id（wanyin/waw/cc_*）。
   // ⚠1011：det 由**调用方**给出，一律是 config.autofix.det —— 自动修图卡的卡面选择器就是写这个字段；
   //   「对话模型分配」表里的这条路已删除，只留一个入口，免得两处互相打架。
   //   （det 缺席时仍回落到全局对话渠道，保证旧配方/未设过的用户照常能跑。）
-  const wantProv = (det && det.provider) || config.chat.provider || 'grs';
-  const cp = (config.chatProviders && config.chatProviders[wantProv]) || (config.chatProviders && config.chatProviders.grs) || {};
+  const wantProv = (det && det.provider) || config.chat.provider || 'wanyin';
+  const cp = (config.chatProviders && config.chatProviders[wantProv]) || (config.chatProviders && config.chatProviders.wanyin) || {};
   const base = (cp.base || '').replace(/\/+$/, '');
   const key = ctx.cleanKey(cp.key);
   const model = (det && det.model) || config.chat.model || '';
@@ -160,33 +160,20 @@ async function detectRegionsOnce(img, parts, det) {
     + '\n直接只输出一个JSON对象，不要任何思考过程、解释或代码块标记。格式：{"face":[ymin,xmin,ymax,xmax],...}\n'
     + '坐标为相对整张图的0-1000归一化整数（ymin=框上边,xmin=框左边,ymax=框下边,xmax=框右边）。图中不存在或完全出画的部位值为null。';
   const b64 = small.toJPEG(85).toString('base64');
-  // 主通道：Gemini兼容generateContent；被拒→自动改道OpenAI风格/v1/chat/completions
-  // （AJI的GPT/Claude系只认OpenAI端点，走Gemini兼容报"unknown provider for model"，0905实测）
-  const g = await detFetch(base + '/v1beta/models/' + model + ':generateContent', key, {
-    contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: b64 } }] }],
+  // 直走 OpenAI 兼容端点（1108 用户裁定：全部转 OpenAI 接口，中转站对这条路由适配最好；
+  // 原「Gemini 端点先行、被拒改道」已废弃——中转站 /v1beta 经常整条 503）
+  const o = await detFetch(base + '/v1/chat/completions', key, {
+    model,
+    messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } }] }],
     // 输出上限 8192（0908 由 2000 抬高）：思考型模型（gemini-3.x pro/high 等）的思考 token 计入输出额度，
     // 实测一个一行答案就烧 600~1900 token；2000 会被思考吃光→正文为空/JSON 截断（"识图返回不含JSON"）
-    generationConfig: { temperature: 0.1, topP: 0.9, maxOutputTokens: 8192 },
+    temperature: 0.1, max_tokens: 8192,
   }, (data) => {
-    const cand = data.candidates && data.candidates[0];
-    const parts = (cand && cand.content && cand.content.parts) || [];
-    // 0909：跳过 thought:true 思考段 + 剥 <think> 标签（思考型模型把思考排第一段时 JSON 解析必失败）
-    const raw = parts.filter((x) => x && x.text != null && !x.thought).map((x) => x.text).join('');
+    const raw = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
     return ctx.cleanModelText ? ctx.cleanModelText(raw) : raw;
   });
-  let txt = g.ok ? g.text : null;
-  if (!txt) {
-    const o = await detFetch(base + '/v1/chat/completions', key, {
-      model,
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } }] }],
-      temperature: 0.1, max_tokens: 8192,
-    }, (data) => {
-      const raw = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      return ctx.cleanModelText ? ctx.cleanModelText(raw) : raw;
-    });
-    if (o.ok) { txt = o.text; if (ctx.dlog) ctx.dlog('[autofix] 识图改道OpenAI端点成功(' + model + ')'); }
-    else return { ok: false, error: g.error + '；改道OpenAI端点也失败: ' + o.error };
-  }
+  if (!o.ok) return { ok: false, error: '识图请求失败: ' + (o.error || '') };
+  let txt = o.text;
   const mfence = txt.match(/```[a-zA-Z]*\s*\n?([\s\S]*?)```/);
   if (mfence) txt = mfence[1].trim();
   const js = txt.match(/\{[\s\S]*\}/);
