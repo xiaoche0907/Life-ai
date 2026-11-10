@@ -14,13 +14,22 @@ const PROVIDERS = {
   wanyin: { label: '万有引力', base: 'https://lxmone.xyz', currency: '¥', dynamicModels: true, openai: true, models: {} },
 };
 
-// 1107：自定义渠道（cus_/custom）已随渠道精简一并移除——metaOf 只认内置表。
+// 1108 恢复：生图自定义渠道（cus_*，用户裁定精简时误伤了「自定义能力」）。地址/Key/label 存
+// config.providers[cus_xxx]，meta 运行时合成（openai+dynamicModels，走 /v1/images 与拉模型同一套规矩）。
 function metaOf(prov) {
-  return PROVIDERS[prov] || null;
+  if (PROVIDERS[prov]) return PROVIDERS[prov];
+  if (/^cus_[a-z0-9]{3,16}$/.test(prov || '')) {
+    const pc = config.providers[prov] || {};
+    return { label: pc.label || prov, base: pc.base || '', currency: '¥', dynamicModels: true, openai: true, models: {}, custom: true };
+  }
 }
-// 给UI的完整表：只有内置两家（影策/万有引力）
+// 给UI的完整表：内置两家 + 运行时合成的 cus_* 自定义渠道
 function metaTable() {
-  return Object.assign({}, PROVIDERS);
+  const t = Object.assign({}, PROVIDERS);
+  for (const k of Object.keys(config.providers || {})) {
+    if (/^cus_[a-z0-9]{3,16}$/.test(k) && !t[k]) t[k] = metaOf(k);
+  }
+  return t;
 }
 
 // 查余额：1107 渠道精简后只剩影策/万有引力（/v1 站）。

@@ -66,7 +66,10 @@
   #settings select option { background: var(--option-bg); }
   .setRow { display: flex; align-items: center; gap: 8px; }
   .setRow .grow { flex: 1; min-width: 0; }
-  /* 渠道两列并排（0908用户裁定）：影策|万有引力 一横排（1107 精简后只有这两张卡） */
+  /* 渠道两列并排（0908用户裁定）：影策|万有引力 一横排，其后自定义渠道两两一排（1108 恢复自定义） */
+  #provGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  #btnAddProv { width: 100%; border: 1px dashed var(--inset-border); background: transparent; color: var(--text-dim); height: 34px; border-radius: 12px; cursor: pointer; font-size: 12px; }
+  #btnAddProv:hover { border-color: var(--accent-border); color: var(--accent-text); }
   #provGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .provBox { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); }
   .provBox.off { opacity: 0.45; }
@@ -183,7 +186,9 @@
 
   <div id="body">
     <div id="settings">
-      <div class="setLabel">渠道（小眼睛=是否出现在渠道胶囊里；地址已内置，填 Key 后点「拉取模型」）</div>
+      <div class="setLabel">渠道（小眼睛=是否出现在渠道胶囊里；内置地址已内置，自定义渠道填名称/地址/Key 后「拉取模型」）</div>
+      <div id="provGrid"></div>
+      <button id="btnAddProv" data-pass style="margin-top:8px">＋ 新增自定义渠道（OpenAI 兼容生图中转）</button>
       <div id="provGrid"></div>
 
       <div class="setLabel">生成超时（秒）</div>
@@ -307,13 +312,14 @@
   let curProv = 'yingce';
   let curModelId = '';
   const BUILTIN = ['yingce', 'wanyin'];
-  // 渠道胶囊可轮换的集合：内置里没被小眼睛关掉的（0908）
+  const allProvs = () => BUILTIN.concat(Object.keys(PROV.conf).filter((k) => /^cus_/.test(k) && PROV.meta[k]));
+  // 渠道胶囊可轮换的集合：内置 + 自定义里没被小眼睛关掉的（0908，1108 恢复自定义）
   function provOrder() {
-    const vis = BUILTIN.filter((k) => PROV.meta[k] && !(PROV.conf[k] && PROV.conf[k].hidden));
+    const vis = allProvs().filter((k) => PROV.meta[k] && !(PROV.conf[k] && PROV.conf[k].hidden));
     return vis.length ? vis : ['yingce'];
   }
   function provLabel(k) {
-    return (PROV.meta[k] && PROV.meta[k].label) || k;
+    return (PROV.conf[k] && PROV.conf[k].label) || (PROV.meta[k] && PROV.meta[k].label) || k;
   }
 
   function modelList() {
@@ -359,14 +365,20 @@
   const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   function provBox(k) {
     const conf = PROV.conf[k] || {};
+    const isCus = /^cus_/.test(k);
     const box = document.createElement('div');
     box.className = 'provBox' + (conf.hidden ? ' off' : '');
     box.dataset.prov = k;
     const head = document.createElement('div');
-    head.className = 'provHead';
+    head.className = 'provHead';   // 横排：名称占满，眼睛/✕固定右上角（1108 修复 UI 偏位）
     const nm = document.createElement('div');
     nm.className = 'nm';
-    nm.textContent = provLabel(k);
+    if (isCus) {
+      // 自定义渠道：名称可改（1108 恢复）；内置两家名称只读
+      const ni = document.createElement('input');
+      ni.value = conf.label || k; ni.placeholder = '渠道名'; ni.dataset.field = 'label'; ni.setAttribute('data-pass', '');
+      nm.appendChild(ni);
+    } else nm.textContent = provLabel(k);
     const eye = document.createElement('div');
     eye.className = 'eye' + (conf.hidden ? '' : ' on');
     eye.title = conf.hidden ? '已隐藏：点击显示到渠道胶囊' : '显示中：点击从渠道胶囊隐藏';
@@ -374,8 +386,19 @@
     eye.dataset.act = 'eye';
     eye.setAttribute('data-pass', '');
     head.appendChild(nm); head.appendChild(eye);
+    if (isCus) {
+      // 自定义渠道删除按钮（两段确认，与对话侧同款交互）
+      const x = document.createElement('div');
+      x.className = 'xdel'; x.textContent = '✕'; x.title = '删除此渠道（需再点一次确认）'; x.dataset.act = 'del'; x.setAttribute('data-pass', '');
+      head.appendChild(x);
+    }
     box.appendChild(head);
-    // 1107 渠道精简：地址内置（写死在 providers.js）——不给地址框，只填 Key + 拉取模型
+    // 自定义渠道：地址自己填（内置两家地址写死在 providers.js，不给框防手抖）
+    if (isCus) {
+      const b = document.createElement('input');
+      b.dataset.field = 'base'; b.placeholder = '接口地址 https://…（OpenAI 兼容）'; b.value = conf.base || ''; b.setAttribute('data-pass', '');
+      box.appendChild(b);
+    }
     // Key 行：输入框 + 小眼睛（睁眼=看明文，闭眼=圆点）。1013 用户要的
     const keyRow = document.createElement('div');
     keyRow.className = 'keyRow';
@@ -419,13 +442,31 @@
   function renderProvGrid() {
     const g = $('provGrid');
     g.innerHTML = '';
-    for (const k of BUILTIN) if (PROV.meta[k]) g.appendChild(provBox(k));
+    for (const k of allProvs()) if (PROV.meta[k]) g.appendChild(provBox(k));
   }
-  // 事件委托（铁律13）：小眼睛按 data-act 寻址，字段改动即时落库
+  // 事件委托（铁律13）：小眼睛/删除按 data-act 寻址，字段改动即时落库
+  let delArm = null;
   $('provGrid').addEventListener('click', async (e) => {
     const box = e.target.closest('.provBox'); if (!box) return;
     const k = box.dataset.prov;
     const act = e.target.closest('[data-act]') && e.target.closest('[data-act]').dataset.act;
+    if (act === 'del') {
+      // 删自定义渠道：两段确认（✕→「确认」3秒内再点才删）
+      const x = e.target.closest('[data-act]');
+      if (delArm !== k) {
+        delArm = k; x.textContent = '确认'; x.style.color = 'var(--err)';
+        setTimeout(() => { if (delArm === k) { delArm = null; renderProvGrid(); } }, 3000);
+        return;
+      }
+      delArm = null;
+      const patch = {}; patch[k] = null;
+      delete PROV.conf[k]; delete PROV.meta[k];
+      await window.orange.setConfig({ providers: patch });
+      if (curProv === k) setProvider(provOrder()[0]);
+      renderProvGrid();
+      setStatus('渠道已删除', 'ok');
+      return;
+    }
     if (act === 'eye') {
       const hidden = !(PROV.conf[k].hidden);
       // 至少留一个可见渠道，不然胶囊没得切
@@ -437,6 +478,18 @@
       if (hidden && curProv === k) setProvider(provOrder()[0]);
       else $('pChannel').textContent = provLabel(curProv);
     }
+  });
+  // 新增自定义渠道（1108 恢复）：生成 cus_xxx 键落库，重画后焦点给地址框
+  $('btnAddProv').addEventListener('click', async () => {
+    const id = 'cus_' + Math.random().toString(36).slice(2, 8);
+    const n = Object.keys(PROV.conf).filter((k) => /^cus_/.test(k)).length + 1;
+    PROV.conf[id] = { base: '', key: '', model: '', models: [], label: '自定义' + n, hidden: false };
+    PROV.meta[id] = { label: '自定义' + n, base: '', currency: '¥', dynamicModels: true, openai: true, models: {}, custom: true };
+    await window.orange.setConfig({ providers: { [id]: PROV.conf[id] } });
+    renderProvGrid();
+    const el = $('provGrid').querySelector('[data-prov="' + id + '"] input[data-field="base"]');
+    if (el) el.focus();
+    setStatus('已新增自定义渠道，填地址和Key后点「拉取模型」', 'ok');
   });
   let fieldTimer = null;
   $('provGrid').addEventListener('input', (e) => {

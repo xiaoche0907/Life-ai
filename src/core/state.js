@@ -195,7 +195,12 @@ function loadConfig() {
       for (const k of Object.keys(config.providers)) {
         if (saved.providers[k]) Object.assign(config.providers[k], saved.providers[k]);
       }
-      // 1107 渠道精简：cus_* 自定义渠道已废除，不再回读（saved 里的旧渠道由 v27 迁移清掉）
+      // 1108 恢复：cus_* 自定义渠道逐个回读（铁律19：漏读=每次重启渠道消失）。脏键（非 cus_ 前缀）不收
+      for (const k of Object.keys(saved.providers)) {
+        if (/^cus_[a-z0-9]{3,16}$/.test(k) && !config.providers[k]) {
+          config.providers[k] = Object.assign({ base: '', key: '', model: '', models: [], label: k, hidden: false }, saved.providers[k]);
+        }
+      }
     }
     if (saved.provider && config.providers[saved.provider]) config.provider = saved.provider;
     // 内置渠道的显隐（0908 小眼睛）：存在 providers[k].hidden 上，上面 Object.assign 已回读；无需额外字段
@@ -282,7 +287,7 @@ function loadConfig() {
 // 规则：saved.schemaV >= v 的跳过；每条自带幂等守卫（老用户没有schemaV但可能带着旧标志，
 // 靠守卫不重跑）；跑完写 config.schemaV = SCHEMA_V。新增迁移 = 表尾追加一条 + SCHEMA_V+1，
 // 禁止在loadConfig里散写"if (!saved.xxxV2)"式的一次性逻辑（那正是改A坏B的温床）
-const SCHEMA_V = 28;
+const SCHEMA_V = 29;
 const MIGRATIONS = [
   { v: 1, name: '无选区跑全图改默认开', up(saved) {
     // 老配置里存过false的也掰成开；此后用户自己的选择保留（守卫=老标志noSelFullV2）
@@ -647,6 +652,7 @@ const MIGRATIONS = [
     const af = config.autofix || {};
     if (af.det && af.det.provider && !config.chatProviders[af.det.provider]) { af.det.provider = ''; af.det.model = ''; }
   } },
+  { v: 29, name: '恢复生图自定义渠道（1108 用户裁定）：1107 精简误伤了自定义能力，cus_* 重新放行（迁移不动数据，只升版本号，回读/不变量/清洗已在代码层放行）', up() {} },
 ];
 function runMigrations(saved) {
   const from = Number(saved.schemaV) || 0;
@@ -669,12 +675,18 @@ function applyInvariants() {
   config.ui.theme = 'dark';   // 只保留深色主题
   // 模型清单清洗（0908用户裁定"绝对不允许"）：生图渠道只留生图模型、对话渠道只留语言模型（老配置里混进的一并清掉）
   const MK = require('./model-kind');
-  const DYN_PROV = { yingce: 1, wanyin: 1 };   // 动态渠道（模型靠拉取，回读时校验；1107 渠道精简后只有这两家）
+  // 动态渠道（模型靠拉取，回读时校验）：内置两家 + cus_* 自定义（1108 恢复）
+  const DYN_PROV = (k) => k === 'yingce' || k === 'wanyin' || /^cus_/.test(k);
+  // 生图渠道表兜底清洗：脏键（非内置非 cus_）剔除，当前渠道指向已删键时回影策
+  for (const k of Object.keys(config.providers)) {
+    if (k !== 'yingce' && k !== 'wanyin' && !/^cus_[a-z0-9]{3,16}$/.test(k)) delete config.providers[k];
+  }
+  if (config.provider && !config.providers[config.provider]) config.provider = 'yingce';
   for (const k of Object.keys(config.providers)) {
     const pc = config.providers[k];
     if (!pc) continue;
     if (Array.isArray(pc.models)) pc.models = pc.models.filter(MK.isImageModel);
-    if (DYN_PROV[k] && pc.model && !MK.isImageModel(pc.model)) pc.model = '';
+    if (DYN_PROV(k) && pc.model && !MK.isImageModel(pc.model)) pc.model = '';
   }
   for (const k of Object.keys(config.chatProviders)) {
     const cp = config.chatProviders[k];
@@ -759,8 +771,12 @@ ipcMain.handle('set-config', (e, patch) => {
   if (patch.providers) {
     for (const k of Object.keys(patch.providers)) {
       const v = patch.providers[k];
-      if (v === null) continue;   // 1107 渠道精简：自定义渠道已废除，null 删除请求直接忽略
+      if (v === null) {   // 删自定义渠道（只许删 cus_ 前缀；内置两家不许删）
+        if (/^cus_/.test(k)) { delete config.providers[k]; if (config.provider === k) config.provider = 'yingce'; }
+        continue;
+      }
       if (config.providers[k]) Object.assign(config.providers[k], v);
+      else if (/^cus_[a-z0-9]{3,16}$/.test(k)) config.providers[k] = Object.assign({ base: '', key: '', model: '', models: [], label: k, hidden: false }, v);
     }
     if (typeof ctx.broadcast === 'function') ctx.broadcast('providers-changed', {});   // 渠道增删/显隐→各卡刷新（broadcast 由 windows.js 稍后挂上，启动早期可能还没有）
   }

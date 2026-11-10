@@ -188,7 +188,7 @@ ipcMain.handle('fire-armed', async (_e, { count }) => {
 function resolveGen(p) {
   const PROVIDERS = ctx.PROVIDERS;
   const prov = (p && p.provider) || config.provider || 'yingce';
-  // 内置渠道原样（1107 精简后只有影策/万有引力）
+  // 内置渠道原样；cus_* 自定义渠道 metaOf 运行时合成（1108 恢复自定义），地址取自渠道配置
   const meta = (ctx.providerMeta && ctx.providerMeta(prov)) || PROVIDERS[prov] || PROVIDERS.yingce;
   const pc = config.providers[prov] || {};
   const base = (pc.base || meta.base || '').replace(/\/+$/, '');
