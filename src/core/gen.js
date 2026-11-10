@@ -224,7 +224,12 @@ async function generateOne(p) {
   // 0909：按 api 字段分流——'grs'=GRS 自家异步接口（历史遗留），'openai'=OpenAI 图片接口；缺省=Gemini generateContent
   // 1107 渠道精简后：影策/万有引力 resolveGen 已强制 api='openai'，grs/gemini 两路仅为兼容保留
   if (rv.api === 'grs') return generateViaGrs(p, rv);
-  if (rv.api === 'openai') return generateViaOpenAI(p, rv);
+  if (rv.api === 'openai') {
+    // 1110：Gemini image 系（nano-banana / gemini-*-image）在中转站只有 chat 通路——
+    // 影策 /v1/images 端点实测 HTTP 500 "only imagen models are supported"，别家工具能用的就是 /v1/chat/completions
+    if (/nano[-_]?banana|gemini[a-z0-9._-]*image/i.test(rv.model)) return generateViaChat(p, rv);
+    return generateViaOpenAI(p, rv);
+  }
   return generateViaGemini(p, rv);
 }
 
@@ -364,7 +369,56 @@ async function generateViaOpenAI(p, rv) {
     return { ok: false, error: errText(e, tmoMs) };
   } finally { clearTimeout(timer); }
 }
-
+// ---- 路②b：Chat 通路生图（1110）：nano-banana / gemini-*-image 系在中转站只认 /v1/chat/completions——
+// 影策 /v1/images 端点实测 HTTP 500 "only imagen models are supported"，别家工具能用的就是 chat。
+// 请求：messages[0].content = [text, image_url...]（传图即图生图）；回包优先取 message.images[].image_url.url（new-api 系标准），
+// 兑底从 content 文本里抓 data:image/... 或图片直链。生图请求恒 stream:false。
+async function generateViaChat(p, rv) {
+  const imgs = [];
+  if (p.inputImage) imgs.push({ buf: Buffer.from(p.inputImage, 'base64'), mime: p.inputMime || 'image/jpeg' });
+  imgs.push(...readRefs(p));
+  const content = [{ type: 'text', text: p.prompt }];
+  for (const im of imgs) content.push({ type: 'image_url', image_url: { url: 'data:' + im.mime + ';base64,' + im.buf.toString('base64') } });
+  const tmoMs = tmoOf(p);
+  const ctrl = new AbortController();
+  const timer = tmoMs > 0 ? setTimeout(() => ctrl.abort(), tmoMs) : null;
+  try {
+    const resp = await fetch(rv.base + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Authorization': 'Bearer ' + rv.key },
+      body: Buffer.from(JSON.stringify({ model: rv.model, messages: [{ role: 'user', content }], stream: false }), 'utf8'),
+      signal: ctrl.signal,
+    });
+    let j = null; try { j = await resp.json(); } catch {}
+    if (!resp.ok) {
+      const detail = (j && j.error && (j.error.message || j.error.type)) || (j && j.message) || '';
+      return { ok: false, error: 'HTTP ' + resp.status + (detail ? ' — ' + String(detail).slice(0, 180) : '') };
+    }
+    const msg = (j && j.choices && j.choices[0] && j.choices[0].message) || {};
+    const pickUrl = (x) => !x ? '' : (typeof x === 'string' ? x
+      : ((x.image_url && (typeof x.image_url === 'string' ? x.image_url : x.image_url.url)) || x.url || ''));
+    const outUrls = (Array.isArray(msg.images) ? msg.images.map(pickUrl) : []).filter(Boolean);
+    // 兑底：部分站把图塞在 content 文本里（markdown ![](data:...) 或裸图片链接）
+    if (!outUrls.length) {
+      const txt = typeof msg.content === 'string' ? msg.content
+        : (Array.isArray(msg.content) ? msg.content.map((c) => (c && c.text) || '').join('\n') : '');
+      const m = txt && txt.match(/data:image\/[a-z.+]+;base64,[A-Za-z0-9+\/=]+|https?:\/\/[^\s)"']+\.(?:png|jpe?g|webp)[^\s)"']*/i);
+      if (m) outUrls.push(m[0]);
+    }
+    if (!outUrls.length) return { ok: false, error: '未返回图片' };
+    let buf, mime;
+    if (/^data:/i.test(outUrls[0])) {
+      const mm = outUrls[0].match(/^data:([^;]+);base64,([\s\S]*)$/);
+      mime = (mm && mm[1]) || 'image/png';
+      buf = Buffer.from((mm && mm[2]) || '', 'base64');
+    } else {
+      ({ buf, mime } = await fetchImage(outUrls[0], ctrl.signal));
+    }
+    return saveResult(rv, buf, mime, p.wantDataUrl);
+  } catch (e) {
+    return { ok: false, error: errText(e, tmoMs) };
+  } finally { clearTimeout(timer); }
+}
 // ---- 路③：Gemini 兼容 generateContent（老路，三渠道通用）----
 async function generateViaGemini(p, rv) {
   const model = rv.model;
