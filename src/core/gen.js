@@ -379,6 +379,12 @@ async function generateViaChat(p, rv) {
   imgs.push(...readRefs(p));
   const content = [{ type: 'text', text: p.prompt }];
   for (const im of imgs) content.push({ type: 'image_url', image_url: { url: 'data:' + im.mime + ';base64,' + im.buf.toString('base64') } });
+  // Chat 生图扩展字段：将界面分辨率、比例实际传给支持 image_config 的中转。
+  const imageConfig = {};
+  if (['1K', '2K', '4K'].includes(rv.effSize)) imageConfig.image_size = rv.effSize;
+  if (p.ratio && p.ratio !== 'Auto') imageConfig.aspect_ratio = p.ratio;
+  const body = { model: rv.requestModel || rv.model, messages: [{ role: 'user', content }], stream: false };
+  if (Object.keys(imageConfig).length) body.image_config = imageConfig;
   const tmoMs = tmoOf(p);
   const ctrl = new AbortController();
   const timer = tmoMs > 0 ? setTimeout(() => ctrl.abort(), tmoMs) : null;
@@ -386,7 +392,7 @@ async function generateViaChat(p, rv) {
     const resp = await fetch(rv.base + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Authorization': 'Bearer ' + rv.key },
-      body: Buffer.from(JSON.stringify({ model: rv.model, messages: [{ role: 'user', content }], stream: false }), 'utf8'),
+      body: Buffer.from(JSON.stringify(body), 'utf8'),
       signal: ctrl.signal,
     });
     let j = null; try { j = await resp.json(); } catch {}
