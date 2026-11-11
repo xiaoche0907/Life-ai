@@ -245,6 +245,14 @@ function saveResult(rv, buf, mime, wantDataUrl) {
   config.providers[rv.prov].model = rv.model;
   saveConfig();
   const out = { ok: true, file };
+  try {
+    const image = nativeImage.createFromBuffer(buf);
+    if (!image.isEmpty()) {
+      const { width, height } = image.getSize();
+      out.width = width; out.height = height;
+      olog('📐 生图原始尺寸：' + width + '×' + height + ' 像素（请求 ' + rv.effSize + '，模型 ' + rv.model + '）');
+    }
+  } catch (e) { olog('⚠ 无法读取生成图尺寸：' + e.message, 'warn'); }
   if (wantDataUrl) out.dataUrl = 'data:' + (mime || 'image/png') + ';base64,' + buf.toString('base64');
   return out;
 }
@@ -379,12 +387,18 @@ async function generateViaChat(p, rv) {
   imgs.push(...readRefs(p));
   const content = [{ type: 'text', text: p.prompt }];
   for (const im of imgs) content.push({ type: 'image_url', image_url: { url: 'data:' + im.mime + ';base64,' + im.buf.toString('base64') } });
-  // Chat 生图扩展字段：将界面分辨率、比例实际传给支持 image_config 的中转。
+  // New API 将顶层 imageConfig 原样映射到 Gemini generationConfig.imageConfig。
+  // 同时保留 OpenRouter 的 image_config，兼容两类 Chat 网关。
   const imageConfig = {};
-  if (['1K', '2K', '4K'].includes(rv.effSize)) imageConfig.image_size = rv.effSize;
-  if (p.ratio && p.ratio !== 'Auto') imageConfig.aspect_ratio = p.ratio;
+  if (['1K', '2K', '4K'].includes(rv.effSize)) imageConfig.imageSize = rv.effSize;
+  if (p.ratio && p.ratio !== 'Auto') imageConfig.aspectRatio = p.ratio;
   const body = { model: rv.requestModel || rv.model, messages: [{ role: 'user', content }], stream: false };
-  if (Object.keys(imageConfig).length) body.image_config = imageConfig;
+  if (Object.keys(imageConfig).length) {
+    body.imageConfig = imageConfig;
+    body.image_config = {};
+    if (imageConfig.imageSize) body.image_config.image_size = imageConfig.imageSize;
+    if (imageConfig.aspectRatio) body.image_config.aspect_ratio = imageConfig.aspectRatio;
+  }
   const tmoMs = tmoOf(p);
   const ctrl = new AbortController();
   const timer = tmoMs > 0 ? setTimeout(() => ctrl.abort(), tmoMs) : null;
