@@ -387,8 +387,8 @@ async function generateViaChat(p, rv) {
   imgs.push(...readRefs(p));
   const content = [{ type: 'text', text: p.prompt }];
   for (const im of imgs) content.push({ type: 'image_url', image_url: { url: 'data:' + im.mime + ';base64,' + im.buf.toString('base64') } });
-  // New API 将顶层 imageConfig 原样映射到 Gemini generationConfig.imageConfig。
-  // 同时保留 OpenRouter 的 image_config，兼容两类 Chat 网关。
+  // New API v1.0.0-rc.44（影策部署版）只读取 extra_body.google.image_config。
+  // 顶层 camelCase/snake_case 另供新版 New API 与 OpenRouter 兼容。
   const imageConfig = {};
   if (['1K', '2K', '4K'].includes(rv.effSize)) imageConfig.imageSize = rv.effSize;
   if (p.ratio && p.ratio !== 'Auto') imageConfig.aspectRatio = p.ratio;
@@ -398,6 +398,7 @@ async function generateViaChat(p, rv) {
     body.image_config = {};
     if (imageConfig.imageSize) body.image_config.image_size = imageConfig.imageSize;
     if (imageConfig.aspectRatio) body.image_config.aspect_ratio = imageConfig.aspectRatio;
+    body.extra_body = { google: { image_config: { ...body.image_config } } };
   }
   const tmoMs = tmoOf(p);
   const ctrl = new AbortController();

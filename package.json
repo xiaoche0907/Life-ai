@@ -1,7 +1,7 @@
 {
   "name": "life-ai",
   "productName": "Life-ai测试版",
-  "version": "6.0.23",
+  "version": "6.0.24",
   "description": "来福 Life-ai Photoshop AI 桌面助手测试版",
   "author": "oranG / Life UI customization",
   "main": "src/index.js",
