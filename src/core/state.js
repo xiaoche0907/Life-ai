@@ -264,6 +264,7 @@ function loadConfig() {
       config.updater.notes = Array.isArray(u.notes) ? u.notes : [];
       config.updater.seen = typeof u.seen === 'string' ? u.seen : '';
       config.updater.doneFile = typeof u.doneFile === 'string' ? u.doneFile : '';
+      config.updater.doneVersion = typeof u.doneVersion === 'string' ? u.doneVersion : '';
     }
     // 老的一次性标志继续回读+回写（老版本软件读这份配置时还认它们）
     config.noSelFullV2 = true;

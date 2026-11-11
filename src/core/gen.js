@@ -392,20 +392,40 @@ async function generateViaChat(p, rv) {
     let j = null; try { j = await resp.json(); } catch {}
     if (!resp.ok) {
       const detail = (j && j.error && (j.error.message || j.error.type)) || (j && j.message) || '';
+      // 仅端点明确不支持时切换协议，避免生成完成后重复请求。
+      if ([404, 405, 501].includes(resp.status)) return generateViaGemini(p, rv);
       return { ok: false, error: 'HTTP ' + resp.status + (detail ? ' — ' + String(detail).slice(0, 180) : '') };
     }
     const msg = (j && j.choices && j.choices[0] && j.choices[0].message) || {};
     const pickUrl = (x) => !x ? '' : (typeof x === 'string' ? x
       : ((x.image_url && (typeof x.image_url === 'string' ? x.image_url : x.image_url.url)) || x.url || ''));
     const outUrls = (Array.isArray(msg.images) ? msg.images.map(pickUrl) : []).filter(Boolean);
-    // 兑底：部分站把图塞在 content 文本里（markdown ![](data:...) 或裸图片链接）
-    if (!outUrls.length) {
-      const txt = typeof msg.content === 'string' ? msg.content
-        : (Array.isArray(msg.content) ? msg.content.map((c) => (c && c.text) || '').join('\n') : '');
-      const m = txt && txt.match(/data:image\/[a-z.+]+;base64,[A-Za-z0-9+\/=]+|https?:\/\/[^\s)"']+\.(?:png|jpe?g|webp)[^\s)"']*/i);
-      if (m) outUrls.push(m[0]);
+    // 按响应结构识别协议，中转可能返回 Gemini 原生结构或 OpenAI 多模态数组。
+    const candidates = (j && Array.isArray(j.candidates)) ? j.candidates : [];
+    for (const candidate of candidates) {
+      for (const part of (candidate.content && candidate.content.parts) || []) {
+        const inline = part.inlineData || part.inline_data;
+        if (inline && inline.data) outUrls.push('data:' + (inline.mimeType || inline.mime_type || 'image/png') + ';base64,' + inline.data);
+      }
     }
-    if (!outUrls.length) return { ok: false, error: '未返回图片' };
+    for (const item of (Array.isArray(msg.content) ? msg.content : [])) {
+      const url = pickUrl(item);
+      if (url) outUrls.push(url);
+    }
+    for (const item of (j && Array.isArray(j.data) ? j.data : [])) {
+      if (item.b64_json) outUrls.push('data:image/png;base64,' + item.b64_json);
+      else if (item.url) outUrls.push(item.url);
+    }
+    const txt = typeof msg.content === 'string' ? msg.content
+      : (Array.isArray(msg.content) ? msg.content.map((c) => (c && c.text) || '').join('\n') : '');
+    if (!outUrls.length) {
+      const m = txt.match(/data:image\/[a-z.+]+;base64,[A-Za-z0-9+\/=]+|!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)|https?:\/\/[^\s)"']+\.(?:png|jpe?g|webp)[^\s)"']*/i);
+      if (m) outUrls.push(m[1] || m[0]);
+    }
+    if (!outUrls.length) {
+      const reason = candidates[0] && candidates[0].finishReason;
+      return { ok: false, error: '未返回图片（已检查OpenAI/Gemini响应）' + (reason ? '；结束原因: ' + reason : '') + (txt ? '；模型回复: ' + txt.slice(0, 150) : '') };
+    }
     let buf, mime;
     if (/^data:/i.test(outUrls[0])) {
       const mm = outUrls[0].match(/^data:([^;]+);base64,([\s\S]*)$/);

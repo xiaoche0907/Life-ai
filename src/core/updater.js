@@ -26,7 +26,7 @@ const ctx = require('./ctx');
 // ---------- 内置更新地址（与提示词同步同一个 Bucket）----------
 // 刻意不让用户填（与 plib-update.js:25-28 同一条理由）：这是官方分发通道。
 // 要换地址改这一行、重新打包。config.updater 里故意没有 base 字段。
-const BUILTIN_BASE = 'https://chengzi-prompt.oss-cn-hongkong.aliyuncs.com';
+const BUILTIN_BASE = 'https://api.github.com/repos/xiaoche0907/Life-ai/releases/latest';
 const MANIFEST_KEY = 'update/version.json';
 
 // 测试覆写点（与 tools/oss.js 的 OSS_ENDPOINT/OSS_PROTO 同一套约定）：
@@ -62,6 +62,21 @@ function compareVer(remote, local) {
     if (x > y) return 1;
     if (x < y) return -1;
   }
+  const suffix = (s) => String(s).trim().replace(/^v/i, '').split('-').slice(1).join('-');
+  const ra = suffix(remote), rb = suffix(local);
+  if (ra === rb) return 0;
+  if (!ra) return 1;
+  if (!rb) return -1;
+  const ap = ra.split('.'), bp = rb.split('.');
+  for (let i = 0; i < Math.max(ap.length, bp.length); i++) {
+    if (ap[i] === undefined) return -1;
+    if (bp[i] === undefined) return 1;
+    if (ap[i] === bp[i]) continue;
+    const an = /^\d+$/.test(ap[i]), bn = /^\d+$/.test(bp[i]);
+    if (an && bn) return Number(ap[i]) > Number(bp[i]) ? 1 : -1;
+    if (an !== bn) return an ? -1 : 1;
+    return ap[i] > bp[i] ? 1 : -1;
+  }
   return 0;
 }
 
@@ -83,7 +98,8 @@ async function fetchManifest() {
   const base = baseUrl();
   if (!isHttp(base)) return { ok: false, message: '未配置更新地址' };
   let txt;
-  try { txt = await fetchText(base + '/' + MANIFEST_KEY, 12000); }
+  const overridden = !!process.env.ORANGE_UPDATE_ENDPOINT;
+  try { txt = await fetchText(overridden ? base + '/' + MANIFEST_KEY : base, 20000); }
   catch (e) {
     if (e && e.notPublished) return { ok: false, message: '已是最新版本（云端还没有发布新版本）' };
     // AbortError=超时，其余=真连不上/HTTP 错误
@@ -91,7 +107,15 @@ async function fetchManifest() {
   }
   let m;
   try { m = JSON.parse(txt); } catch (e) { return { ok: false, message: '更新清单格式不对' }; }
+  if (!overridden) {
+    const asset = m && Array.isArray(m.assets) && m.assets.find((a) => a.state === 'uploaded' && /\.exe$/i.test(a.name) && /life-ai/i.test(a.name));
+    if (!asset || !m.tag_name || m.draft) return { ok: false, message: '最新Release尚未提供安装包' };
+    m = { version: m.tag_name.replace(/^v/i, ''), url: asset.browser_download_url,
+      size: asset.size, sha256: /^sha256:/i.test(asset.digest || '') ? asset.digest.slice(7) : '',
+      notes: [{ version: m.tag_name, date: (m.published_at || '').slice(0, 10), items: String(m.body || '').split('\n').filter(Boolean) }] };
+  }
   if (!m || typeof m !== 'object' || !m.version) return { ok: false, message: '更新清单缺版本号' };
+
   const url = /^https?:/i.test(m.url || '') ? m.url : (base + '/' + String(m.url || '').replace(/^\/+/, ''));
   return { ok: true, version: String(m.version), url: url, size: Number(m.size) || 0,
     sha256: typeof m.sha256 === 'string' ? m.sha256 : '', notes: Array.isArray(m.notes) ? m.notes : [] };
@@ -259,13 +283,13 @@ function runDownload() {
   downloading = (async () => {
     // 已经下好且文件还在 → 直接用（别重复下 84MB）
     const c = ctx.config.updater || {};
-    if (c.doneFile && fs.existsSync(c.doneFile) && c.doneFile.endsWith('.exe')) {
-      if (ctx.olog) ctx.olog('🔄 安装包已就绪：' + path.basename(c.doneFile), 'ok');
-      return { ok: true, file: c.doneFile, cached: true };
-    }
     const chk = await runCheck({ silent: true });
     if (!chk.ok) return { ok: false, error: chk.message };
     if (!chk.hasNew) return { ok: false, error: '已经是最新版本' };
+    if (c.doneVersion === chk.version && c.doneFile && fs.existsSync(c.doneFile) && c.doneFile.endsWith('.exe')) {
+      if (ctx.olog) ctx.olog('🔄 安装包已就绪：' + path.basename(c.doneFile), 'ok');
+      return { ok: true, file: c.doneFile, cached: true };
+    }
     if (ctx.olog) ctx.olog('🔄 开始下载 ' + chk.version + (chk.size ? ('（' + Math.round(chk.size / 1048576) + 'MB）') : '') + '…');
     try {
       const r = await download(chk.url, (p) => {
@@ -280,7 +304,7 @@ function runDownload() {
           return { ok: false, error: '安装包校验失败' + (gone ? '' : '（坏包没删掉，请在文件夹里手动删除）') };
         }
       }
-      setUp({ doneFile: r.file, lastResult: '已下载 ' + chk.version + '，等待安装' });
+      setUp({ doneFile: r.file, doneVersion: chk.version, lastResult: '已下载 ' + chk.version + '，等待安装' });
       if (ctx.olog) ctx.olog('🔄 下载完成：' + path.basename(r.file) + '（点「立即安装」开始）', 'ok');
       return { ok: true, file: r.file, size: r.size, version: chk.version };
     } catch (e) {
@@ -305,6 +329,9 @@ async function runInstaller() {
   const c = ctx.config.updater || {};
   const f = c.doneFile;
   if (!f || !fs.existsSync(f)) return { ok: false, error: '安装包不在（可能已被清理），请重新下载' };
+  const chk = await runCheck({ silent: true });
+  if (!chk.ok) return { ok: false, error: chk.message };
+  if (!chk.hasNew || c.doneVersion !== chk.version) return { ok: false, error: '安装包版本已过期，请重新下载最新版' };
   let child;
   try {
     child = spawn(f, [], { detached: true, stdio: 'ignore', windowsHide: false });
@@ -337,7 +364,7 @@ async function runInstaller() {
 ipcMain.handle('updater-status', () => {
   const c = (ctx.config && ctx.config.updater) || {};
   let hasFile = false;
-  try { hasFile = !!(c.doneFile && fs.existsSync(c.doneFile)); } catch (e) {}
+  try { hasFile = !!(c.doneFile && c.doneVersion === c.latest && compareVer(c.doneVersion, localVer()) === 1 && fs.existsSync(c.doneFile)); } catch (e) {}
   return {
     local: localVer(),
     autoApp: !!c.autoApp, autoPlib: !!c.autoPlib,
