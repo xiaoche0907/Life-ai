@@ -255,6 +255,7 @@ const API = {
   relightBake: (payload) => ipcRenderer.invoke('relight-bake', payload),
   relightAiGen: (payload) => ipcRenderer.invoke('relight-ai-gen', payload),
   glow: (op, payload) => ipcRenderer.invoke('glow', { op, payload }),   // 辉光卡单通道（capture/bake/presets/…）
+  layerSplitRun: (payload) => ipcRenderer.invoke('layersplit-run', payload),   // 图层拆分（1111）
   restoreSelection: (ctx) => ipcRenderer.invoke('restore-selection', ctx),
 
   // --- 提前贴回（0916）：进度卡每批的橙子 logo 钮——已生成好的现在就打组贴回，这批剩下的完成后不自动贴 ---

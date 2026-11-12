@@ -49,6 +49,7 @@ require('./core/forge');
 require('./core/comfy');   // ComfyUI 卡：工作流库切换+快捷参数+选区喂图跑图贴回（0916，免装节点走原生 HTTP/WS 接口）
 require('./core/relight');
 require('./core/glow');   // 辉光：本地实时预览 → 黑底辉光层贴回（0912，独立模块）
+require('./core/layersplit');   // 图层拆分：gpt-image透明PNG分层→逐层贴回（1111）
 require('./core/autofix');   // 自动修图：文件夹批量工序流水线→分层PSD（0905）
 require('./core/qpresets');   // 快捷预设：修图师标准动作一键执行，预设=文档夹里的 JSON（0912）
 require('./core/misc');

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: nowrap; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: background 0.15s, opacity 0.15s; }
+  .abtn:hover { background: var(--btn-bg-hover); }
+  .abtn:active { transform: scale(0.97); }
+  .abtn svg { width: 16px; height: 16px; }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+
+  #ctrl { flex: 0 0 232px; width: 232px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .seg { display: flex; gap: 3px; }
+  .seg .s { flex: 1; text-align: center; font-size: 10px; padding: 4px 0; border-radius: 7px; background: var(--btn-bg); color: var(--text-dim); cursor: pointer; border: 1px solid transparent; }
+  .seg .s:hover { background: var(--btn-bg-hover); }
+  .seg .s.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  textarea { width: 100%; min-height: 64px; resize: vertical; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--inset-bg); color: #fff; font-size: 11px; line-height: 1.6; padding: 6px 8px; outline: none; user-select: text; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  /* 拆层模型选择：与辉光卡 presetSel 同款玻璃下拉，跟整卡调性 */
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel:hover { border-color: var(--accent-border); }
+  .msel:focus { border-color: var(--accent); }
+  .msel option { background: #23252b; color: #fff; }
+  .tip.warn { color: var(--err); }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>图层拆分</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">点「读取画面」把 PS 当前画面拿进来<br>有选区=只拆选区 · 无选区=整幅画布<br>AI 会把画面拆成多张透明背景图层</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass title="读取 PS 当前画面（有选区取选区，无选区取整幅画布）"><span id="icoCap"></span>读取画面</button>
+        <button class="abtn acc" id="btnGo" data-pass disabled title="AI 拆层并逐张贴回 PS（生成透明背景图层）"><span id="icoGo"></span>开始拆分</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">拆分元素</div>
+        <textarea id="hintText" data-pass placeholder="背景，裤子，鞋子，上衣">背景，主体</textarea>
+        <div class="tip">每个名称拆成一层，用逗号/顿号分隔。名称写得具体（如"标题文字"而不是"文字"）提取越准；清空则默认拆「背景+主体」两层。层数=名称个数（最多8层）。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">拆层模型</div>
+        <select id="modelSel" data-pass class="msel"><option value="">加载中…</option></select>
+        <div class="tip" id="modelTip">只列出当前渠道里的 gpt-image 系模型（透明拆层仅它们支持）。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">说明</div>
+        <div class="tip">模型选非 gpt-image 系时：不支持透明输出，拆层会失败或无透明；gpt-image 系模型在渠道里拉取后即可在这里选。<br><br>拆完的图层自动打组「来福 生成组」贴回原选区，逐层可编辑。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const I = window.ORANGE_ICONS || {};
+  $('ico').innerHTML = I.glow || '';
+  const SVG = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+  $('icoCap').innerHTML = SVG('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>');
+  $('icoGo').innerHTML = SVG('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[layersplit] ' + m); } catch (e) {} };
+  const st = { cap: null, busy: false, count: 4, model: '' };
+
+  const img64 = (s) => (s && s.indexOf(',') !== -1) ? s.split(',')[1] : s;
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+
+
+  // 模型选择：只列当前渠道里的 gpt-image 系模型（透明拆层仅它们支持）；没有就明说并禁用开跑
+  const GPT_RE = /^gpt-image/i;
+  async function fillModels() {
+    const sel = $('modelSel'), tip = $('modelTip');
+    try {
+      const cfg = (await window.orange.getConfig()) || {};
+      const cur = cfg.provider || 'yingce';
+      // get-providers 返回 {current, meta, conf}：模型清单在 conf（config.providers[id].models，拉取时写入）
+      const gp = (await window.orange.getProviders()) || {};
+      const conf = gp.conf || {};
+      const pc = conf[cur] || {};
+      const label = pc.label || cur;
+      const gpt = (pc.models || []).filter((m) => m && GPT_RE.test(m));
+      const saved = cfg.layersplitModel || '';
+      sel.innerHTML = '';
+      if (!gpt.length) {
+        const o = document.createElement('option');
+        o.value = ''; o.textContent = '当前渠道（' + label + '）没有 gpt-image 模型';
+        sel.appendChild(o); sel.value = '';
+        tip.textContent = '当前渠道「' + label + '」里没有 gpt-image 模型——先在生图模式卡点「拉取模型」，渠道上了 gpt-image 系后回来选。没有它无法拆出透明图层。';
+        tip.classList.add('warn');
+        $('btnGo').disabled = true;
+        st.model = '';
+        return;
+      }
+      for (const m of gpt) {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        sel.appendChild(o);
+      }
+      tip.textContent = '当前渠道「' + label + '」的 gpt-image 系模型（已拉到 ' + gpt.length + ' 个）。';
+      tip.classList.remove('warn');
+      sel.value = gpt.includes(saved) ? saved : gpt[0];
+      st.model = sel.value;
+      if (st.cap) $('btnGo').disabled = false;
+    } catch (e) { glog('fillModels 失败: ' + (e.message || e)); }
+  }
+  $('modelSel').addEventListener('change', () => {
+    st.model = $('modelSel').value || '';
+    try { window.orange.setConfig({ layersplitModel: st.model }); } catch (e) {}
+    glog('模型选择 → ' + (st.model || '无'));
+  });
+  fillModels();
+  if (window.orange.onProvidersChanged) window.orange.onProvidersChanged(fillModels);
+  // 层数由元素名个数决定（主进程拆）；层数选择器已从UI移除，保留空操作防旧引用
+  const seg = $('segCount'); if (seg) seg.style.display = 'none';
+
+  // 读取画面（辉光卡同款 capture）
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('读取 PS 画面…');
+    try {
+      const r = await window.orange.glow('capture');
+      if (!r.ok) { stat(r.error || '读取失败', 'err'); return; }
+      const img = await loadImg('data:' + (r.mime || 'image/jpeg') + ';base64,' + img64(r.image));
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      cv.getContext('2d').drawImage(img, 0, 0);
+      st.cap = { image: r.image, mime: r.mime || 'image/jpeg', docId: r.docId, selection: r.selection, fullMode: r.fullMode };
+      $('hint').classList.add('off');
+      $('btnGo').disabled = !st.model;   // 无可用gpt-image模型时禁止开跑
+      $('tag').textContent = (r.fullMode ? '全图 ' : '选区 ') + img.naturalWidth + '×' + img.naturalHeight;
+      stat((r.fullMode ? '已读取整幅画布' : '已读取选区') + ' ' + img.naturalWidth + '×' + img.naturalHeight, 'ok');
+    } catch (e) { stat('读取失败: ' + (e.message || e), 'err'); glog('capture 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); }
+  }
+  $('btnCap').addEventListener('click', capture);
+
+  // 开始拆分
+  async function go() {
+    if (!st.cap || st.busy) return;
+    if (!st.model) { stat('当前渠道没有 gpt-image 模型，无法拆透明图层', 'err'); return; }
+    st.busy = true; $('btnGo').classList.add('busy');
+    const items = $('hintText').value.trim();
+    const n = items ? items.split(/[,，、;；\s]+/).filter(Boolean).length : 2;
+    st.busy = true; $('btnGo').classList.add('busy');
+    stat('拆层中…（' + n + ' 层，进度看生图日志卡）');
+    try {
+      await new Promise((r) => setTimeout(r, 30));
+      const cfg = (await window.orange.getConfig()) || {};
+      const gen = cfg.gen || {};
+      const r = await window.orange.layerSplitRun({
+        hint: items,
+        hint: $('hintText').value.trim(),
+        model: st.model,   // 已校验非空：当前渠道的 gpt-image 系模型
+        capture: {
+          image: st.cap.image, mime: st.cap.mime,
+          docId: st.cap.docId, selection: st.cap.selection,
+          ratio: gen.ratio || 'Auto', size: gen.size || 'Auto',
+        },
+      });
+      if (!r.ok) { stat(r.error || '拆分失败', 'err'); return; }
+      stat('✓ 已拆出 ' + r.count + ' 层' + (r.placed ? '，已置入 PS' : '（自动回传已关，进度卡手动贴）'), 'ok');
+    } catch (e) { stat('拆分失败: ' + (e.message || e), 'err'); glog('run 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnGo').classList.remove('busy'); }
+  }
+  $('btnGo').addEventListener('click', go);
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

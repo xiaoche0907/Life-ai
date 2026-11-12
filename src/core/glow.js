@@ -144,3 +144,4 @@ ipcMain.handle('glow', async (_e, msg) => {
 ctx.glowCapture = capture;
 ctx.glowBake = bake;
 ctx.glowPresets = listPresets;
+

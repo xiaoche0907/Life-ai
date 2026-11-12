@@ -341,6 +341,8 @@ async function generateViaGrs(p, rv) {
 async function generateViaOpenAI(p, rv) {
   const { pixelSize } = require('./img-size');
   const size = pixelSize(p.ratio, rv.effSize);
+  // gpt-image 系支持 background=transparent 直接出透明PNG（gpt-image-1/2.6 系）；其他模型传了会被拒，只在选中透明时带
+  const wantTrans = !!p.transparent && /^gpt-image/i.test(rv.model);
   const imgs = [];
   if (p.inputImage) imgs.push({ buf: Buffer.from(p.inputImage, 'base64'), mime: p.inputMime || 'image/jpeg' });
   imgs.push(...readRefs(p));
@@ -352,7 +354,7 @@ async function generateViaOpenAI(p, rv) {
     if (!imgs.length) {
       resp = await fetch(rv.base + '/v1/images/generations', {
         method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', 'Authorization': 'Bearer ' + rv.key },
-        body: Buffer.from(JSON.stringify({ model: rv.model, prompt: p.prompt, n: 1, size }), 'utf8'), signal: ctrl.signal,
+        body: Buffer.from(JSON.stringify({ model: rv.model, prompt: p.prompt, n: 1, size, ...(wantTrans ? { background: 'transparent', output_format: 'png' } : {}) }), 'utf8'), signal: ctrl.signal,
       });
     } else {
       const fd = new FormData();
@@ -360,6 +362,7 @@ async function generateViaOpenAI(p, rv) {
       fd.append('prompt', p.prompt);
       fd.append('n', '1');
       fd.append('size', size);
+      if (wantTrans) { fd.append('background', 'transparent'); fd.append('output_format', 'png'); }
       imgs.forEach((im, i) => fd.append('image[]', new Blob([im.buf], { type: im.mime }), 'img' + i + (im.mime === 'image/png' ? '.png' : '.jpg')));
       resp = await fetch(rv.base + '/v1/images/edits', { method: 'POST', headers: { 'Authorization': 'Bearer ' + rv.key }, body: fd, signal: ctrl.signal });
     }

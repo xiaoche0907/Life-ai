@@ -73,6 +73,7 @@ const config = {
   //   lastCheck/lastResult=上次检查的结果；latest=云端版本号；notes=更新报告；seen=用户已看过的版本（红点用）
   //   doneFile=已下载好的安装包路径（下载完成但用户还没装时留着）
   updater: { autoApp: false, autoPlib: false, lastCheck: 0, lastResult: '', latest: '', notes: [], seen: '', doneFile: '' },
+  layersplitModel: '',   // 图层拆分卡选的模型（空=跟随生图模式当前模型）
 };
 const configPath = () => path.join(app.getPath('userData'), 'orange-config.json');
 // 图片缓存目录（可在设置里更改）
@@ -266,6 +267,8 @@ function loadConfig() {
       config.updater.doneFile = typeof u.doneFile === 'string' ? u.doneFile : '';
       config.updater.doneVersion = typeof u.doneVersion === 'string' ? u.doneVersion : '';
     }
+    // 图层拆分模型选择回读（铁律19：漏读=每次重启回弹）
+    if (typeof saved.layersplitModel === 'string') config.layersplitModel = saved.layersplitModel;
     // 老的一次性标志继续回读+回写（老版本软件读这份配置时还认它们）
     config.noSelFullV2 = true;
     config.peeCompactV2 = true;
@@ -854,6 +857,7 @@ ipcMain.handle('set-config', (e, patch) => {
     if (typeof patch.updater.seen === 'string') config.updater.seen = patch.updater.seen;   // 用户"已看过"标记（清红点）
     ctx.broadcast('updater-vars', config.updater);
   }
+  if (typeof patch.layersplitModel === 'string') config.layersplitModel = patch.layersplitModel;   // 图层拆分卡模型选择
   saveConfig();
   return config;
 });

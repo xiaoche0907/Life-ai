@@ -165,6 +165,15 @@
     "ready": true
   },
   {
+    "id": "layersplit",
+    "icon": "🗂️",
+    "label": "图层拆分",
+    "file": "layersplit.html",
+    "width": 720,
+    "height": 600,
+    "ready": true
+  },
+  {
     "id": "prompts",
     "icon": "📚",
     "label": "提示词库",
