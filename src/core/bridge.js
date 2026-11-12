@@ -117,7 +117,10 @@ function startBridgeServer() {
       });
     }, 1500);
   });
-  wss.on('error', (err) => console.error('[bridge]', err.message));
+  wss.on('error', (err) => {
+    console.error('[bridge]', err.message);
+    try { fs.appendFileSync(ctx.glassLogPath(), new Date().toISOString() + ' [main] ⚠ WS桥接服务器错误: ' + err.message + '\n'); } catch (e2) {}
+  });
 }
 
 function sendToPSAwait(cmd, timeoutMs = 60000) {

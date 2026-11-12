@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head:active { cursor: grabbing; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .title svg { width: 16px; height: 16px; color: var(--accent-text); }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: nowrap; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: background 0.15s, opacity 0.15s; }
+  .abtn:hover { background: var(--btn-bg-hover); }
+  .abtn:active { transform: scale(0.97); }
+  .abtn svg { width: 16px; height: 16px; }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+
+  #ctrl { flex: 0 0 300px; width: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  .tip.warn { color: var(--err); }
+
+  /* 参考图队列 */
+  #refs { display: flex; flex-direction: column; gap: 6px; }
+  .refItem { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 9px; background: var(--btn-bg); border: 1px solid transparent; cursor: pointer; }
+  .refItem:hover { border-color: var(--accent-border); }
+  .refItem.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .refItem img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; background: #111; flex: 0 0 auto; }
+  .refItem .meta { flex: 1 1 auto; min-width: 0; }
+  .refItem .nm { font-size: 10.5px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .refItem .sw { display: flex; gap: 3px; margin-top: 3px; }
+  .refItem .sw i { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,.25); }
+  .refItem .del { font-size: 11px; color: var(--err); cursor: pointer; padding: 4px; flex: 0 0 auto; }
+
+  /* 参数滑块 */
+  .prow { display: flex; align-items: center; gap: 6px; }
+  .prow label { flex: 0 0 52px; font-size: 10px; color: var(--text-dim); }
+  .prow input[type=range] { flex: 1 1 auto; accent-color: var(--accent); }
+  .prow input[type=number] { flex: 0 0 52px; width: 52px; height: 22px; border-radius: 6px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 10px; text-align: center; user-select: text; }
+  .row2 { display: flex; gap: 8px; }
+  .row2 .half { flex: 1; }
+
+  /* ROI 框选覆盖层 */
+  #roiBox { position: absolute; border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); pointer-events: none; display: none; border-radius: 2px; }
+  #roiTip { position: absolute; right: 8px; bottom: 6px; font-size: 9px; color: var(--accent-text); background: rgba(0,0,0,.55); padding: 2px 7px; border-radius: 6px; display: none; }
+
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel:hover { border-color: var(--accent-border); }
+  .msel option { background: #23252b; color: #fff; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="recolor-core.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title"><span id="ico"></span>批量改色</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="roiBox"></div>
+        <div id="roiTip"></div>
+        <div id="hint">① PS里框选要改色的服装区域（羽化可用）<br>② 点「读取画面」→ 右侧添加参考色图<br>③ 每张参考图上拖框选取色范围 → 生成</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass title="读取 PS 当前画面与选区"><span id="icoCap"></span>读取画面</button>
+        <button class="abtn" id="btnAdd" data-pass title="批量添加本地参考色图片"><span id="icoAdd"></span>添加参考图</button>
+        <button class="abtn acc" id="btnGo" data-pass disabled title="按每个SKU调色并贴回PS"><span id="icoGo"></span>生成全部</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">参考图队列 <span id="refCount" style="color:var(--text-dim);font-weight:400">0/40</span></div>
+        <div id="refs"><div class="tip">还没有参考图。每张图=一个SKU，支持批量选择。</div></div>
+      </div>
+      <div class="grp">
+        <div class="gt">取色范围（当前选中参考图）</div>
+        <div class="tip" id="roiTipTxt">在左侧画布拖框选取参考图的取色区域；不框=整图取色（含背景时颜色会偏差）。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">调色模式</div>
+        <select id="modeSel" data-pass class="msel">
+          <option value="mode1" selected>柔和曲线（推荐·自然过渡）</option>
+          <option value="mode2">可选颜色（色彩更浓）</option>
+          <option value="mode3">渐变映射（分段还原明暗）</option>
+          <option value="mode4">通道混合（校正偏色）</option>
+        </select>
+        <div class="tip">mode2/3/4 为像素级等价实现（衣色同源数学）。切换模式后点「生成全部」重跑。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">全局参数</div>
+        <div class="prow"><label>颜色强度</label><input type="range" id="pStrength" min="0" max="100" value="100"><input type="number" id="pStrengthN" min="0" max="100" value="100"></div>
+        <div class="prow"><label>明度强度</label><input type="range" id="pLight" min="0" max="100" value="100"><input type="number" id="pLightN" min="0" max="100" value="100"></div>
+        <div class="row2">
+          <div class="half prow"><label>对比度</label><input type="range" id="pContrast" min="-100" max="100" value="0"><input type="number" id="pContrastN" min="-100" max="100" value="0"></div>
+        </div>
+        <div class="row2">
+          <div class="half prow"><label>阴影</label><input type="range" id="pShadows" min="-100" max="100" value="0"><input type="number" id="pShadowsN" min="-100" max="100" value="0"></div>
+          <div class="half prow"><label>高光</label><input type="range" id="pHighlights" min="-100" max="100" value="0"><input type="number" id="pHighlightsN" min="-100" max="100" value="0"></div>
+        </div>
+        <div class="row2">
+          <div class="half prow"><label>色相</label><input type="range" id="pHue" min="-180" max="180" value="0"><input type="number" id="pHueN" min="-180" max="180" value="0"></div>
+          <div class="half prow"><label>饱和度</label><input type="range" id="pSat" min="-100" max="100" value="0"><input type="number" id="pSatN" min="-100" max="100" value="0"></div>
+        </div>
+        <div class="prow"><label>蒙版羽化</label><input type="range" id="pFeather" min="0" max="32" value="2"><input type="number" id="pFeatherN" min="0" max="32" value="2"></div>
+        <div class="tip">参数对全部SKU生效。阴影正值=PS黑场抬升（提亮暗部褶皱）。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">输出</div>
+        <button class="abtn" id="btnPlace" data-pass disabled title="把已生成结果贴回PS（打组）"><span id="icoPlace"></span>贴回PS图层</button>
+        <div class="tip">生成后自动落盘 PNG + recipes.json；贴回后为普通像素图层组「来福 批量改色组」，点眼睛对比SKU。要二次微调可在PS里对贴回层挂调整层。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const I = window.ORANGE_ICONS || {};
+  $('ico').innerHTML = I.glow || '';
+  const SVG = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+  $('icoCap').innerHTML = SVG('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>');
+  $('icoAdd').innerHTML = SVG('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>');
+  $('icoGo').innerHTML = SVG('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+  $('icoPlace').innerHTML = SVG('<path d="M12 2v13"/><path d="M5 10l7 7 7-7"/><path d="M3 21h18"/>');
+
+  const C = window.ColorRecolor;
+  const st = { cap: null, refs: [], sel: -1, roi: null, busy: false, results: null, feather: 2 };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[recolor] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+
+  const img64 = (s) => (s && s.indexOf(',') !== -1) ? s.split(',')[1] : s;
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+
+  // ---- 参数双向绑定（滑块+数字，节流渲染） ----
+  const params = {};
+  const PBIND = [['pStrength', 'strength', 0, 100], ['pLight', 'light', 0, 100], ['pContrast', 'contrast', -100, 100],
+    ['pShadows', 'shadows', -100, 100], ['pHighlights', 'highlights', -100, 100], ['pHue', 'hue', -180, 180], ['pSat', 'saturation', -100, 100], ['pFeather', 'feather', 0, 32]];
+  for (const [id, key, min, max] of PBIND) {
+    const r = $(id), n = $(id + 'N');
+    params[key] = Number(r.value);
+    const set = (v) => { v = Math.max(min, Math.min(max, Number(v) || 0)); params[key] = v; r.value = v; n.value = v; };
+    r.addEventListener('input', () => { set(r.value); if (key === 'feather') st.feather = v2f(); schedulePreview(); });
+    n.addEventListener('change', () => { set(n.value); if (key === 'feather') st.feather = v2f(); schedulePreview(); });
+  }
+  const v2f = () => params.feather;
+  const opt = () => ({
+    matchMode: (document.getElementById('modeSel') || {}).value || 'mode1',
+    colorStrength: params.strength / 100, lightStrength: params.light / 100,
+    contrast: params.contrast / 100, shadows: params.shadows / 100, highlights: params.highlights / 100,
+    hue: params.hue, saturation: params.sat / 100,
+  });
+
+  // ---- 读取 PS 画面 ----
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('读取 PS 画面…');
+    try {
+      // 蒙版组直读链（1114）：PS里选带蒙版的图层/组 → readMaskGroup 返回蒙版权重灰度。
+      // 画面仍走 capture（全图基准），蒙版决定调色范围与贴回区域——与衣色原版 maskWeight 同构。
+      const mk = await window.orange.readMaskGroup({});
+      if (!mk.ok) { stat(mk.error || '蒙版读取失败', 'err'); return; }
+      const r = await window.orange.glow('capture');
+      if (!r.ok) { stat(r.error || '读取画面失败', 'err'); return; }
+      const img = await loadImg('data:' + (r.mime || 'image/jpeg') + ';base64,' + img64(r.image));
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      cv.getContext('2d').drawImage(img, 0, 0);
+      // 蒙版 bbox 映射到画面坐标（画面=全图基准时1:1；有选区画面时按bounds偏移）
+      const fullCanvas = r.fullMode || !r.selection;
+      const srcSel = fullCanvas ? { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight }
+        : { x: r.selection.left, y: r.selection.top, width: r.selection.right - r.selection.left, height: r.selection.bottom - r.selection.top };
+      st.mask = {
+        weightB64: mk.weightB64, mw: mk.maskWidth, mh: mk.maskHeight,
+        bounds: mk.bounds, docW: mk.docWidth, docH: mk.docHeight, layerName: mk.layerName, coveredPct: mk.coveredPct,
+      };
+      // 画面内蒙版bbox（capture画面=srcSel区域，蒙版bounds在同一文档坐标系）
+      st.cap = { image: r.image, mime: r.mime || 'image/jpeg', docId: r.docId, selection: srcSel, fullMode: fullCanvas, width: img.naturalWidth, height: img.naturalHeight };
+      $('hint').classList.add('off');
+      $('tag').textContent = '蒙版组「' + mk.layerName + '」' + mk.coveredPct + '% · ' + img.naturalWidth + '×' + img.naturalHeight;
+      stat('✓ 已识别蒙版组「' + mk.layerName + '」（覆盖' + mk.coveredPct + '%）· 接下来添加参考图', 'ok');
+      updateGo();
+    } catch (e) { stat('读取失败: ' + (e.message || e), 'err'); glog('capture 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); }
+  }
+  $('btnCap').addEventListener('click', capture);
+
+  // ---- 参考图管理 ----
+  $('btnAdd').addEventListener('click', async () => {
+    const paths = await window.orange.pickFiles({ filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp'] }], multi: true });
+    if (!paths || !paths.length) return;
+    for (const p of paths) {
+      if (st.refs.length >= 40) { stat('最多40张参考图', 'err'); break; }
+      try {
+        // 主进程读文件字节（渲染进程无 fs），超20MB跳过
+        const rd = await window.orange.readImageBytes(p);
+        if (!rd || !rd.ok) { stat(p + ': ' + ((rd && rd.error) || '读取失败'), 'err'); continue; }
+        if (rd.size > 20 * 1024 * 1024) { stat(p.split(/[\\/]/).pop() + ' 超过20MB', 'err'); continue; }
+        const ext = (p.split('.').pop() || 'png').toLowerCase();
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+        const dataUrl = 'data:' + mime + ';base64,' + rd.base64;
+        const im = await loadImg(dataUrl);
+        // 解码上限 640px（衣色同款）：省内存，取色精度足够
+        const scale = Math.min(1, 640 / Math.max(im.naturalWidth, im.naturalHeight));
+        const w = Math.max(3, Math.round(im.naturalWidth * scale)), h = Math.max(3, Math.round(im.naturalHeight * scale));
+        const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+        c2.getContext('2d').drawImage(im, 0, 0, w, h);
+        const pix = c2.getContext('2d').getImageData(0, 0, w, h);
+        st.refs.push({ name: p.split(/[\\/]/).pop().replace(/\.[^.]+$/, ''), pix, thumb: dataUrl, roi: null, stats: null });
+      } catch (e) { stat(p.split(/[\\/]/).pop() + ': ' + (e.message || e), 'err'); }
+    }
+    renderRefs(); updateGo();
+  });
+
+  function renderRefs() {
+    const box = $('refs');
+    $('refCount').textContent = st.refs.length + '/40';
+    if (!st.refs.length) { box.innerHTML = '<div class="tip">还没有参考图。每张图=一个SKU，支持批量选择。</div>'; return; }
+    box.innerHTML = '';
+    st.refs.forEach((r, i) => {
+      const div = document.createElement('div');
+      div.className = 'refItem' + (i === st.sel ? ' sel' : '');
+      div.dataset.pass = '';
+      const img = document.createElement('img'); img.src = r.thumb;
+      const meta = document.createElement('div'); meta.className = 'meta';
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = (i + 1) + '. ' + r.name + (r.auto ? ' · 自动识别' + r.coverage + '%' : '');
+      const sw = document.createElement('div'); sw.className = 'sw';
+      if (r.stats) for (let k = 0; k < 3; k++) {
+        const q = Math.round([.2, .5, .8][k] * 10) / 10;
+        const idx = r.stats.tone.qs.reduce((b, v, j) => Math.abs(v - q) < Math.abs(r.stats.tone.qs[b] - q) ? j : b, 0);
+        const rgb = C.labRgb(...r.stats.tone.colors[idx]);
+        const dot = document.createElement('i'); dot.style.background = 'rgb(' + rgb.join(',') + ')'; sw.appendChild(dot);
+      }
+      meta.appendChild(nm); meta.appendChild(sw);
+      const del = document.createElement('div'); del.className = 'del'; del.textContent = '✕'; del.dataset.act = 'delref'; del.dataset.i = i;
+      div.appendChild(img); div.appendChild(meta); div.appendChild(del);
+      div.title = r.autoNote || '';
+      div.addEventListener('click', (e) => {
+        if (e.target.dataset.act === 'delref') { st.refs.splice(i, 1); if (st.sel >= st.refs.length) st.sel = st.refs.length - 1; renderRefs(); updateGo(); return; }
+        st.sel = i; st.roi = r.roi; showRoi(); renderRefs();
+      });
+      box.appendChild(div);
+    });
+    showRoi();
+  }
+
+  function showRoi() {
+    const box = $('roiBox'), tip = $('roiTip'), txt = $('roiTipTxt');
+    if (st.sel < 0 || !st.roi) { box.style.display = 'none'; tip.style.display = 'none'; return; }
+    const cv = $('cv'), sc = Math.min(cv.clientWidth / cv.width, cv.clientHeight / cv.height);
+    const ox = (cv.clientWidth - cv.width * sc) / 2, oy = (cv.clientHeight - cv.height * sc) / 2;
+    box.style.display = 'block';
+    box.style.left = (ox + st.roi.x * sc) + 'px'; box.style.top = (oy + st.roi.y * sc) + 'px';
+    box.style.width = (st.roi.width * sc) + 'px'; box.style.height = (st.roi.height * sc) + 'px';
+    tip.style.display = 'block'; tip.textContent = '取色 ' + Math.round(st.roi.width) + '×' + Math.round(st.roi.height);
+    txt.textContent = '已框选 ' + Math.round(st.roi.width) + '×' + Math.round(st.roi.height) + '；拖动可重新取色。';
+  }
+
+  // ROI 拖框（在画布上）
+  let drag = null;
+  const stage = $('stage');
+  stage.addEventListener('mousedown', (e) => {
+    if (!st.cap || st.sel < 0) return;
+    const rect = stage.getBoundingClientRect(), cv = $('cv');
+    const sc = Math.min(cv.clientWidth / cv.width, cv.clientHeight / cv.height);
+    const ox = (cv.clientWidth - cv.width * sc) / 2, oy = (cv.clientHeight - cv.height * sc) / 2;
+    const x = (e.clientX - rect.left - ox) / sc, y = (e.clientY - rect.top - oy) / sc;
+    if (x < 0 || y < 0 || x > cv.width || y > cv.height) return;
+    drag = { sx: x, sy: y, ex: x, ey: y };
+    const box = $('roiBox'); box.style.display = 'block';
+  });
+  stage.addEventListener('mousemove', (e) => {
+    if (!drag) return;
+    const rect = stage.getBoundingClientRect(), cv = $('cv');
+    const sc = Math.min(cv.clientWidth / cv.width, cv.clientHeight / cv.height);
+    const ox = (cv.clientWidth - cv.width * sc) / 2, oy = (cv.clientHeight - cv.height * sc) / 2;
+    drag.ex = (e.clientX - rect.left - ox) / sc; drag.ey = (e.clientY - rect.top - oy) / sc;
+    const x0 = Math.max(0, Math.min(drag.sx, drag.ex)), y0 = Math.max(0, Math.min(drag.sy, drag.ey)),
+      x1 = Math.min(cv.width, Math.max(drag.sx, drag.ex)), y1 = Math.min(cv.height, Math.max(drag.sy, drag.ey));
+    const box = $('roiBox'), tip = $('roiTip');
+    const sc2 = Math.min(cv.clientWidth / cv.width, cv.clientHeight / cv.height);
+    const ox2 = (cv.clientWidth - cv.width * sc2) / 2, oy2 = (cv.clientHeight - cv.height * sc2) / 2;
+    box.style.left = (ox2 + x0 * sc2) + 'px'; box.style.top = (oy2 + y0 * sc2) + 'px';
+    box.style.width = ((x1 - x0) * sc2) + 'px'; box.style.height = ((y1 - y0) * sc2) + 'px';
+    tip.style.display = 'block'; tip.textContent = Math.round(x1 - x0) + '×' + Math.round(y1 - y0);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!drag) return;
+    const cv = $('cv');
+    const x0 = Math.max(0, Math.min(drag.sx, drag.ex)), y0 = Math.max(0, Math.min(drag.sy, drag.ey)),
+      x1 = Math.min(cv.width, Math.max(drag.sx, drag.ex)), y1 = Math.min(cv.height, Math.max(drag.sy, drag.ey));
+    drag = null;
+    const w = x1 - x0, h = y1 - y0;
+    if (w < 3 || h < 3) { st.roi = null; showRoi(); renderRefs(); return; }
+    st.roi = { x: x0, y: y0, width: w, height: h };
+    if (st.sel >= 0) st.refs[st.sel].roi = st.roi;
+    renderRefs();
+  });
+
+  // 源权重图：有蒙版组→蒙版灰度采样；无→选区bbox+羽化（旧路径）
+  // 画面坐标 = 文档坐标 [srcSel.x, srcSel.y + w/h]；蒙版数据覆盖文档 [bounds.x, +w/h]
+  let weightCache = { key: null, w: null };
+  function srcWeight(W, H, scale) {
+    const sel = st.cap && st.cap.selection || { x: 0, y: 0, width: W, height: H };
+    const key = [W, H, st.feather, st.mask ? st.mask.mw : 0, sel.x | 0].join('|');
+    if (weightCache.key === key) return weightCache.w;
+    const w = new Float32Array(W * H);
+    if (st.mask) {
+      // 蒙版灰度解码一次
+      if (!st.mask.decoded || st.mask.decodedW !== st.mask.mw) {
+        const raw = atob(st.mask.weightB64);
+        const arr = new Uint8Array(st.mask.mw * st.mask.mh);
+        for (let i = 0; i < arr.length; i++) arr[i] = raw.charCodeAt(i);
+        st.mask.decoded = arr;
+      }
+      const m = st.mask.decoded, mw = st.mask.mw, mh = st.mask.mh, b = st.mask.bounds;
+      // 文档坐标→画面坐标偏移：画面起点 = sel.x（文档系）
+      const sx = scale === undefined ? 1 : W / (sel.width * scale || W), sy = scale === undefined ? 1 : H / (sel.height * scale || H);
+      void sx; void sy;
+      const scaleX = W / sel.width, scaleY = H / sel.height;   // 画面像素 ↔ 选区文档坐标
+      for (let py = 0; py < H; py++) {
+        const docY = sel.y + (py + .5) / scaleY;
+        const my = Math.floor((docY - b.y) * (mh / b.height));
+        if (my < 0 || my >= mh) continue;
+        for (let px2 = 0; px2 < W; px2++) {
+          const docX = sel.x + (px2 + .5) / scaleX;
+          const mx = Math.floor((docX - b.x) * (mw / b.width));
+          if (mx < 0 || mx >= mw) continue;
+          w[py * W + px2] = m[my * mw + mx] / 255;
+        }
+      }
+    } else {
+      const fw = C.buildWeight(W, H, st.cap && st.cap.selection, st.feather);
+      w.set(fw);
+    }
+    weightCache = { key, w };
+    return w;
+  }
+
+  // ---- 分析 + 生成 ----
+  function analyzeAll() {
+    // 源统计（一次）：PS画面 + 选区权重（羽化）
+    const srcPix = srcImageData();
+    const weight = srcWeight(srcPix.width, srcPix.height);
+    const srcStats = C.analyzeSource(srcPix, weight);
+    const list = [];
+    const fails = [];
+    for (const r of st.refs) {
+      try {
+        if (r.roi) {
+          r.stats = C.analyzeReference(r.pix, r.roi);   // 手动框选优先
+          r.auto = false;
+        } else {
+          r.stats = C.analyzeReferenceAuto(srcPix.width, srcPix.height, weight, r.pix);   // 自动分割（衣色同款区域生长）
+          r.auto = true; r.coverage = r.stats.coverage;
+          r.autoNote = (r.stats.uncertain ? '⚠自动识别不确定（相似色/构图差异），建议手动框选修正' : '自动识别：' + (r.stats.method === 'reference-alpha' ? '使用图片透明区域' : '颜色区域生长') + '，覆盖率' + r.stats.coverage + '%');
+        }
+        list.push({ name: r.name, stats: { src: srcStats, ref: r.stats } });
+      } catch (e) { fails.push(r.name + '：' + (e.message || e)); }
+    }
+    if (!list.length) throw Error(fails[0] || '所有参考图取色失败');
+    if (fails.length) olog('[批量改色] ' + fails.length + ' 张参考图失败：' + fails.join('；'));
+    return list;
+  }
+
+  let srcCache = null;
+  function srcImageData() {
+    if (srcCache) return srcCache;
+    const cv = $('cv');
+    srcCache = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+    return srcCache;
+  }
+
+  function updateGo() { $('btnGo').disabled = !(st.cap && st.refs.length && st.model !== false); }
+
+  // 低清实时预览（当前选中SKU，降采样到最长边 420）
+  let previewTimer = null;
+  function schedulePreview() {
+    if (!st.cap || st.sel < 0 || !st.refs[st.sel] || !st.refs[st.sel].stats) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(doPreview, 180);
+  }
+  function doPreview() {
+    if (st.busy) return;
+    try {
+      const r = st.refs[st.sel];
+      if (!r || !r.stats) return;
+      const srcPix = srcImageData();
+      const scale = Math.min(1, 420 / Math.max(srcPix.width, srcPix.height));
+      const w = Math.round(srcPix.width * scale), h = Math.round(srcPix.height * scale);
+      const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+      const g = c2.getContext('2d');
+      g.drawImage($('cv'), 0, 0, w, h);
+      const small = g.getImageData(0, 0, w, h);
+      const weight = srcWeight(w, h, scale);
+      const stats = { src: C.analyzeSource(small, weight), ref: r.stats };
+      const pipe = C.buildPipelineMode(stats, opt());
+      const out = C.renderToImageData(small, weight, pipe.transform);
+      const c3 = document.createElement('canvas'); c3.width = w; c3.height = h;
+      c3.getContext('2d').putImageData(new ImageData(out.data, w, h), 0, 0);
+      // 预览画到主画布（叠加半透明），原图在生成后可切回
+      const cv = $('cv'), g2 = cv.getContext('2d');
+      g2.save(); g2.globalAlpha = .999; g2.drawImage(c3, 0, 0, cv.width, cv.height); g2.restore();
+      stat('预览中（SKU: ' + r.name + '）— 点「生成全部」出全尺寸', 'ok');
+      previewShown = c3;
+    } catch (e) { stat('预览失败: ' + (e.message || e), 'err'); }
+  }
+  let previewShown = null;
+  function scaleSelection(sel, scale) {
+    if (!sel || typeof sel.x !== 'number') return null;
+    return { x: sel.x * scale, y: sel.y * scale, width: sel.width * scale, height: sel.height * scale };
+  }
+
+  // 生成全部
+  async function go() {
+    if (!st.cap || !st.refs.length || st.busy) return;
+    st.busy = true; $('btnGo').classList.add('busy');
+    try {
+      const list = analyzeAll();
+      stat('计算 ' + list.length + ' 个SKU（全尺寸）…');
+      await new Promise((r2) => setTimeout(r2, 30));
+      const srcPix = srcImageData();
+      const weight = srcWeight(srcPix.width, srcPix.height);
+      const skus = [];
+      for (const item of list) {
+        const pipe = C.buildPipelineMode(item.stats, opt());
+        const out = C.renderToImageData(srcPix, weight, pipe.transform);
+        const c3 = document.createElement('canvas'); c3.width = out.width; c3.height = out.height;
+        c3.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
+        const dataUrl = c3.toDataURL('image/png');
+        skus.push({ name: item.name, png: img64(dataUrl), params: { mode: opt().matchMode, strength: params.strength, light: params.light, contrast: params.contrast, shadows: params.shadows, highlights: params.highlights, hue: params.hue, saturation: params.sat, feather: params.feather } });
+      }
+      const saved = await window.orange.recolorSave({ skus, capture: { selection: st.cap.selection, docId: st.cap.docId, width: st.cap.width, height: st.cap.height } });
+      if (!saved.ok) { stat(saved.error || '落盘失败', 'err'); return; }
+      st.results = saved.files;
+      $('btnPlace').disabled = false;
+      const pr = await window.orange.recolorPlace({ files: saved.files, capture: { docId: st.cap.docId, selection: st.cap.selection } });
+      stat('✓ ' + skus.length + ' 个SKU完成' + (pr.ok ? '，已贴回PS（组内点眼睛对比）' : '；PNG已落盘，可手动置入'), pr.ok ? 'ok' : 'err');
+    } catch (e) { stat('生成失败: ' + (e.message || e), 'err'); glog('go 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnGo').classList.remove('busy'); }
+  }
+  $('btnGo').addEventListener('click', go);
+
+  $('btnPlace').addEventListener('click', async () => {
+    if (!st.results || st.busy) return;
+    const pr = await window.orange.recolorPlace({ files: st.results, capture: { docId: st.cap && st.cap.docId, selection: st.cap && st.cap.selection } });
+    stat(pr.ok ? '✓ 已贴回PS' : '贴回失败: ' + (pr.error || ''), pr.ok ? 'ok' : 'err');
+  });
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

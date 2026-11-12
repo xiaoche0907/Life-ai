@@ -165,6 +165,16 @@
     "ready": true
   },
   {
+    "id": "recolor",
+    "icon": "🎨",
+    "label": "批量改色",
+    "file": "recolor.html",
+    "width": 980,
+    "height": 660,
+    "ready": true
+  },
+  {
+
     "id": "layersplit",
     "icon": "🗂️",
     "label": "图层拆分",

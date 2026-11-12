@@ -256,6 +256,10 @@ const API = {
   relightAiGen: (payload) => ipcRenderer.invoke('relight-ai-gen', payload),
   glow: (op, payload) => ipcRenderer.invoke('glow', { op, payload }),   // 辉光卡单通道（capture/bake/presets/…）
   layerSplitRun: (payload) => ipcRenderer.invoke('layersplit-run', payload),   // 图层拆分（1111）
+  recolorSave: (payload) => ipcRenderer.invoke('recolor-save', payload),   // 批量改色落盘（1113）
+  recolorPlace: (payload) => ipcRenderer.invoke('recolor-place', payload),   // 批量改色贴回（1113）
+  readImageBytes: (p) => ipcRenderer.invoke('recolor-read-image', p),   // 批量改色读参考图字节（1113）
+  readMaskGroup: (payload) => ipcRenderer.invoke('recolor-read-mask', payload),   // 批量改色直读PS蒙版组（1114）
   restoreSelection: (ctx) => ipcRenderer.invoke('restore-selection', ctx),
 
   // --- 提前贴回（0916）：进度卡每批的橙子 logo 钮——已生成好的现在就打组贴回，这批剩下的完成后不自动贴 ---
