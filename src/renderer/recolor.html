@@ -60,7 +60,13 @@
   .prow input[type=range] { flex: 1 1 auto; accent-color: var(--accent); }
   .prow input[type=number] { flex: 0 0 52px; width: 52px; height: 22px; border-radius: 6px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 10px; text-align: center; user-select: text; }
   .row2 { display: flex; gap: 8px; }
-  .row2 .half { flex: 1; }
+  .row2 .half { flex: 1; min-width: 0; }
+  .row2 { flex-wrap: wrap; }
+  .row2 .half.prow { flex-basis: 100%; }
+  .prow input[type=range] { min-width: 0; }
+  #stat { white-space: normal; }
+  #referencePreview { cursor: crosshair; }
+  .refItem .refStatus { font-size: 10px; line-height: 1.5; color: var(--text-dim); white-space: normal; }
 
   /* ROI 框选覆盖层 */
   #roiBox { position: absolute; border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); pointer-events: none; display: none; border-radius: 2px; }
@@ -86,19 +92,34 @@
         <canvas id="cv"></canvas>
         <div id="roiBox"></div>
         <div id="roiTip"></div>
-        <div id="hint">① PS里选中带蒙版的服饰图层/组（蒙版框住衣服）<br>② 点「读取蒙版组」→ 自动取蒙版与画面<br>③ 添加参考色图 → 生成全部（自动贴回PS）</div>
+        <div id="hint">① 读取PS当前文档，扫描带蒙版的组<br>② 在右侧选择目标蒙版组<br>③ 添加颜色参考图，结果写入所选组</div>
         <div id="tag"></div>
       </div>
       <div id="actions" data-nodrag>
-        <button class="abtn" id="btnCap" data-pass title="读取PS选中图层的图层蒙版作为调色范围"><span id="icoCap"></span>读取蒙版组</button>
+        <button class="abtn" id="btnCap" data-pass title="扫描当前文档的全部蒙版组"><span id="icoCap"></span>读取PS文档</button>
         <button class="abtn" id="btnAdd" data-pass title="批量添加本地参考色图片"><span id="icoAdd"></span>添加参考图</button>
         <button class="abtn acc" id="btnGo" data-pass disabled title="按每个SKU调色并贴回PS"><span id="icoGo"></span>生成全部</button>
       </div>
     </div>
     <div id="ctrl" data-nodrag>
       <div class="grp">
+        <div class="gt">目标蒙版组 / 结果存放位置</div>
+        <div id="documentInfo" class="tip" role="status">请先读取PS文档</div>
+        <select id="targetGroup" class="msel" data-pass aria-label="目标蒙版组" disabled><option value="">读取后选择带蒙版的组</option></select>
+        <div class="tip">原蒙版保留；SKU追加在所选组内，首个显示，其余隐藏。</div>
+      </div>
+      <div class="grp">
         <div class="gt">参考图队列 <span id="refCount" style="color:var(--text-dim);font-weight:400">0/40</span></div>
         <div id="refs"><div class="tip">还没有参考图。每张图=一个SKU。</div></div>
+        <div class="row2"><button id="btnAnalyze" class="abtn" data-pass>重新分析</button><button id="btnSelectAll" class="abtn" data-pass>全选</button><button id="btnClearRefs" class="abtn" data-pass>清空</button></div>
+        <div class="tip">上传后自动取色；失败与低可信度逐张提示，不以整图取色假装成功。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">参考服装 / 调色预览</div>
+        <canvas id="referencePreview" data-pass aria-label="参考衣服蒙版预览，可拖框修正取色" style="width:100%;height:130px;object-fit:contain;background:var(--inset-bg)"></canvas>
+        <div id="referenceStatus" class="tip" role="status">选择参考图查看自动识别区域</div>
+        <canvas id="resultPreview" aria-label="调色合成预览" style="width:100%;height:130px;object-fit:contain;background:var(--inset-bg)"></canvas>
+        <button id="btnOriginal" class="abtn" data-pass>查看源图</button>
       </div>
       <div class="grp">
         <div class="gt">当前参考 · 独立调色模式</div>
@@ -122,7 +143,7 @@
           <div class="half prow"><label>饱和度</label><input type="range" id="pSat" min="-100" max="100" value="0"><input type="number" id="pSatN" min="-100" max="100" value="0"></div>
         </div>
         <div class="row2">
-          <div class="half prow"><label>着色</label><input type="checkbox" id="pColorize" style="accent-color:var(--accent)"><label style="flex:0 0 auto">强度</label><input type="range" id="pColOp" min="0" max="100" value="100" disabled></div>
+          <div class="half prow"><label>着色</label><input type="checkbox" id="pColorize" style="accent-color:var(--accent)"><label style="flex:0 0 auto">强度</label><input type="range" id="pColOp" min="0" max="100" value="100" disabled><input type="number" id="pColOpN" min="0" max="100" value="100" disabled></div>
         </div>
         <div class="tip">只改当前选中的参考图（web端同款独立参数）。阴影正值=PS黑场抬升。着色色相自动取参考中间调。</div>
       </div>
@@ -135,8 +156,8 @@
       </div>
       <div class="grp">
         <div class="gt">输出</div>
-        <button class="abtn" id="btnPlace" data-pass disabled title="把已生成结果贴回PS（打组）"><span id="icoPlace"></span>贴回PS图层</button>
-        <div class="tip">生成后自动落盘 PNG + recipes.json；贴回后打组「来福 批量改色组」，点眼睛对比SKU。二次微调可在PS里对贴回层挂调整层。</div>
+        <button class="abtn" id="btnPlace" data-pass disabled title="创建失败时，用已保存的原生配方重试"><span id="icoPlace"></span>重试创建调色组</button>
+        <div class="tip">每SKU生成独立的原生调整层子组，不贴成品图片。首组显示，其余隐藏；双击PS曲线、颜色填充等层继续编辑。配方另存JSON，不自动保存PSD。</div>
       </div>
     </div>
   </div>
@@ -185,6 +206,7 @@
     const col = entry ? !!entry.colorize : false;
     $('pColorize').checked = col;
     $('pColOp').disabled = !col;
+    $('pColOpN').disabled = !col;
     $('modeSel').value = entry ? (entry.matchMode || 'mode1') : 'mode1';
     $('modeTip').textContent = entry
       ? ('正在编辑「' + entry.name + '」：此下拉只改它自己的模式。')
@@ -206,6 +228,7 @@
     const entry = activeRef();
     if (entry) entry.colorize = $('pColorize').checked;
     $('pColOp').disabled = !$('pColorize').checked;
+    $('pColOpN').disabled = !$('pColorize').checked;
     schedulePreview();
   });
 
@@ -232,35 +255,55 @@
     colorize: !!r.colorize, colorizeOpacity: (r.colorizeOpacity === undefined ? 100 : r.colorizeOpacity) / 100,
   });
 
-  // ---- 读取蒙版组（用户在PS里选中带蒙版的图层/组） ----
+  // 文档扫描不依赖当前选中图层；明确选择目标组后才读取蒙版。
+  let sourceDocument = null;
+  function invalidateSource() {
+    st.cap = null; st.mask = null; st.results = null; srcCache = null;
+    weightCache = { key: null, w: null };
+    $('btnPlace').disabled = true;
+    for (const ref of st.refs) { ref.stats = null; ref.status = 'waiting'; }
+    updateGo();
+  }
   async function capture() {
     if (st.busy) return;
-    st.busy = true; $('btnCap').classList.add('busy'); stat('读取PS蒙版组…');
+    st.busy = true; $('btnCap').classList.add('busy'); stat('扫描PS文档及蒙版组…');
+    invalidateSource(); $('targetGroup').disabled = true;
     try {
-      // 蒙版直读：readMaskGroup 返回选中图层的图层蒙版灰度（羽化/密度保留）——衣色 maskWeight 同构
-      const mk = await window.orange.readMaskGroup({});
-      if (!mk.ok) { stat(mk.error || '蒙版读取失败', 'err'); return; }
-      const r = await window.orange.glow('capture');
-      if (!r.ok) { stat(r.error || '读取画面失败', 'err'); return; }
-      const img = await loadImg('data:' + (r.mime || 'image/jpeg') + ';base64,' + img64(r.image));
-      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-      cv.getContext('2d').drawImage(img, 0, 0);
-      const fullCanvas = r.fullMode || !r.selection;
-      const srcSel = fullCanvas ? { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight }
-        : { x: r.selection.left, y: r.selection.top, width: r.selection.right - r.selection.left, height: r.selection.bottom - r.selection.top };
-      st.mask = {
-        weightB64: mk.weightB64, mw: mk.maskWidth, mh: mk.maskHeight,
-        bounds: mk.bounds, docW: mk.docWidth, docH: mk.docHeight, layerName: mk.layerName, coveredPct: mk.coveredPct,
-      };
-      st.cap = { image: r.image, mime: r.mime || 'image/jpeg', docId: r.docId, selection: srcSel, fullMode: fullCanvas, width: img.naturalWidth, height: img.naturalHeight };
-      $('hint').classList.add('off');
-      $('tag').textContent = '蒙版「' + mk.layerName + '」' + mk.coveredPct + '% · ' + img.naturalWidth + '×' + img.naturalHeight;
-      stat('✓ 已读取蒙版「' + mk.layerName + '」（覆盖' + mk.coveredPct + '%）· 添加参考图后生成', 'ok');
-      updateGo();
-    } catch (e) { stat('读取失败: ' + (e.message || e), 'err'); glog('capture 异常 ' + (e.stack || e)); }
+      const r = await window.orange.inspectRecolorDocument();
+      if (!r.ok) throw Error(r.error || '读取文档失败');
+      sourceDocument = r;
+      $('documentInfo').textContent = r.name + ' · ' + r.width + '×' + r.height;
+      const select = $('targetGroup'); select.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择目标蒙版组'; select.appendChild(placeholder);
+      for (const group of r.groups || []) {
+        const option = document.createElement('option'); option.value = String(group.id); option.textContent = group.path + (group.enabled ? '' : '（蒙版禁用或含矢量蒙版）'); option.disabled = !group.enabled; select.appendChild(option);
+      }
+      select.disabled = !(r.groups || []).some(group => group.enabled);
+      stat(select.disabled ? '文档中没有可用的像素蒙版组，请在PS里创建后重新读取' : '已识别文档，请选择结果要存放的蒙版组', select.disabled ? 'err' : 'ok');
+    } catch (e) { stat('读取失败：' + e.message + '；若提示未知命令，请更新PS桥接插件并重启PS', 'err'); }
     finally { st.busy = false; $('btnCap').classList.remove('busy'); }
   }
   $('btnCap').addEventListener('click', capture);
+  $('targetGroup').addEventListener('change', async () => {
+    if (st.busy || !sourceDocument) return;
+    const layerId = Number($('targetGroup').value);
+    invalidateSource();
+    if (!layerId) return;
+    st.busy = true; $('targetGroup').disabled = true; stat('读取所选组蒙版与文档像素…');
+    try {
+      const mk = await window.orange.readMaskGroup({ docId: sourceDocument.docId, layerId });
+      if (!mk.ok) throw Error(mk.error || '蒙版读取失败');
+      const img = await loadImg('data:image/png;base64,' + mk.image);
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0);
+      srcCache = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+      st.mask = { weightB64: mk.weightB64, mw: mk.maskWidth, mh: mk.maskHeight, bounds: mk.bounds, layerName: mk.layerName };
+      st.cap = { docId: mk.docId, layerId: mk.layerId, selection: mk.selection, width: mk.width, height: mk.height };
+      $('hint').classList.add('off'); $('tag').textContent = '目标组：' + mk.layerName + ' · 蒙版覆盖 ' + mk.coveredPct + '%';
+      stat('已读取「' + mk.layerName + '」，结果将追加到该组内', 'ok'); updateGo();
+    } catch (e) { invalidateSource(); stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('targetGroup').disabled = false; }
+    if (st.cap && st.refs.length) await analyzeReferences();
+  });
 
   // ---- 参考图管理 ----
   $('btnAdd').addEventListener('click', async () => {
@@ -291,8 +334,9 @@
         added++;
       } catch (e) { stat(p.split(/[\\/]/).pop() + ': ' + (e.message || e), 'err'); }
     }
-    if (added) { st.sel = st.refs.length - 1; applyTonalToUI(activeRef()); }
+    // 导入不改变当前选中的参考与参数。
     renderRefs(); updateGo();
+    if (added) await analyzeReferences();
   });
 
   function renderRefs() {
@@ -308,7 +352,7 @@
       const meta = document.createElement('div'); meta.className = 'meta';
       const modeName = { mode1: '曲线', mode2: '可选色', mode3: '渐变', mode4: '通道' }[r.matchMode || 'mode1'];
       const nm = document.createElement('div'); nm.className = 'nm';
-      nm.textContent = (i + 1) + '. ' + r.name + (r.stats ? (' · ' + modeName + (r.roi ? '' : ' · 自动' + r.coverage + '%')) : '');
+      nm.textContent = (i + 1) + '. ' + r.name + ' · ' + ({ analyzing: '分析中', ready: '已分析', error: '分析失败', waiting: '等待目标组' }[r.status] || '待分析') + (r.stats ? (' · ' + modeName + (r.roi ? '' : ' · 自动' + r.coverage + '%')) : '');
       const sw = document.createElement('div'); sw.className = 'sw';
       if (r.stats) for (let k = 0; k < 3; k++) {
         const q = [.2, .5, .8][k];
@@ -318,20 +362,54 @@
       }
       meta.appendChild(nm); meta.appendChild(sw);
       const del = document.createElement('div'); del.className = 'del'; del.textContent = '✕'; del.dataset.act = 'delref'; del.dataset.i = i;
-      div.appendChild(img); div.appendChild(meta); div.appendChild(del);
-      div.title = r.autoNote || '';
+      const selected = document.createElement('input'); selected.type = 'checkbox'; selected.checked = r.selected !== false; selected.disabled = st.busy; selected.setAttribute('aria-label', '生成 ' + r.name);
+      selected.addEventListener('click', e => e.stopPropagation());
+      selected.addEventListener('change', () => { r.selected = selected.checked; updateGo(); });
+      const note = document.createElement('div'); note.className = 'refStatus'; note.textContent = r.error || r.autoNote || '等待自动分析'; meta.appendChild(note);
+      div.appendChild(selected); div.appendChild(img); div.appendChild(meta); div.appendChild(del);
+      div.title = r.error || r.autoNote || ''; 
       div.addEventListener('click', (e) => {
         if (e.target.dataset.act === 'delref') { st.refs.splice(i, 1); if (st.sel >= st.refs.length) st.sel = st.refs.length - 1; applyTonalToUI(activeRef()); renderRefs(); updateGo(); return; }
-        st.sel = i; applyTonalToUI(r); renderRefs();
+        if (st.busy) return;
+        st.sel = i; applyTonalToUI(r); renderRefs(); schedulePreview();
       });
       box.appendChild(div);
     });
+    showReferencePreview();
   }
+
+  function showReferencePreview() {
+    const ref = activeRef(), canvas = $('referencePreview');
+    if (!ref) { canvas.width = 1; canvas.height = 1; $('referenceStatus').textContent = '选择参考图查看自动识别区域'; return; }
+    const pixels = ref.stats && ref.stats.selection || ref.pix;
+    canvas.width = pixels.width; canvas.height = pixels.height;
+    canvas.getContext('2d').putImageData(new ImageData(pixels.data, pixels.width, pixels.height), 0, 0);
+    $('referenceStatus').textContent = ref.error || ref.autoNote || '待分析；可在此拖框指定服装取色范围';
+  }
+  $('btnAnalyze').addEventListener('click', analyzeReferences);
+  $('btnSelectAll').addEventListener('click', () => { if (st.busy) return; for (const ref of st.refs) ref.selected = true; renderRefs(); updateGo(); });
+  $('btnClearRefs').addEventListener('click', () => { if (st.busy) return; st.refs = []; st.sel = -1; st.results = null; $('btnPlace').disabled = true; renderRefs(); showReferencePreview(); updateGo(); });
+  $('btnOriginal').addEventListener('click', () => { if (!srcCache) return; const cv = $('cv'); cv.width = srcCache.width; cv.height = srcCache.height; cv.getContext('2d').putImageData(srcCache, 0, 0); });
+  let roiStart = null;
+  function roiPoint(e) {
+    const canvas = $('referencePreview'), rect = canvas.getBoundingClientRect();
+    const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+    return { x: Math.max(0, Math.min(canvas.width, (e.clientX - rect.left - (rect.width - canvas.width * scale) / 2) / scale)), y: Math.max(0, Math.min(canvas.height, (e.clientY - rect.top - (rect.height - canvas.height * scale) / 2) / scale)) };
+  }
+  $('referencePreview').addEventListener('pointerdown', e => { if (st.busy || !activeRef()) return; roiStart = roiPoint(e); e.currentTarget.setPointerCapture(e.pointerId); });
+  $('referencePreview').addEventListener('pointerup', async e => {
+    if (!roiStart || !activeRef()) return;
+    const end = roiPoint(e), start = roiStart; roiStart = null;
+    const roi = { x: Math.floor(Math.min(start.x, end.x)), y: Math.floor(Math.min(start.y, end.y)), width: Math.floor(Math.abs(start.x - end.x)), height: Math.floor(Math.abs(start.y - end.y)) };
+    if (roi.width < 3 || roi.height < 3) return;
+    activeRef().roi = roi; await analyzeReferences();
+  });
 
   // ---- 源权重图：蒙版组灰度采样（优先）→ 选区bbox+羽化（回退） ----
   let weightCache = { key: null, w: null };
   function srcWeight(W, H) {
-    const sel = st.cap && st.cap.selection || { x: 0, y: 0, width: W, height: H };
+    const bounds = st.cap && st.cap.selection || { left: 0, top: 0, right: W, bottom: H };
+    const sel = { x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top };
     const key = [W, H, st.feather, st.mask ? st.mask.mw + ':' + st.mask.layerName : 'nomask', sel.x | 0].join('|');
     if (weightCache.key === key) return weightCache.w;
     const w = new Float32Array(W * H);
@@ -363,29 +441,44 @@
   }
 
   // ---- 分析 + 生成 ----
-  function analyzeAll() {
-    const srcPix = srcImageData();
-    const weight = srcWeight(srcPix.width, srcPix.height);
-    const srcStats = C.analyzeSource(srcPix, weight);
-    const list = [];
-    const fails = [];
-    for (const r of st.refs) {
-      try {
-        if (r.roi) {
-          r.stats = C.analyzeReference(r.pix, r.roi);   // 手动框选优先
-          r.auto = false;
-        } else {
-          r.stats = C.analyzeReferenceAuto(srcPix.width, srcPix.height, weight, r.pix);   // 自动分割（衣色同款）
-          r.auto = true; r.coverage = r.stats.coverage;
-          r.autoNote = (r.stats.uncertain ? '⚠自动识别不确定（相似色/构图差异），建议拖框修正' : '自动识别：' + (r.stats.method === 'reference-alpha' ? '使用图片透明区域' : '颜色区域生长') + '，覆盖率' + r.stats.coverage + '%');
-        }
-        list.push({ name: r.name, ref: r, stats: { src: srcStats, ref: r.stats } });
-      } catch (e) { fails.push(r.name + '：' + (e.message || e)); }
+  async function analyzeReferences() {
+    if (st.busy) return;
+    if (!st.cap) {
+      for (const ref of st.refs) ref.status = 'waiting';
+      renderRefs(); stat('参考图已加入，请先读取PS文档并选择目标组', 'err'); return;
     }
-    if (!list.length) throw Error(fails[0] || '所有参考图取色失败');
-    if (fails.length) olog('[批量改色] ' + fails.length + ' 张参考图失败：' + fails.join('；'));
+    st.busy = true; updateGo();
+    let passed = 0;
+    try {
+      const src = srcImageData(), weight = srcWeight(src.width, src.height);
+      const sourceStats = C.analyzeSource(src, weight);
+      for (let i = 0; i < st.refs.length; i++) {
+        const ref = st.refs[i]; ref.status = 'analyzing'; ref.error = ''; renderRefs();
+        stat('自动分析参考图 ' + (i + 1) + '/' + st.refs.length + '：' + ref.name);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        try {
+          ref.stats = ref.roi ? C.analyzeReference(ref.pix, ref.roi) : C.analyzeReferenceAuto(src.width, src.height, weight, ref.pix);
+          ref.sourceStats = sourceStats; ref.auto = !ref.roi; ref.coverage = ref.stats.coverage || 100;
+          ref.autoNote = ref.stats.uncertain ? '自动取色不确定，请核对服装区域，可手动框选修正' : (ref.roi ? '已按手动框选取色' : '自动服装取色完成（颜色区域生长，非语义AI）');
+          ref.status = 'ready'; passed++;
+        } catch (e) { ref.stats = null; ref.status = 'error'; ref.error = e.message; glog('参考图分析失败：' + ref.name + ' ' + e.message); }
+        renderRefs();
+      }
+      if (st.sel < 0 && passed) { st.sel = st.refs.findIndex(ref => ref.status === 'ready'); applyTonalToUI(activeRef()); }
+      stat('分析完成：' + passed + ' 张成功，' + (st.refs.length - passed) + ' 张失败；选参考图查看预览', passed ? 'ok' : 'err');
+    } catch (e) { stat('分析失败：' + e.message, 'err'); }
+    finally { st.busy = false; renderRefs(); updateGo(); schedulePreview(); }
+  }
+  function analyzeAll() {
+    const list = st.refs.filter(ref => ref.stats && ref.status === 'ready' && ref.selected !== false).map(ref => ({ name: ref.name, ref, stats: { src: ref.sourceStats, ref: ref.stats } }));
+    if (!list.length) throw Error('没有分析成功且勾选的参考图，请先分析参考图');
     return list;
   }
+  $('modeSel').addEventListener('change', () => {
+    const ref = activeRef(); if (ref) ref.matchMode = $('modeSel').value;
+    st.results = null; $('btnPlace').disabled = true;
+    renderRefs(); schedulePreview();
+  });
 
   let srcCache = null;
   function srcImageData() {
@@ -395,7 +488,7 @@
     return srcCache;
   }
 
-  function updateGo() { $('btnGo').disabled = !(st.cap && st.refs.length); }
+  function updateGo() { $('btnGo').disabled = st.busy || !(st.cap && st.refs.some(ref => ref.stats && ref.status === 'ready' && ref.selected !== false)); }
 
   // 低清实时预览（当前选中SKU）
   let previewTimer = null;
@@ -414,7 +507,9 @@
       const w = Math.round(srcPix.width * scale), h = Math.round(srcPix.height * scale);
       const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
       const g = c2.getContext('2d');
-      g.drawImage($('cv'), 0, 0, w, h);
+      const original = document.createElement('canvas'); original.width = srcPix.width; original.height = srcPix.height;
+      original.getContext('2d').putImageData(srcPix, 0, 0);
+      g.drawImage(original, 0, 0, w, h);
       const small = g.getImageData(0, 0, w, h);
       const weight = srcWeight(w, h);
       const stats = { src: C.analyzeSource(small, weight), ref: r.stats };
@@ -423,7 +518,10 @@
       const c3 = document.createElement('canvas'); c3.width = w; c3.height = h;
       c3.getContext('2d').putImageData(new ImageData(out.data, w, h), 0, 0);
       const cv = $('cv'), g2 = cv.getContext('2d');
+      g2.putImageData(srcPix, 0, 0);
       g2.drawImage(c3, 0, 0, cv.width, cv.height);
+      const preview = $('resultPreview'); preview.width = w; preview.height = h;
+      const pg = preview.getContext('2d'); pg.drawImage(c2, 0, 0); pg.drawImage(c3, 0, 0);
       stat('预览中（' + r.name + ' · ' + (skuOpt(r).matchMode) + '）— 参数改动会自动刷新', 'ok');
     } catch (e) { stat('预览失败: ' + (e.message || e), 'err'); }
   }
@@ -434,29 +532,19 @@
     st.busy = true; $('btnGo').classList.add('busy');
     try {
       const list = analyzeAll();
-      stat('计算 ' + list.length + ' 个SKU（全尺寸）…');
-      await new Promise((r2) => setTimeout(r2, 30));
-      const srcPix = srcImageData();
-      const weight = srcWeight(srcPix.width, srcPix.height);
+      stat('求解 ' + list.length + ' 个SKU原生调整层配方…');
+      await new Promise(resolve => setTimeout(resolve, 30));
       const skus = [];
       for (const item of list) {
-        const pipe = C.buildPipelineMode(item.stats, skuOpt(item.ref));
-        const out = C.renderToImageData(srcPix, weight, pipe.transform);
-        const c3 = document.createElement('canvas'); c3.width = out.width; c3.height = out.height;
-        c3.getContext('2d').putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
-        const dataUrl = c3.toDataURL('image/png');
-        const o = skuOpt(item.ref);
-        skus.push({
-          name: item.name, png: img64(dataUrl),
-          params: { mode: o.matchMode, strength: params.strength, light: params.light, contrast: o.contrast * 100, shadows: o.shadows * 100, highlights: o.highlights * 100, hue: o.hue, saturation: o.saturation * 100, colorize: o.colorize, colorizeOpacity: o.colorizeOpacity * 100, feather: params.feather },
-        });
+        const options = skuOpt(item.ref);
+        skus.push({ name: item.name, recipe: C.buildNativeRecipe(item.stats, options), params: { ...options } });
       }
-      const saved = await window.orange.recolorSave({ skus, capture: { selection: st.cap.selection, docId: st.cap.docId, width: st.cap.width, height: st.cap.height, maskLayer: st.mask && st.mask.layerName } });
+      const saved = await window.orange.recolorSave({ skus, capture: st.cap });
       if (!saved.ok) { stat(saved.error || '落盘失败', 'err'); return; }
-      st.results = saved.files;
+      st.results = saved.jobId;
       $('btnPlace').disabled = false;
-      const pr = await window.orange.recolorPlace({ files: saved.files, capture: { docId: st.cap.docId, selection: st.cap.selection } });
-      stat('✓ ' + skus.length + ' 个SKU完成' + (pr.ok ? '，已贴回PS（组内点眼睛对比）' : '；PNG已落盘，可手动置入'), pr.ok ? 'ok' : 'err');
+      const pr = await window.orange.recolorPlace({ jobId: saved.jobId });
+      stat(pr.ok ? '✓ 已创建 ' + pr.count + ' 个原生调色子组，可双击调整层编辑' : '创建失败：' + pr.error + '（配方已保存，可重试）', pr.ok ? 'ok' : 'err');
     } catch (e) { stat('生成失败: ' + (e.message || e), 'err'); glog('go 异常 ' + (e.stack || e)); }
     finally { st.busy = false; $('btnGo').classList.remove('busy'); }
   }
@@ -464,8 +552,8 @@
 
   $('btnPlace').addEventListener('click', async () => {
     if (!st.results || st.busy) return;
-    const pr = await window.orange.recolorPlace({ files: st.results, capture: { docId: st.cap && st.cap.docId, selection: st.cap && st.cap.selection } });
-    stat(pr.ok ? '✓ 已贴回PS' : '贴回失败: ' + (pr.error || ''), pr.ok ? 'ok' : 'err');
+    const pr = await window.orange.recolorPlace({ jobId: st.results });
+    stat(pr.ok ? '✓ 已创建原生调色组' : '创建失败：' + pr.error, pr.ok ? 'ok' : 'err');
   });
 })();
 </script>

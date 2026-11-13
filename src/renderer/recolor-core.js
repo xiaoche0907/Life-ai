@@ -754,7 +754,7 @@
     const hueTolerance = clamp((hueSpreads[Math.floor(hueSpreads.length * .9)] || 0) * 1.8 + 6, 12, 22);
     const edges = [[], [], []], edgeStep = Math.max(1, Math.floor((w + h) / 300));
     for (let y = 0; y < h; y += edgeStep) for (const x of [0, w - 1]) for (let k = 0; k < 3; k++) edges[k].push(lab[(y * w + x) * 3 + k]);
-    for (let x = 0; x < w; x += edgeStep) for (const y of [0, h - 1]) for (let k = 0; k < 3; k++) edges[k].push(lab[(x * w + y) * 3 + k]);
+    for (let x = 0; x < w; x += edgeStep) for (const y of [0, h - 1]) for (let k = 0; k < 3; k++) edges[k].push(lab[(y * w + x) * 3 + k]);
     const background = edges.map(a => { a.sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; });
     const candidate = new Uint8Array(n);
     for (let j = 0; j < n; j++) {
@@ -821,15 +821,55 @@
     }
     if (total < 32) throw Error('自动识别的衣服像素不足：请换更清晰的参考图，或手动框选取色范围');
     const sample = { x: 0, y: 0, width: p.width, height: p.height };
-    return { ...statistics(selection, sample), tone: clothTones(selection, sample), method: seg.method, uncertain: seg.uncertain, coverage: Math.round(total / (p.width * p.height) * 100) };
+    return { ...statistics(selection, sample), tone: clothTones(selection, sample), method: seg.method, uncertain: seg.uncertain, coverage: Math.round(total / (p.width * p.height) * 100), selection };
   }
 
+
+  // 原生调整层配方，按从底到顶顺序保存；不包含调色后的像素结果。
+  function buildNativeRecipe(stats, options = {}) {
+    const pipe = buildPipelineMode(stats, options), base = pipe.base;
+    const layers = [];
+    const add = (name, kind, blend, extra, opacity = 1, fillOpacity = 1) => layers.push({ name, kind, blend, opacity, fillOpacity, ...extra });
+    for (const adjustment of pipe.tone.adjustments) {
+      const value = adjustment.value;
+      if (adjustment.kind === 'contrast') add('对比度—曲线', 'curves', 'luminosity', { channels: [smoothPoints(x => x - 25 * value * Math.sin(2 * Math.PI * x / 255))] });
+      if (adjustment.kind === 'shadows' || adjustment.kind === 'highlights') {
+        const points = adjustment.kind === 'shadows' && value > 0
+          ? [{ input: 0, output: Math.round(85 * value) }, { input: 255, output: 255 }]
+          : smoothPoints(x => { const t = adjustment.kind === 'shadows' ? Math.max(0, (128 - x) / 128) : Math.max(0, (x - 128) / 127); return x + 40 * value * t * t; });
+        add(adjustment.kind === 'shadows' ? '阴影—曲线' : '高光—曲线', 'curves', 'luminosity', { channels: [points] });
+      }
+    }
+    add('柔和明暗—曲线', 'curves', 'luminosity', { channels: [base.bright] });
+    const cs = base.same ? 0 : Math.round(clamp(options.colorStrength === undefined ? 1 : options.colorStrength, 0, 1) * 255) / 255;
+    if (pipe.mode === 'mode1') {
+      add('主色匹配—RGB曲线', 'curves', 'color', { channels: [identityCurve(), ...base.channels] });
+      add('颜色增强—纯色填充75%', 'solid', 'color', { rgb: base.target.map(v => Math.round(clamp(v))) }, cs, Math.round(.75 * 255) / 255);
+    } else if (pipe.mode === 'mode2') {
+      add('参考颜色—可选颜色（绝对）', 'selectiveColor', 'normal', { adjustment: base.adjustment }, base.cs);
+      add('颜色辅助—纯色填充35%', 'solid', 'color', { rgb: base.fillRGB }, base.fillOpacity);
+    } else if (pipe.mode === 'mode3') {
+      add('参考明暗色阶—渐变映射', 'gradientMap', 'normal', { stops: base.colorStops }, base.cs);
+    } else {
+      const adjustment = {};
+      for (const ch of ['red', 'green', 'blue']) {
+        adjustment[ch] = {};
+        for (const c of ['red', 'green', 'blue', 'constant']) adjustment[ch][c] = Math.round(base.adjustment[ch][c] * (base.same ? 1 : 100));
+      }
+      add('参考RGB—通道混合器', 'channelMixer', 'normal', { adjustment }, base.cs);
+    }
+    for (const a of pipe.tone.adjustments) if (a.kind === 'hue' || a.kind === 'saturation') {
+      add(a.kind === 'hue' ? '色相—色相饱和度' : '饱和度—色相饱和度', 'hueSaturation', 'normal', { colorize: false, hue: a.kind === 'hue' ? a.value : 0, saturation: a.kind === 'saturation' ? Math.round(a.value * 100) : 0 });
+    }
+    if (pipe.colorize.enabled) add('着色—色相饱和度', 'hueSaturation', 'normal', { colorize: true, hue: pipe.colorize.hue, saturation: pipe.colorize.saturation }, pipe.colorize.opacity);
+    return { version: 1, mode: pipe.mode, algorithm: 'colorlab-native-v1', layers };
+  }
 
   const api = {
     clamp, lum, rgbLab, labRgb, setLum, curveLUT, identityCurve, softAnchor, shadowAnchor,
     TONE_Q, statistics, clothTones, softModel, manualColorModel, colorizationModel,
     buildPipeline, buildWeight, analyzeSource, analyzeReference, renderToImageData, hueSaturationRGB,
-    garmentCropAuto, referenceGarmentMask, analyzeReferenceAuto, buildPipelineMode,
+    garmentCropAuto, referenceGarmentMask, analyzeReferenceAuto, buildPipelineMode, buildNativeRecipe,
   };
   root.ColorRecolor = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

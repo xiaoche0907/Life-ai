@@ -246,58 +246,9 @@ const handlers = {
     return { brightness: String(lvl || '') };
   },
 
-  // 批量改色（1114）：直读用户选中图层的图层蒙版=调色权重图。
-  // 链：batchPlay get hasUserMask 确认 → batchPlay load 蒙版为选区 → imaging.getSelection 读选区灰度。
-  // 羽化/密度全部保留在灰度里；无蒙版层明确报错（用户预期就是蒙版组）。
-  async readMaskGroup(params) {
-    const doc = app.activeDocument;
-    if (!doc) throw new Error('没有打开的文档');
-    let cur = null;
-    try { cur = (doc.activeLayers && doc.activeLayers.length) ? doc.activeLayers[0] : null; } catch (e) {}
-    if (!cur) throw new Error('没有选中图层——请在PS图层面板选中带蒙版的服饰组');
-    const layerName = cur.name || '';
-    const r = await action.batchPlay([{
-      _obj: 'get',
-      _target: [{ _property: 'hasUserMask' }, { _ref: 'layer', _id: cur.id }],
-    }], {});
-    const hasMask = !!(r && r[0] && r[0].hasUserMask);
-    if (!hasMask) throw new Error('选中图层「' + layerName + '」没有图层蒙版——请先给服饰组加蒙版（图层→图层蒙版→显示全部）');
-    await core.executeAsModal(async () => {
-      await action.batchPlay([{ _obj: 'load', _target: [{ _ref: 'channel', _enum: 'channel', _value: 'mask' }, { _ref: 'layer', _id: cur.id }] }], {});
-    }, { commandName: '来福：读取蒙版' });
-    const sel = await readSelection();
-    if (!sel) throw new Error('蒙版是空的（全黑）——蒙版必须覆盖服装区域');
-    const imaging = require('photoshop').imaging;
-    const sw = sel.right - sel.left, sh = sel.bottom - sel.top;
-    if (sw < 8 || sh < 8) throw new Error('蒙版有效区域太小（' + sw + '×' + sh + '）');
-    const cap = (params && Number(params.maxEdge) > 0) ? Number(params.maxEdge) : 2400;
-    const scale = Math.min(1, cap / Math.max(sw, sh));
-    const opts = { documentID: doc.id, sourceBounds: { left: sel.left, top: sel.top, right: sel.right, bottom: sel.bottom }, componentSize: 8 };
-    if (scale < 1) opts.targetSize = { width: Math.round(sw * scale), height: Math.round(sh * scale) };
-    let selPx;
-    try { selPx = await imaging.getSelection(opts); }
-    catch (e1) { delete opts.componentSize; selPx = await imaging.getSelection(opts); }
-    const w = selPx.imageData.width, h = selPx.imageData.height, comp = selPx.imageData.components;
-    const buf = await selPx.imageData.getData({});
-    const weight = new Uint8Array(w * h);
-    const step = comp >= 3 ? comp : 1;
-    let covered = 0;
-    for (let i = 0; i < w * h; i++) {
-      const v = buf[i * step];
-      weight[i] = v;
-      if (v > 25) covered++;
-    }
-    if (covered < 64) throw new Error('蒙版有效像素过少——检查蒙版是否画在服装上');
-    try { if (selPx.imageData.dispose) await selPx.imageData.dispose(); } catch (e2) {}
-    return {
-      ok: true, layerId: cur.id, layerName,
-      docId: doc.id, docWidth: Math.round(doc.width), docHeight: Math.round(doc.height),
-      bounds: { x: sel.left, y: sel.top, width: sw, height: sh },
-      maskWidth: w, maskHeight: h, maskScale: scale,
-      weightB64: Buffer.from(weight).toString('base64'),
-      coveredPct: Math.round(covered / (w * h) * 100),
-    };
-  },
+  async inspectRecolorDocument() { return require('./recolor.host').inspect(); },
+  async placeRecolorLayers(params) { return require('./recolor.host').place(params); },
+  async readMaskGroup(params) { return require('./recolor.host').read(params || {}); },
   async captureInput(params) {
     if (!app.activeDocument && !(params && params.docId)) throw new Error('没有打开的文档');
     // 用户点生成那一刻看着的文档=采集目标（命令已串行化，此刻没有我们自己的模态在切文档）
@@ -927,7 +878,7 @@ function connect() {
     // 版本握手：软件端据此判断桥接件是否为旧版（提醒Reload）
     try {
       ws.send(JSON.stringify({
-        hello: true, version: 66,
+        hello: true, version: 68,
         presetImport: presetImportState,
         colorcal: Object.keys(hostRegistry).join(','),
         hostErr: hostLoadErr || undefined,
