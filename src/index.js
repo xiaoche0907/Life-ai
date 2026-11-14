@@ -50,6 +50,7 @@ require('./core/comfy');   // ComfyUI 卡：工作流库切换+快捷参数+选�
 require('./core/relight');
 require('./core/glow');   // 辉光：本地实时预览 → 黑底辉光层贴回（0912，独立模块）
 require('./core/recolor');   // 批量改色：衣色v0.23算法移植 → 选区调色层贴回（1113）
+require('./core/skinmatch');   // 肤色统一：皮肤分割+Lab匹配 → 皮肤蒙版原生调整层（1114）
 require('./core/layersplit');   // 图层拆分：gpt-image透明PNG分层→逐层贴回（1111）
 require('./core/autofix');   // 自动修图：文件夹批量工序流水线→分层PSD（0905）
 require('./core/qpresets');   // 快捷预设：修图师标准动作一键执行，预设=文档夹里的 JSON（0912）

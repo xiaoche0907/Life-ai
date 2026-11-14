@@ -174,7 +174,42 @@
     "ready": true
   },
   {
-
+    "id": "skinmatch",
+    "icon": "🧑‍🦰",
+    "label": "肤色统一",
+    "file": "skinmatch.html",
+    "width": 720,
+    "height": 560,
+    "ready": true
+  },
+  {
+    "id": "proportion",
+    "icon": "📏",
+    "label": "比例测量",
+    "file": "proportion.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "whitebg",
+    "icon": "⚪",
+    "label": "白底净化",
+    "file": "whitebg.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "qualitycheck",
+    "icon": "🔍",
+    "label": "精修质检",
+    "file": "qualitycheck.html",
+    "width": 780,
+    "height": 600,
+    "ready": true
+  },
+  {
     "id": "layersplit",
     "icon": "🗂️",
     "label": "图层拆分",

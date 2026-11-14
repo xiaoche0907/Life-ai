@@ -249,6 +249,9 @@ const handlers = {
   async inspectRecolorDocument() { return require('./recolor.host').inspect(); },
   async placeRecolorLayers(params) { return require('./recolor.host').place(params); },
   async readMaskGroup(params) { return require('./recolor.host').read(params || {}); },
+  async placeSkinMatchLayers(params) { return require('./skinmatch.host').place(params); },
+  async placeProportionLayer(params) { return require('./proportion.host').place(params); },
+  async placeWhiteBgLayer(params) { return require('./whitebg.host').place(params); },
   async captureInput(params) {
     if (!app.activeDocument && !(params && params.docId)) throw new Error('没有打开的文档');
     // 用户点生成那一刻看着的文档=采集目标（命令已串行化，此刻没有我们自己的模态在切文档）
@@ -878,7 +881,7 @@ function connect() {
     // 版本握手：软件端据此判断桥接件是否为旧版（提醒Reload）
     try {
       ws.send(JSON.stringify({
-        hello: true, version: 68,
+        hello: true, version: 69,
         presetImport: presetImportState,
         colorcal: Object.keys(hostRegistry).join(','),
         hostErr: hostLoadErr || undefined,

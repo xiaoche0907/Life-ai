@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: normal; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: background 0.15s, opacity 0.15s; }
+  .abtn:hover { background: var(--btn-bg-hover); }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+
+  #ctrl { flex: 0 0 300px; width: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  .tip.warn { color: var(--err); }
+  .tip.ok { color: var(--ok); }
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel option { background: #23252b; color: #fff; }
+  .mrow { display: flex; justify-content: space-between; align-items: center; font-size: 10px; padding: 2px 0; }
+  .mrow .k { color: var(--text-dim); }
+  .mrow .v { color: #fff; font-weight: 600; }
+  .mrow .d.up { color: var(--ok); }
+  .mrow .d.down { color: var(--err); }
+  .sugItem { border-radius: 9px; background: var(--btn-bg); border: 1px solid transparent; padding: 5px 8px; margin-top: 3px; }
+  .sugItem .st { font-size: 10.5px; color: #fff; }
+  .sugItem .sn { font-size: 9.5px; color: var(--text-dim); margin-top: 2px; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="proportion-core.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title">📏 比例测量</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">① 读取PS当前文档（待测模特）<br>② 添加已精修的标准参考图<br>③ 对比头身比/肩宽/腿占比，输出调整建议<br>（本阶段只测量分析，不自动液化）</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass title="扫描PS文档与蒙版组">读取PS文档</button>
+        <button class="abtn" id="btnAdd" data-pass title="选择已精修的标准图">添加参考图</button>
+        <button class="abtn acc" id="btnGo" data-pass disabled title="测量对比">测量对比</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">待测模特组</div>
+        <div id="documentInfo" class="tip" role="status">请先读取PS文档</div>
+        <select id="targetGroup" class="msel" data-pass aria-label="目标蒙版组" disabled><option value="">读取后选择带蒙版的组</option></select>
+        <div class="tip">只读取蒙版范围内的合成像素做轮廓分析，不修改文档。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">标准参考图 <span id="refCount" style="color:var(--text-dim);font-weight:400">0/3</span></div>
+        <div id="refStatus" class="tip">还没有参考图。选构图与姿态接近的已精修图。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">比例对比</div>
+        <div id="cmpRows"><div class="tip">点击「测量对比」后显示各项差异。</div></div>
+        <div id="cmpNote" class="tip"></div>
+      </div>
+      <div class="grp">
+        <div class="gt">调整参数（测量后自动填充，可手改）</div>
+        <div class="prow"><label>头部尺寸</label><input type="range" id="pHead" min="-30" max="30" value="0"><input type="number" id="pHeadN" min="-30" max="30" value="0"></div>
+        <div class="prow"><label>肩部宽度</label><input type="range" id="pShoulder" min="-25" max="25" value="0"><input type="number" id="pShoulderN" min="-25" max="25" value="0"></div>
+        <div class="prow"><label>腰部轮廓</label><input type="range" id="pWaist" min="-25" max="25" value="0"><input type="number" id="pWaistN" min="-25" max="25" value="0"></div>
+        <div class="prow"><label>腿部长度</label><input type="range" id="pLegs" min="-20" max="20" value="0"><input type="number" id="pLegsN" min="-20" max="20" value="0"></div>
+        <div class="tip">正值=放大/拉长。调整后点「应用到PS」生成形变图层。</div>
+        <button class="abtn acc" id="btnApply" data-pass disabled title="生成形变图层写回PS（原图层保留）">应用到PS</button>
+        <div class="tip warn" id="sugWarn" style="display:none">姿态/透视差异较大：自动形变仅供参考，请预览确认后再应用。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const P = window.Proportion;
+  const st = { cap: null, srcPix: null, refs: [], busy: false };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[proportion] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+
+  function updateGo() { $('btnGo').disabled = st.busy || !(st.cap && st.refs.length); }
+
+  // ---- 文档读取（复用肤色卡的扫描/读蒙版接口） ----
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('扫描PS文档及蒙版组…');
+    $('targetGroup').disabled = true;
+    try {
+      const r = await window.orange.skinInspectDocument();
+      if (!r.ok) throw Error(r.error || '读取文档失败');
+      st.cap = { docId: r.docId, name: r.name, width: r.width, height: r.height, groups: r.groups || [] };
+      $('documentInfo').textContent = r.name + ' · ' + r.width + '×' + r.height;
+      const select = $('targetGroup'); select.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择目标蒙版组'; select.appendChild(placeholder);
+      for (const group of r.groups || []) {
+        const option = document.createElement('option'); option.value = String(group.id); option.textContent = group.path + (group.enabled ? '' : '（蒙版禁用或含矢量蒙版）'); option.disabled = !group.enabled; select.appendChild(option);
+      }
+      select.disabled = !(r.groups || []).some(g => g.enabled);
+      stat(select.disabled ? '文档中没有可用的像素蒙版组' : '已识别文档，请选择待测模特的蒙版组', select.disabled ? 'err' : 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); updateGo(); }
+  }
+  $('btnCap').addEventListener('click', capture);
+  $('targetGroup').addEventListener('change', async () => {
+    if (st.busy || !st.cap) return;
+    const layerId = Number($('targetGroup').value);
+    if (!layerId) return;
+    st.busy = true; $('targetGroup').disabled = true; stat('读取模特合成像素…');
+    try {
+      const mk = await window.orange.skinReadMask({ docId: st.cap.docId, layerId });
+      if (!mk.ok) throw Error(mk.error || '蒙版读取失败');
+      const img = await loadImg('data:image/png;base64,' + mk.image);
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0);
+      st.srcPix = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+      st.cap.layerId = layerId;
+      $('hint').classList.add('off');
+      $('tag').textContent = '待测组：' + mk.layerName;
+      stat('已读取「' + mk.layerName + '」，添加参考图后可测量', 'ok'); updateGo();
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('targetGroup').disabled = false; updateGo(); }
+  });
+
+  // ---- 参考图 ----
+  $('btnAdd').addEventListener('click', async () => {
+    const paths = await window.orange.pickFiles({ filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp'] }], multi: false });
+    if (!paths || !paths.length) return;
+    try {
+      const rd = await window.orange.skinReadImage(paths[0]);
+      if (!rd || !rd.ok) throw Error((rd && rd.error) || '读取失败');
+      const ext = (paths[0].split('.').pop() || 'png').toLowerCase();
+      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+      const dataUrl = 'data:' + mime + ';base64,' + rd.base64;
+      const im = await loadImg(dataUrl);
+      const scale = Math.min(1, 700 / Math.max(im.naturalWidth, im.naturalHeight));
+      const w = Math.max(3, Math.round(im.naturalWidth * scale)), h = Math.max(3, Math.round(im.naturalHeight * scale));
+      const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+      c2.getContext('2d').drawImage(im, 0, 0, w, h);
+      st.refs = [{ name: paths[0].split(/[\\/]/).pop().replace(/\.[^.]+$/, ''), pix: c2.getContext('2d').getImageData(0, 0, w, h) }];
+      $('refCount').textContent = '1/3';
+      $('refStatus').textContent = '已加载「' + st.refs[0].name + '」（自动替换旧参考）';
+      updateGo();
+    } catch (e) { stat(paths[0].split(/[\\/]/).pop() + ': ' + (e.message || e), 'err'); }
+  });
+
+  // ---- 测量对比 ----
+  async function go() {
+    if (st.busy || !st.cap || !st.srcPix || !st.refs.length) return;
+    st.busy = true; $('btnGo').classList.add('busy');
+    try {
+      stat('分析待测模特轮廓…');
+      await new Promise(r2 => setTimeout(r2, 20));
+      const tgt = P.analyze(st.srcPix);
+      stat('分析参考图轮廓…');
+      await new Promise(r2 => setTimeout(r2, 20));
+      const ref = P.analyze(st.refs[0].pix);
+      if (!tgt.ok) throw Error('待测图无法测量：' + tgt.reason + '（置信度 ' + Math.round(tgt.confidence * 100) + '%）');
+      if (!ref.ok) throw Error('参考图无法测量：' + ref.reason + '（置信度 ' + Math.round(ref.confidence * 100) + '%）');
+      const c = P.compare(ref.body, tgt.body);
+      st.lastBody = tgt.body;
+      renderCompare(c);
+      stat('✓ 测量完成（置信度 ' + Math.round(c.confidence * 100) + '%）', 'ok');
+      // 叠加显示参考图轮廓
+      const refSeg = ref.seg;
+      const cv = $('cv'); cv.width = st.refs[0].pix.width; cv.height = st.refs[0].pix.height;
+      const g2 = cv.getContext('2d');
+      const tmp = new ImageData(new Uint8ClampedArray(st.refs[0].pix.data), st.refs[0].pix.width, st.refs[0].pix.height);
+      for (let y = 0; y < refSeg.h2; y++) for (let x = 0; x < refSeg.w2; x++) {
+        if (refSeg.mask[y * refSeg.w2 + x]) continue;
+        for (let dy = 0; dy < refSeg.step; dy++) for (let dx = 0; dx < refSeg.step; dx++) {
+          const px2 = x * refSeg.step + dx, py2 = y * refSeg.step + dy;
+          if (px2 >= st.refs[0].pix.width || py2 >= st.refs[0].pix.height) continue;
+          const i = (py2 * st.refs[0].pix.width + px2) * 4;
+          tmp.data[i] = Math.round(tmp.data[i] * .3); tmp.data[i+1] = Math.round(tmp.data[i+1] * .3); tmp.data[i+2] = Math.round(tmp.data[i+2] * .3);
+        }
+      }
+      g2.putImageData(tmp, 0, 0);
+      $('tag').textContent = '参考轮廓：' + st.refs[0].name;
+    } catch (e) { stat('测量失败: ' + (e.message || e), 'err'); glog('go 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnGo').classList.remove('busy'); updateGo(); }
+  }
+  $('btnGo').addEventListener('click', go);
+
+  const RATIO_NAMES = { headBodyRatio: '头身比', shoulderToHeight: '肩宽/身高', waistToShoulder: '腰肩比', hipToWaist: '胯腰比', legRatio: '腿长占比' };
+  const GOOD_RANGE = { headBodyRatio: [6.5, 8.5], shoulderToHeight: [.20, .28], waistToShoulder: [.6, .85], hipToWaist: [1.0, 1.4], legRatio: [.45, .58] };
+  function renderCompare(c) {
+    const box = $('cmpRows'); box.innerHTML = '';
+    const rows = [
+      ['headBodyRatio', c.ref.headBodyRatio, c.target.headBodyRatio, c.diffs.headBodyRatio],
+      ['shoulderToHeight', c.ref.shoulderToHeight, c.target.shoulderToHeight, c.diffs.shoulderToHeight],
+      ['waistToShoulder', c.ref.waistToShoulder, c.target.waistToShoulder, c.diffs.waistToShoulder],
+      ['hipToWaist', c.ref.hipToWaist, c.target.hipToWaist, c.diffs.hipToWaist],
+      ['legRatio', c.ref.legRatio, c.target.legRatio, c.diffs.legRatio],
+    ];
+    for (const [key, ref, tgt, diff] of rows) {
+      const div = document.createElement('div'); div.className = 'mrow';
+      const name = RATIO_NAMES[key];
+      const refS = key === 'headBodyRatio' ? ref.toFixed(1) : ref.toFixed(2);
+      const tgtS = key === 'headBodyRatio' ? tgt.toFixed(1) : tgt.toFixed(2);
+      const dir = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+      div.innerHTML = '<span class="k">' + name + '</span><span>参考 <span class="v">' + refS + '</span> → 待测 <span class="v">' + tgtS + '</span> <span class="d ' + dir + '">' + (diff > 0 ? '+' : '') + diff + '</span></span>';
+      box.appendChild(div);
+      const [lo, hi] = GOOD_RANGE[key];
+      const warn = document.createElement('div'); warn.className = 'tip';
+      if (tgt < lo || tgt > hi) warn.textContent = '⚠ 待测' + name + ' ' + tgtS + ' 超出常规范围 ' + lo + '~' + hi;
+      box.appendChild(warn);
+    }
+    $('cmpNote').textContent = c.reasons.length ? c.reasons.join('；') : '两图姿态接近，差异可直接参考';
+    // 建议自动填入参数滑块（正负号：头身比偏小→头放大为正）
+    const sugMap = {};
+    for (const s of c.suggestions) sugMap[s.key] = s.delta;
+    setParam('pHead', clampParam(sugMap.headScale || 0, 30));
+    setParam('pShoulder', clampParam(-(sugMap.shoulder || 0), 25));
+    setParam('pWaist', clampParam(sugMap.waist || 0, 25));
+    setParam('pLegs', clampParam(-(sugMap.legs || 0), 20));
+    st.lastCompare = c;
+    $('btnApply').disabled = false;
+    $('sugWarn').style.display = (c.reasons.length && c.suggestions.length) ? '' : 'none';
+  }
+  function clampParam(v, max) { return Math.max(-max, Math.min(max, Math.round(v))); }
+  function setParam(id, v) { const r = $(id), n = $(id + 'N'); r.value = v; n.value = v; }
+  function getParams() { return { headScale: Number($('pHead').value) || 0, shoulder: Number($('pShoulder').value) || 0, waist: Number($('pWaist').value) || 0, legs: Number($('pLegs').value) || 0 }; }
+  for (const id of ['pHead', 'pShoulder', 'pWaist', 'pLegs']) {
+    const r = $(id), n = $(id + 'N');
+    r.addEventListener('input', () => { n.value = r.value; });
+    n.addEventListener('change', () => { r.value = n.value; });
+  }
+
+  // ---- 应用到PS：形变图写回原组内新图层 ----
+  async function applyToPS() {
+    if (st.busy || !st.cap || !st.srcPix || !st.lastBody) return;
+    st.busy = true; $('btnApply').classList.add('busy');
+    try {
+      const deltas = getParams();
+      if (!deltas.headScale && !deltas.shoulder && !deltas.waist && !deltas.legs) throw Error('参数全为0，无需应用');
+      stat('生成形变图…');
+      await new Promise(r2 => setTimeout(r2, 20));
+      const deformed = P.applyDeform(st.srcPix, st.lastBody, deltas);
+      // 写回：转base64走主进程 → UXP建图层+putPixels
+      function pixToBase64(pix) {
+        let bin = '';
+        const CH = 0x8000;
+        const b = pix.data;
+        for (let i = 0; i < b.length; i += CH) bin += String.fromCharCode.apply(null, b.subarray(i, i + CH));
+        return btoa(bin);
+      }
+      stat('写回PS（创建形变图层，原图层保留）…');
+      const r = await window.orange.proportionPlace({
+        docId: st.cap.docId, layerId: st.cap.layerId,
+        name: '比例调整 · ' + (deltas.headScale ? '头' : '') + (deltas.shoulder ? '肩' : '') + (deltas.waist ? '腰' : '') + (deltas.legs ? '腿' : ''),
+        rgbaB64: pixToBase64(deformed), width: deformed.width, height: deformed.height,
+        deltas,
+      });
+      if (!r.ok) throw Error(r.error || 'PS写回失败');
+      stat('✓ 已创建形变图层「' + r.layerName + '」（置顶显示，原图层保留），可在PS关闭该层对比', 'ok');
+      // 预览切换到形变结果
+      const cv = $('cv'); cv.width = deformed.width; cv.height = deformed.height;
+      cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(deformed.data), deformed.width, deformed.height), 0, 0);
+    } catch (e) { stat('应用失败: ' + (e.message || e), 'err'); glog('apply 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnApply').classList.remove('busy'); updateGo(); }
+  }
+  $('btnApply').addEventListener('click', applyToPS);
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

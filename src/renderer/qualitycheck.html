@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: normal; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: background 0.15s, opacity 0.15s; }
+  .abtn:hover { background: var(--btn-bg-hover); }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+
+  #ctrl { flex: 0 0 320px; width: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel option { background: #23252b; color: #fff; }
+  .chk { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 9px; background: var(--btn-bg); margin-top: 3px; }
+  .chk .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; margin-top: 3px; }
+  .chk .dot.ok { background: #34c759; }
+  .chk .dot.warn { background: #f5a623; }
+  .chk .dot.error { background: #ff3b30; }
+  .chk .info { flex: 1 1 auto; min-width: 0; }
+  .chk .nm { font-size: 11px; color: #fff; font-weight: 600; }
+  .chk .dt { font-size: 9.5px; color: var(--text-dim); margin-top: 2px; line-height: 1.6; }
+  #verdict { font-size: 11px; font-weight: 600; padding: 6px 8px; border-radius: 9px; text-align: center; }
+  #verdict.pass { background: rgba(52,199,89,.15); color: #34c759; }
+  #verdict.warn { background: rgba(245,166,35,.15); color: #f5a623; }
+  #verdict.fail { background: rgba(255,59,48,.15); color: #ff3b30; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="qualitycheck-core.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title">🔍 精修质检</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">① 读取PS当前文档，选择要检查的蒙版组<br>② 点「开始质检」——纯只读分析，不修改任何图层<br>③ 结果按严重程度排列，问题项附位置坐标</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass title="扫描PS文档与蒙版组">读取PS文档</button>
+        <button class="abtn acc" id="btnGo" data-pass disabled title="开始质检（只读）">开始质检</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">检查对象</div>
+        <div id="documentInfo" class="tip" role="status">请先读取PS文档</div>
+        <select id="targetGroup" class="msel" data-pass aria-label="目标蒙版组" disabled><option value="">读取后选择带蒙版的组</option></select>
+        <div class="tip">质检为只读分析：不创建图层、不修改像素、不保存文档。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">检查结论</div>
+        <div id="verdict" style="display:none"></div>
+        <div id="chkList"><div class="tip">质检后按严重程度显示各项结果。</div></div>
+        <div class="tip">基础版为技术检查（尺寸/背景/边缘/曝光/清晰度），不含审美判断。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const QC = window.QualityCheck;
+  const st = { cap: null, srcPix: null, busy: false };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[qualitycheck] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('扫描PS文档及蒙版组…');
+    $('targetGroup').disabled = true;
+    try {
+      const r = await window.orange.skinInspectDocument();
+      if (!r.ok) throw Error(r.error || '读取文档失败');
+      st.cap = { docId: r.docId, name: r.name, width: r.width, height: r.height, groups: r.groups || [] };
+      $('documentInfo').textContent = r.name + ' · ' + r.width + '×' + r.height;
+      const select = $('targetGroup'); select.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择目标蒙版组'; select.appendChild(placeholder);
+      for (const group of r.groups || []) {
+        const option = document.createElement('option'); option.value = String(group.id); option.textContent = group.path + (group.enabled ? '' : '（蒙版禁用或含矢量蒙版）'); option.disabled = !group.enabled; select.appendChild(option);
+      }
+      select.disabled = !(r.groups || []).some(g => g.enabled);
+      stat(select.disabled ? '文档中没有可用的像素蒙版组' : '已识别文档，请选择要质检的蒙版组', select.disabled ? 'err' : 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); updateGo(); }
+  }
+  $('btnCap').addEventListener('click', capture);
+  function updateGo() { $('btnGo').disabled = st.busy || !(st.cap && st.srcPix); }
+  $('targetGroup').addEventListener('change', async () => {
+    if (st.busy || !st.cap) return;
+    const layerId = Number($('targetGroup').value);
+    if (!layerId) return;
+    st.busy = true; $('targetGroup').disabled = true; stat('读取组合成像素…');
+    try {
+      const mk = await window.orange.skinReadMask({ docId: st.cap.docId, layerId });
+      if (!mk.ok) throw Error(mk.error || '蒙版读取失败');
+      const img = await loadImg('data:image/png;base64,' + mk.image);
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0);
+      st.srcPix = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+      $('hint').classList.add('off');
+      $('tag').textContent = '检查对象：' + mk.layerName;
+      stat('已读取「' + mk.layerName + '」，可开始质检', 'ok'); updateGo();
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('targetGroup').disabled = false; updateGo(); }
+  });
+
+  async function go() {
+    if (st.busy || !st.srcPix) return;
+    st.busy = true; $('btnGo').classList.add('busy');
+    try {
+      stat('质检分析中（6 项检查）…');
+      await new Promise(r2 => setTimeout(r2, 20));
+      const r = QC.inspect(st.srcPix, { minSize: 800 });
+      render(r);
+      stat('✓ 质检完成：' + r.verdict, r.summary.errors ? 'err' : (r.summary.warns ? '' : 'ok'));
+    } catch (e) { stat('质检失败: ' + (e.message || e), 'err'); glog('go 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnGo').classList.remove('busy'); updateGo(); }
+  }
+  $('btnGo').addEventListener('click', go);
+
+  function render(r) {
+    const v = $('verdict'); v.style.display = '';
+    v.textContent = r.verdict;
+    v.className = r.summary.errors ? 'fail' : r.summary.warns ? 'warn' : 'pass';
+    const list = $('chkList'); list.innerHTML = '';
+    // 按严重程度排：error > warn > ok
+    const order = { error: 0, warn: 1, ok: 2 };
+    const sorted = [...r.items].sort((a, b) => order[a.level] - order[b.level]);
+    for (const it of sorted) {
+      const div = document.createElement('div'); div.className = 'chk';
+      const pos = it.positions.length ? ' · 例:' + it.positions.slice(0, 3).map(p2 => '(' + p2[0] + ',' + p2[1] + ')').join('') : '';
+      div.innerHTML = '<div class="dot ' + it.level + '"></div><div class="info"><div class="nm">' + it.name + ' — ' + (it.pass ? '通过' : it.level === 'error' ? '不通过' : '建议关注') + '</div><div class="dt">' + it.detail + pos + '</div></div>';
+      list.appendChild(div);
+    }
+  }
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

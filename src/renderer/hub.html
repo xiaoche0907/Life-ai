@@ -106,6 +106,31 @@
     background: var(--accent-soft); color: var(--accent-text);
     border: 1px solid var(--accent-border);
   }
+
+  /* ---------- 商业精修分组子视图：点组气泡进入，返回键回主网格 ---------- */
+  #subview { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+  body.submode #grid { display: none; }
+  body.submode #subview { display: flex; }
+  #subhead { display: flex; align-items: center; gap: 2.4vw; padding: 0.6vw 3.8vw 1.2vw; }
+  #btnBack {
+    width: 6.2vw; height: 6.2vw; border-radius: 2.4vw; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--btn-bg); color: #fff; cursor: pointer;
+    transition: background 0.2s, transform 0.12s;
+  }
+  #btnBack:hover { background: var(--btn-bg-hover); }
+  #btnBack:active { transform: scale(0.9); }
+  #btnBack svg { width: 3.4vw; height: 3.4vw; }
+  #subTitle { font-size: 3.1vw; font-weight: 700; color: #fff; letter-spacing: 0.2vw; }
+  #subgrid {
+    flex: 1; overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2.85vw;
+    padding: 0.5vw 3.8vw 3.8vw;
+    align-content: start;
+  }
+  #subgrid::-webkit-scrollbar { width: 0; }
 </style>
 </head>
 <body>
@@ -126,6 +151,13 @@
     <div class="hbtn" id="btnClose" title="收起控制台（软件继续后台运行，右键小球→控制台 可再次打开）">×</div>
   </div>
   <div id="grid"></div>
+  <div id="subview">
+    <div id="subhead">
+      <div id="btnBack" title="返回主网格" data-pass></div>
+      <div id="subTitle"></div>
+    </div>
+    <div id="subgrid"></div>
+  </div>
   <div id="lockTip"></div>
 </div>
 
@@ -153,16 +185,38 @@
   // 点击=原地打开卡片；拖动超过阈值=卡片跟手拖出，松手落位
   (async () => {
     const mods = (await window.orange.getModules()).filter((m) => !m.hidden);
+
+    // —— 商业精修分组（1114 用户裁定）：后加入的精修类功能收进一张组卡 ——
+    // 组卡点击=进入子视图；组内气泡与主网格手势一致（点击开卡/拖出落位/点亮状态）。
+    // 以后 PRD 新精修卡（瑕疵清理/白底净化等）只需在 members 里加 id 即可自动归组。
+    const GROUPS = [
+      {
+        id: 'group-retouch', label: '商业精修', icon: 'brush',
+        members: ['recolor', 'skinmatch', 'proportion', 'whitebg', 'qualitycheck', 'layersplit'],
+      },
+    ];
+    const memberSet = new Set();
+    GROUPS.forEach((g) => g.members.forEach((id) => memberSet.add(id)));
+
+    // 把 mods 拆成：普通模块、底部系统模块（设置/声明/更新沉底）；组内模块单独由 GROUPS 渲染
+    const bottomIds = new Set(['settings', 'statement', 'updater']);
+    const plainMods = [], sysMods = [];
+    mods.forEach((m) => {
+      if (memberSet.has(m.id)) return;
+      else if (bottomIds.has(m.id)) sysMods.push(m);
+      else plainMods.push(m);
+    });
+
     const bubbleById = {};
+    let gest = null;   // { id, sx, sy, draggedOut }
+
     // 气泡手势=单例状态+一套全局监听（坑57）：原先每气泡各挂一份window级mousemove/mouseup
     // 闭包，锁定模式下热区翻穿透会吞掉mouseup→那个气泡的pressed搁浅为true→之后点任意气泡，
     // 全体mouseup监听齐响，搁浅的旧气泡跟着补发动作（实测症状：点卡牌气泡却切换了锁定）。
     // 单例状态下新mousedown天然顶掉搁浅旧态，搁浅无从发生。
-    let gest = null;   // { id, sx, sy, draggedOut }
-    mods.forEach((m) => {
+    function makeBubble(m) {
       const el = document.createElement('div');
       el.className = 'bubble lg-tile' + (m.locked ? ' locked' : (m.ready ? '' : ' stub'));
-      bubbleById[m.id] = el;
       const icoSvg = (window.ORANGE_ICONS && window.ORANGE_ICONS[m.id]) || m.icon;
       el.innerHTML = '<div class="ico">' + icoSvg + '</div><div class="lab">' + m.label + '</div>'
         + (m.locked ? '<div class="badge">学员特供</div>' : (m.ready ? '' : '<div class="badge">开发中</div>'));
@@ -171,18 +225,58 @@
       if (m.locked) {
         el.title = '学员特供：此功能仅完整版提供';
         el.addEventListener('mousedown', () => showLockTip('「' + m.label + '」是完整版功能，学员特供版没有这块'));
-        grid.appendChild(el);
-        return;
+        return el;
       }
-
       el.addEventListener('mousedown', (e) => {
         gest = { id: m.id, sx: e.screenX, sy: e.screenY, draggedOut: false };
       });
       if (m.id === 'lock') el.title = '点击：打开/收回锁定卡片（在卡片里点锁头开关锁定）';
       if (m.id === 'batchall') el.title = '批处理卡：卡上开关点亮后，点「生成」=顺序跑遍PS里每张打开的图（有选区跑选区，无选区跑全图，结果各回各图）';
+      return el;
+    }
 
-      grid.appendChild(el);
+    // —— 组气泡：点击=进子视图，不参与拖出（组不是卡，没有窗口可落位）——
+    function makeGroupBubble(g) {
+      const el = document.createElement('div');
+      el.className = 'bubble lg-tile';
+      const icoSvg = (window.ORANGE_ICONS && window.ORANGE_ICONS[g.icon]) || '✨';
+      el.innerHTML = '<div class="ico">' + icoSvg + '</div><div class="lab">' + g.label + '</div>';
+      el.title = '点击进入：' + g.label + '（' + g.members.length + ' 项精修功能）';
+      el.addEventListener('click', () => enterSub(g));
+      return el;
+    }
+
+    // —— 子视图：返回键 + 组内气泡网格（复用同一套手势与点亮逻辑）——
+    const subview = document.getElementById('subview');
+    const subgrid = document.getElementById('subgrid');
+    const btnBack = document.getElementById('btnBack');
+    btnBack.innerHTML = (window.ORANGE_ICONS && (window.ORANGE_ICONS.back || window.ORANGE_ICONS['qp-x'])) || '×';
+    let curGroup = null;
+    function enterSub(g) {
+      curGroup = g;
+      document.getElementById('subTitle').textContent = g.label;
+      subgrid.innerHTML = '';
+      g.members.forEach((id) => {
+        const m = mods.find((x) => x.id === id);
+        if (!m) return;   // 被隐藏/裁掉的成员静默跳过
+        const el = makeBubble(m);
+        bubbleById[id] = el;
+        subgrid.appendChild(el);
+      });
+      document.body.classList.add('submode');
+    }
+    btnBack.addEventListener('click', () => {
+      document.body.classList.remove('submode');
+      curGroup = null;
     });
+
+    // —— 主网格装配：组卡插在「自动修图」后面（用户裁定1114：不放首位），系统卡沉底，其余按 modules.json 原顺序 ——
+    plainMods.forEach((m) => {
+      grid.appendChild(makeBubble(m));
+      if (m.id === 'autofix') grid.appendChild(makeGroupBubble(GROUPS[0]));
+    });
+    if (!plainMods.some((m) => m.id === 'autofix')) grid.insertBefore(makeGroupBubble(GROUPS[0]), grid.firstChild);   // 兜底：找不到自动修图就放最前
+    sysMods.forEach((m) => grid.appendChild(makeBubble(m)));
 
     window.addEventListener('mousemove', (e) => {
       if (!gest) return;
@@ -209,6 +303,7 @@
     });
 
     // 打开状态点亮：初始化拉一次 + 订阅广播（锁定气泡同款：点亮=锁定卡片开着）
+    // 组内气泡同样点亮：批量改色开着时，控制台组视图里它一样亮
     function applyStates(st) {
       for (const id in bubbleById) {
         bubbleById[id].classList.toggle('open', !!st[id]);

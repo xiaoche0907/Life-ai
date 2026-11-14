@@ -159,4 +159,4 @@ async function place(params) {
   }, { commandName: '来福：创建可编辑调色工程' });
   return { ok: true, count: results.length, layerId: params.layerId, layerName: targetName, groups: results, native: true };
 }
-module.exports = { inspect, read, place };
+module.exports = { inspect, read, place, documentById, findGroup, descriptor, targetGroup };

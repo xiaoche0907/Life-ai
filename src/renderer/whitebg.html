@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: normal; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: background 0.15s, opacity 0.15s; }
+  .abtn:hover { background: var(--btn-bg-hover); }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+
+  #ctrl { flex: 0 0 290px; width: 290px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  .tip.warn { color: var(--err); }
+  .tip.ok { color: var(--ok); }
+  .prow { display: flex; align-items: center; gap: 6px; }
+  .prow label { flex: 0 0 62px; font-size: 10px; color: var(--text-dim); }
+  .prow input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent); }
+  .prow input[type=number] { flex: 0 0 52px; width: 52px; height: 22px; border-radius: 6px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 10px; text-align: center; user-select: text; }
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel option { background: #23252b; color: #fff; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="whitebg-core.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title">⚪ 白底净化</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">① 读取PS当前文档，选择商品所在蒙版组<br>② 自动识别不均匀灰白背景并归一到目标白<br>③ 结果为独立图层（原组保留），接触阴影可选保留</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass title="扫描PS文档与蒙版组">读取PS文档</button>
+        <button class="abtn" id="btnPreview" data-pass disabled title="预览净化效果（不写回）">预览净化</button>
+        <button class="abtn acc" id="btnApply" data-pass disabled title="净化结果写回PS">应用到PS</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">商品组（净化范围）</div>
+        <div id="documentInfo" class="tip" role="status">请先读取PS文档</div>
+        <select id="targetGroup" class="msel" data-pass aria-label="目标蒙版组" disabled><option value="">读取后选择带蒙版的组</option></select>
+        <div class="tip">只处理背景区域（与四角连通的灰白区），商品像素不受影响。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">净化参数</div>
+        <div class="prow"><label>净化强度</label><input type="range" id="pStrength" min="0" max="100" value="100"><input type="number" id="pStrengthN" min="0" max="100" value="100"></div>
+        <div class="prow"><label>保留阴影</label><input type="checkbox" id="pShadow" checked style="accent-color:var(--accent)"></div>
+        <div class="tip">强度100=背景完全归一到目标白。保留阴影=商品底部的真实接触投影不动。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">净化质量</div>
+        <div id="quality" class="tip">预览后显示背景均匀度评估。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const WB = window.WhiteBg;
+  const st = { cap: null, srcPix: null, busy: false, lastResult: null };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[whitebg] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+
+  const params = { strength: 100, keepShadow: true };
+  $('pStrength').addEventListener('input', () => { params.strength = Number($('pStrength').value); $('pStrengthN').value = params.strength; schedulePreview(); });
+  $('pStrengthN').addEventListener('change', () => { params.strength = Math.max(0, Math.min(100, Number($('pStrengthN').value) || 0)); $('pStrength').value = params.strength; schedulePreview(); });
+  $('pShadow').addEventListener('change', () => { params.keepShadow = $('pShadow').checked; schedulePreview(); });
+
+  let previewTimer = null;
+  function schedulePreview() {
+    if (!st.srcPix) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(doPreview, 250);
+  }
+
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('扫描PS文档及蒙版组…');
+    $('targetGroup').disabled = true;
+    try {
+      const r = await window.orange.skinInspectDocument();
+      if (!r.ok) throw Error(r.error || '读取文档失败');
+      st.cap = { docId: r.docId, name: r.name, width: r.width, height: r.height, groups: r.groups || [] };
+      $('documentInfo').textContent = r.name + ' · ' + r.width + '×' + r.height;
+      const select = $('targetGroup'); select.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择目标蒙版组'; select.appendChild(placeholder);
+      for (const group of r.groups || []) {
+        const option = document.createElement('option'); option.value = String(group.id); option.textContent = group.path + (group.enabled ? '' : '（蒙版禁用或含矢量蒙版）'); option.disabled = !group.enabled; select.appendChild(option);
+      }
+      select.disabled = !(r.groups || []).some(g => g.enabled);
+      stat(select.disabled ? '文档中没有可用的像素蒙版组' : '已识别文档，请选择商品所在的蒙版组', select.disabled ? 'err' : 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); }
+  }
+  $('btnCap').addEventListener('click', capture);
+  $('targetGroup').addEventListener('change', async () => {
+    if (st.busy || !st.cap) return;
+    const layerId = Number($('targetGroup').value);
+    if (!layerId) return;
+    st.busy = true; $('targetGroup').disabled = true; stat('读取商品合成像素…');
+    try {
+      const mk = await window.orange.skinReadMask({ docId: st.cap.docId, layerId });
+      if (!mk.ok) throw Error(mk.error || '蒙版读取失败');
+      const img = await loadImg('data:image/png;base64,' + mk.image);
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0);
+      st.srcPix = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+      st.cap.layerId = layerId;
+      $('hint').classList.add('off');
+      $('tag').textContent = '商品组：' + mk.layerName;
+      $('btnPreview').disabled = false;
+      stat('已读取「' + mk.layerName + '」，可预览净化', 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('targetGroup').disabled = false; }
+  });
+
+  function doPreview() {
+    if (st.busy || !st.srcPix) return;
+    try {
+      const r = WB.clean(st.srcPix, { strength: params.strength / 100, keepShadow: params.keepShadow });
+      st.lastResult = r;
+      const cv = $('cv'); cv.width = r.width; cv.height = r.height;
+      cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.data), r.width, r.height), 0, 0);
+      $('quality').textContent = '背景占比 ' + Math.round(r.coverage * 100) + '% · 净化' + r.touched + 'px · 背景均值 ' + r.uniformity.mean + '（标准差 ' + r.uniformity.std + '，越小越均匀）';
+      $('btnApply').disabled = false;
+      stat('预览完成，可调整参数实时刷新或直接应用', 'ok');
+    } catch (e) { stat('预览失败: ' + (e.message || e), 'err'); glog('preview 异常 ' + (e.stack || e)); }
+  }
+  $('btnPreview').addEventListener('click', doPreview);
+
+  $('btnApply').addEventListener('click', async () => {
+    if (st.busy || !st.lastResult || !st.cap) return;
+    st.busy = true; $('btnApply').classList.add('busy');
+    try {
+      if (!params.strength) throw Error('净化强度为0，无需应用');
+      // RGBA → base64（分块，防栈溢出）
+      const d = st.lastResult.data;
+      let bin = '';
+      const CH = 0x8000;
+      for (let i = 0; i < d.length; i += CH) bin += String.fromCharCode.apply(null, d.subarray ? d.subarray(i, i + CH) : d.slice(i, i + CH));
+      const rgbaB64 = btoa(bin);
+      stat('写回PS（创建净化图层，原组保留）…');
+      const r = await window.orange.whiteBgPlace({
+        docId: st.cap.docId, layerId: st.cap.layerId,
+        name: '白底净化 · 强度' + params.strength,
+        rgbaB64, width: st.lastResult.width, height: st.lastResult.height,
+      });
+      if (!r.ok) throw Error(r.error || 'PS写回失败');
+      stat('✓ 已创建净化图层「' + r.layerName + '」（置顶显示，原组保留），可在PS关闭该层对比', 'ok');
+    } catch (e) { stat('应用失败: ' + (e.message || e), 'err'); glog('apply 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnApply').classList.remove('busy'); }
+  });
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

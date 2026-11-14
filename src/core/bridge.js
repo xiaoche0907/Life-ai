@@ -253,7 +253,7 @@ ctx.startBridgeServer = startBridgeServer;
 ctx.sendToPSAwait = sendToPSAwait;
 ctx.psConnected = () => !!(psSocket && psSocket.readyState === 1);   // COM兜底探测据此让位
 ctx.bridgeVer = () => psBridgeVer;
-ctx.curBridgeVer = 66;   // 期望的桥接件版本（与ps-bridge/bridge.js的hello version同步抬；66=P0修复：色卡结算建曲线前先清选区——残留选区会把下一条曲线套成"只作用于色卡带"的蒙版，治"只有最上边那张的曲线生效"）
+ctx.curBridgeVer = 69;   // 期望的桥接件版本（与ps-bridge/bridge.js的hello version同步抬；68=批量改色原生工程；69=肤色统一写回动作）
 // v56 是致命版：captureInput 必抛 "fullMode is not defined"（有没有选区都采不到）。握手撞见它要用最响的话说清楚——
 // 用户在 v5.18.39~42 安装包上重启过 PS 才会加载到它，"重启也没用"就是这个
 ctx.bridgeFatalVers = { 56: 'v56 采集选区必失败（fullMode 作用域错误）' };

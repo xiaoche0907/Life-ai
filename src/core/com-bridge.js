@@ -212,6 +212,82 @@ async function tryCall(cmd, timeoutMs) {
     const note = (p.antiMode > 0 ? 'COM通道暂不支持抗截断自动还原，请手动翻转/反色；' : '') + 'COM通道置入';
     return { ok: true, result: { placed: Number(r.raw) || 0, note } };
   }
+  // 灰度蒙版写入（COM真机验证路径）：临时PNG → open → copy → 蒙版paste → 清理。
+  // UXP下paste到蒙版通道不生效（2026-11-14真机验证），此动作由主进程直接调用。
+  // 蒙版已存在（UXP建组时已建白蒙版）：用AM get hasUserMask判断，避免重复建立报错。
+  if (act === 'writeLayerMask') {
+    const p = cmd.params || {};
+    if (!p.pngPath || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: 'writeLayerMask参数缺失' };
+    const jsxBody = [
+      '(function () {',
+      '  var out = [];',
+      '  var doc = null;',
+      '  for (var i = 0; i < app.documents.length; i++) if (app.documents[i].id === ' + p.docId + ') { doc = app.documents[i]; break; }',
+      '  if (!doc) return "NODOC";',
+      '  var pngFile = new File(' + JSON.stringify(p.pngPath) + ');',
+      '  if (!pngFile.exists) return "NOPNG";',
+      '  var srcDoc = app.open(pngFile);',
+      '  app.activeDocument = srcDoc;',
+      '  srcDoc.selection.selectAll();',
+      '  srcDoc.selection.copy();',
+      '  srcDoc.close(SaveOptions.DONOTSAVECHANGES);',
+      '  app.activeDocument = doc;',
+      '  var target = null;',
+      '  function find(layers) { for (var i = 0; i < layers.length; i++) { if (layers[i].id === ' + p.layerId + ') return layers[i]; if (layers[i].layers) { var f = find(layers[i].layers); if (f) return f; } } return null; }',
+      '  target = find(doc.layers);',
+      '  if (!target) return "NOLAYER";',
+      '  var selLyr = new ActionDescriptor();',
+      '  var selLyrRef = new ActionReference();',
+      '  selLyrRef.putIdentifier(charIDToTypeID("Lyr "), target.id);',
+      '  selLyr.putReference(charIDToTypeID("null"), selLyrRef);',
+      '  selLyr.putBoolean(charIDToTypeID("MkVs"), false);',
+      '  executeAction(charIDToTypeID("slct"), selLyr, DialogModes.NO);',
+      '  // 先尝试选蒙版通道：成功=蒙版已存在（UXP建组时已建白蒙版）',
+      '  var hasMask = false;',
+      '  try {',
+      '    var testCh = new ActionDescriptor();',
+      '    var testRef = new ActionReference();',
+      '    testRef.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));',
+      '    testRef.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));',
+      '    var testD = new ActionDescriptor();',
+      '    testD.putReference(charIDToTypeID("null"), testRef);',
+      '    executeAction(charIDToTypeID("slct"), testD, DialogModes.NO);',
+      '    hasMask = true;',
+      '    out.push("mask-exists");',
+      '  } catch (eTest) { hasMask = false; }',
+      '  if (!hasMask) {',
+      '    var mkMask = new ActionDescriptor();',
+      '    mkMask.putObject(charIDToTypeID("Nw  "), charIDToTypeID("Chnl"), new ActionDescriptor());',
+      '    var atRef = new ActionReference();',
+      '    atRef.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));',
+      '    mkMask.putReference(charIDToTypeID("At  "), atRef);',
+      '    mkMask.putEnumerated(charIDToTypeID("Usng"), charIDToTypeID("UsrM"), charIDToTypeID("RvlA"));',
+      '    executeAction(charIDToTypeID("Mk  "), mkMask, DialogModes.NO);',
+      '    out.push("mask-created");',
+      '  } else out.push("mask-exists");',
+      '  var selCh = new ActionDescriptor();',
+      '  var selChRef = new ActionReference();',
+      '  selChRef.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));',
+      '  selChRef.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));',
+      '  selCh.putReference(charIDToTypeID("null"), selChRef);',
+      '  executeAction(charIDToTypeID("slct"), selCh, DialogModes.NO);',
+      '  doc.paste();',
+      '  out.push("pasted");',
+      '  doc.selection.deselect();',
+      '  var back = new ActionDescriptor();',
+      '  var backRef = new ActionReference();',
+      '  backRef.putIdentifier(charIDToTypeID("Lyr "), target.id);',
+      '  back.putReference(charIDToTypeID("null"), backRef);',
+      '  back.putBoolean(charIDToTypeID("MkVs"), false);',
+      '  executeAction(charIDToTypeID("slct"), back, DialogModes.NO);',
+      '  return "OK " + out.join(",");',
+      '})();',
+    ].join('\n');
+    const r = await runJsx(jsxWrap(jsxBody), timeoutMs);
+    if (!r.ok) return r;
+    if (r.raw.startsWith('OK')) return { ok: true, result: { detail: r.raw } };
+    return { ok: false, error: '蒙版写入失败: ' + r.raw };
+  }
   if (act === 'restoreSelection') {
     const p = cmd.params || {};
     const r = await runJsx(jsxRestoreSel(p.docId, p.selection), timeoutMs);
