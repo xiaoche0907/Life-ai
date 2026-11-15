@@ -118,6 +118,162 @@ ipcMain.handle('whitebg-place', async (_e, p) => {
   }
 });
 
+// 产品对齐写回：几何变换（move/scale，图层内容保留）
+ipcMain.handle('productalign-place', async (_e, p) => {
+  try {
+    if (!p || !Number.isInteger(p.docId) || !Array.isArray(p.plan)) return { ok: false, error: '参数缺失' };
+    if (!p.plan.length) return { ok: false, error: '对齐计划为空' };
+    for (const step of p.plan) {
+      if (step.skip) continue;
+      if (typeof step.scale !== 'number' || step.scale <= 0 || step.scale > 5) return { ok: false, error: '缩放参数无效' };
+      if (!step.translate || !Number.isFinite(step.translate.dx) || !Number.isFinite(step.translate.dy)) return { ok: false, error: '平移参数无效' };
+    }
+    if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69，请更新桥接插件并重启PS' };
+    const response = await ctx.sendToPSAwait({ action: 'placeProductAlign', params: {
+      docId: p.docId, plan: p.plan,
+    } }, 180000);
+    const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || 'PS未完成产品对齐' };
+    olog(result.ok ? '✓ [产品对齐] 已对齐 ' + (result.applied || 0) + ' 个图层（历史可撤销）' : '[产品对齐] 失败：' + result.error, result.ok ? 'ok' : 'err');
+    return result;
+  } catch (e) { return { ok: false, error: e.message || String(e) };
+  }
+});
+
+// 产品对齐辅助：列出组内图层bbox（读取bounds）
+ipcMain.handle('productalign-list', async (_e, p) => {
+  try {
+    if (!p || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: '参数缺失' };
+    if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69' };
+    const response = await ctx.sendToPSAwait({ action: 'listLayerBBoxes', params: { docId: p.docId, layerId: p.layerId } }, 60000);
+    const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || '读取图层信息失败' };
+    return result;
+  } catch (e) { return { ok: false, error: e.message || String(e) };
+  }
+});
+
+// P2三卡写回：褶皱优化/皮肤质感/材质增强（结果作为原组内新像素图层）
+// 三个独立handler（结构相同）
+for (const [act, label] of [['wrinkle-place', '褶皱优化'], ['skintexture-place', '皮肤精修'], ['material-place', '材质增强']]) {
+  ipcMain.handle(act, async (_e, p) => {
+    try {
+      if (!p || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: '参数缺失' };
+      if (typeof p.rgbaB64 !== 'string' || !Number.isInteger(p.width) || !Number.isInteger(p.height)) return { ok: false, error: '结果图数据缺失' };
+      const raw = Buffer.from(p.rgbaB64, 'base64');
+      if (raw.length !== p.width * p.height * 4) return { ok: false, error: '结果图数据长度异常' };
+      if (p.width * p.height > 12000000) return { ok: false, error: '图像超过1200万像素限制' };
+      if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69，请更新桥接插件并重启PS' };
+      const response = await ctx.sendToPSAwait({ action: 'place' + (act === 'wrinkle-place' ? 'Wrinkle' : act === 'skintexture-place' ? 'SkinTexture' : 'Material') + 'Layer', params: {
+        docId: p.docId, layerId: p.layerId, name: (p.name || label).slice(0, 120),
+        rgbaB64: p.rgbaB64, width: p.width, height: p.height,
+      } }, 120000);
+      const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || 'PS未完成' + label + '图层创建' };
+      olog(result.ok ? '✓ [' + label + '] 已创建结果图层（原组保留）' : '[' + label + '] 失败：' + result.error, result.ok ? 'ok' : 'err');
+      return result;
+    } catch (e) { return { ok: false, error: e.message || String(e) };
+    }
+  });
+}
+
+// 抠图边缘净化写回：带alpha的净化结果作为独立图层（置顶）
+ipcMain.handle('edgeclean-place', async (_e, p) => {
+  try {
+    if (!p || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: '参数缺失' };
+    if (typeof p.rgbaB64 !== 'string' || !Number.isInteger(p.width) || !Number.isInteger(p.height)) return { ok: false, error: '结果图数据缺失' };
+    const raw = Buffer.from(p.rgbaB64, 'base64');
+    if (raw.length !== p.width * p.height * 4) return { ok: false, error: '结果图数据长度异常' };
+    if (p.width * p.height > 12000000) return { ok: false, error: '图像超过1200万像素限制' };
+    if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69，请更新桥接插件并重启PS' };
+    const response = await ctx.sendToPSAwait({ action: 'placeEdgeCleanLayer', params: {
+      docId: p.docId, layerId: p.layerId, name: (p.name || '边缘净化').slice(0, 120),
+      rgbaB64: p.rgbaB64, width: p.width, height: p.height,
+    } }, 120000);
+    const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || 'PS未完成边缘净化图层创建' };
+    olog(result.ok ? '✓ [边缘净化] 已创建净化图层（原组保留）' : '[边缘净化] 失败：' + result.error, result.ok ? 'ok' : 'err');
+    return result;
+  } catch (e) { return { ok: false, error: e.message || String(e) };
+  }
+});
+
+// 批量色调统一写回：每张目标图输出独立像素图层
+ipcMain.handle('toneunify-place', async (_e, p) => {
+  try {
+    if (!p || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: '参数缺失' };
+    if (typeof p.rgbaB64 !== 'string' || !Number.isInteger(p.width) || !Number.isInteger(p.height)) return { ok: false, error: '结果图数据缺失' };
+    const raw = Buffer.from(p.rgbaB64, 'base64');
+    if (raw.length !== p.width * p.height * 4) return { ok: false, error: '结果图数据长度异常' };
+    if (p.width * p.height > 12000000) return { ok: false, error: '图像超过1200万像素限制' };
+    if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69，请更新桥接插件并重启PS' };
+    const response = await ctx.sendToPSAwait({ action: 'placeToneUnifyLayer', params: {
+      docId: p.docId, layerId: p.layerId, name: (p.name || '色调统一').slice(0, 120),
+      rgbaB64: p.rgbaB64, width: p.width, height: p.height,
+    } }, 120000);
+    const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || 'PS未完成色调统一图层创建' };
+    olog(result.ok ? '✓ [色调统一] 已创建统一图层（原组保留）' : '[色调统一] 失败：' + result.error, result.ok ? 'ok' : 'err');
+    return result;
+  } catch (e) { return { ok: false, error: e.message || String(e) };
+  }
+});
+
+// 智能阴影写回：阴影 alpha 场作为独立透明图层（组内置底）
+ipcMain.handle('shadow-place', async (_e, p) => {
+  try {
+    if (!p || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: '参数缺失' };
+    if (typeof p.rgbaB64 !== 'string' || !Number.isInteger(p.width) || !Number.isInteger(p.height)) return { ok: false, error: '阴影数据缺失' };
+    const raw = Buffer.from(p.rgbaB64, 'base64');
+    if (raw.length !== p.width * p.height * 4) return { ok: false, error: '阴影数据长度异常' };
+    if (p.width * p.height > 12000000) return { ok: false, error: '图像超过1200万像素限制' };
+    if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69，请更新桥接插件并重启PS' };
+    const response = await ctx.sendToPSAwait({ action: 'placeShadowLayer', params: {
+      docId: p.docId, layerId: p.layerId, name: (p.name || '智能阴影').slice(0, 120),
+      rgbaB64: p.rgbaB64, width: p.width, height: p.height,
+    } }, 120000);
+    const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || 'PS未完成阴影图层创建' };
+    olog(result.ok ? '✓ [智能阴影] 已创建阴影图层（组内置底，商品层不受影响）' : '[智能阴影] 失败：' + result.error, result.ok ? 'ok' : 'err');
+    return result;
+  } catch (e) { return { ok: false, error: e.message || String(e) };
+  }
+});
+
+// 去油光写回：结果作为原组内新像素图层
+ipcMain.handle('shineremove-place', async (_e, p) => {
+  try {
+    if (!p || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: '参数缺失' };
+    if (typeof p.rgbaB64 !== 'string' || !Number.isInteger(p.width) || !Number.isInteger(p.height)) return { ok: false, error: '结果图数据缺失' };
+    const raw = Buffer.from(p.rgbaB64, 'base64');
+    if (raw.length !== p.width * p.height * 4) return { ok: false, error: '结果图数据长度异常' };
+    if (p.width * p.height > 12000000) return { ok: false, error: '图像超过1200万像素限制' };
+    if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69，请更新桥接插件并重启PS' };
+    const response = await ctx.sendToPSAwait({ action: 'placeShineRemoveLayer', params: {
+      docId: p.docId, layerId: p.layerId, name: (p.name || '去油光').slice(0, 120),
+      rgbaB64: p.rgbaB64, width: p.width, height: p.height,
+    } }, 120000);
+    const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || 'PS未完成去油光图层创建' };
+    olog(result.ok ? '✓ [去油光] 已创建结果图层（原组保留）' : '[去油光] 失败：' + result.error, result.ok ? 'ok' : 'err');
+    return result;
+  } catch (e) { return { ok: false, error: e.message || String(e) };
+  }
+});
+
+// 瑕疵清理写回：修复结果作为原组内新像素图层
+ipcMain.handle('defectclean-place', async (_e, p) => {
+  try {
+    if (!p || !Number.isInteger(p.docId) || !Number.isInteger(p.layerId)) return { ok: false, error: '参数缺失' };
+    if (typeof p.rgbaB64 !== 'string' || !Number.isInteger(p.width) || !Number.isInteger(p.height)) return { ok: false, error: '结果图数据缺失' };
+    const raw = Buffer.from(p.rgbaB64, 'base64');
+    if (raw.length !== p.width * p.height * 4) return { ok: false, error: '结果图数据长度异常' };
+    if (p.width * p.height > 12000000) return { ok: false, error: '图像超过1200万像素限制' };
+    if (typeof ctx.bridgeVer === 'function' && ctx.bridgeVer() < 69) return { ok: false, error: '需要PS桥接v69，请更新桥接插件并重启PS' };
+    const response = await ctx.sendToPSAwait({ action: 'placeDefectCleanLayer', params: {
+      docId: p.docId, layerId: p.layerId, name: (p.name || '瑕疵清理').slice(0, 120),
+      rgbaB64: p.rgbaB64, width: p.width, height: p.height,
+    } }, 120000);
+    const result = response && response.ok ? response.result : { ok: false, error: (response && response.error) || 'PS未完成瑕疵清理图层创建' };
+    olog(result.ok ? '✓ [瑕疵清理] 已创建修复图层（原组保留）' : '[瑕疵清理] 失败：' + result.error, result.ok ? 'ok' : 'err');
+    return result;
+  } catch (e) { return { ok: false, error: e.message || String(e) };
+  }
+});
+
 const jobs = new Map();
 ipcMain.handle('skinmatch-save', async (_e, p) => {
   try {

@@ -201,6 +201,86 @@
     "ready": true
   },
   {
+    "id": "shineremove",
+    "icon": "✨",
+    "label": "去油光",
+    "file": "shineremove.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "wrinkle",
+    "icon": "🧵",
+    "label": "褶皱优化",
+    "file": "wrinkle.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "skintexture",
+    "icon": "🧴",
+    "label": "皮肤精修",
+    "file": "skintexture.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "material",
+    "icon": "💎",
+    "label": "材质增强",
+    "file": "material.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "defectclean",
+    "label": "瑕疵清理",
+    "file": "defectclean.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "toneunify",
+    "icon": "🎨",
+    "label": "色调统一",
+    "file": "toneunify.html",
+    "width": 800,
+    "height": 600,
+    "ready": true
+  },
+  {
+    "id": "shadow",
+    "icon": "🫥",
+    "label": "智能阴影",
+    "file": "shadow.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
+    "id": "productalign",
+    "icon": "🎯",
+    "label": "产品对齐",
+    "file": "productalign.html",
+    "width": 780,
+    "height": 600,
+    "ready": true
+  },
+  {
+    "id": "edgeclean",
+    "icon": "🪒",
+    "label": "边缘净化",
+    "file": "edgeclean.html",
+    "width": 760,
+    "height": 580,
+    "ready": true
+  },
+  {
     "id": "qualitycheck",
     "icon": "🔍",
     "label": "精修质检",

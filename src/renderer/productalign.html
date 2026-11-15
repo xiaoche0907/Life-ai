@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: normal; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+  #ctrl { flex: 0 0 300px; width: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  .tip.warn { color: var(--err); }
+  .prow { display: flex; align-items: center; gap: 6px; }
+  .prow label { flex: 0 0 62px; font-size: 10px; color: var(--text-dim); }
+  .prow input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent); }
+  .prow input[type=number] { flex: 0 0 52px; width: 52px; height: 22px; border-radius: 6px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 10px; text-align: center; user-select: text; }
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel option { background: #23252b; color: #fff; }
+  .layerRow { display: flex; align-items: center; gap: 6px; font-size: 10px; padding: 3px 6px; background: var(--btn-bg); border-radius: 8px; margin-top: 3px; }
+  .layerRow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+  .layerRow .bb { color: var(--text-dim); flex: 0 0 auto; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="productalign-core.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title">🎯 产品对齐</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">① 读取PS文档，选择含多个商品图层的组<br>② 点「分析图层」列出各图层主体边界框<br>③ 设统一占比与锚点，等比缩放+平移对齐（禁拉伸）<br>几何变换通过PS历史一步撤销</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass>读取PS文档</button>
+        <button class="abtn" id="btnList" data-pass disabled>分析图层</button>
+        <button class="abtn acc" id="btnApply" data-pass disabled title="几何变换写回（历史可撤销）">应用到PS</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">商品图层组</div>
+        <div id="documentInfo" class="tip" role="status">请先读取PS文档</div>
+        <select id="targetGroup" class="msel" data-pass disabled><option value="">读取后选择带蒙版的组</option></select>
+      </div>
+      <div class="grp">
+        <div class="gt">图层主体（分析后列出）</div>
+        <div id="layerList"><div class="tip">点「分析图层」后显示各图层主体尺寸。</div></div>
+      </div>
+      <div class="grp">
+        <div class="gt">对齐目标</div>
+        <div class="prow"><label>统一占比</label><input type="range" id="pOccupy" min="30" max="100" value="80"><input type="number" id="pOccupyN" min="30" max="100" value="80"></div>
+        <div class="prow"><label>垂直锚点</label><select id="pAnchor" data-pass style="flex:1;height:24px"><option value="bottom" selected>底边对齐（商品落地）</option><option value="center">居中</option></select></div>
+        <div class="tip">所有主体等比缩放到统一高度占比后对齐——<b>等比约束，永不拉伸变形</b>。不同类目请分开处理（占比不通用）。</div>
+        <div id="planInfo" class="tip"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const PA = window.ProductAlign;
+  const st = { cap: null, layers: null, plan: null, busy: false };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[productalign] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+
+  const target = { occupy: 80, anchor: 'bottom' };
+  $('pOccupy').addEventListener('input', () => { target.occupy = Number($('pOccupy').value); $('pOccupyN').value = target.occupy; if (st.layers) makePlan(); });
+  $('pOccupyN').addEventListener('change', () => { target.occupy = Math.max(30, Math.min(100, Number($('pOccupyN').value) || 80)); $('pOccupy').value = target.occupy; if (st.layers) makePlan(); });
+  $('pAnchor').addEventListener('change', () => { target.anchor = $('pAnchor').value; if (st.layers) makePlan(); });
+
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('扫描PS文档及蒙版组…');
+    $('targetGroup').disabled = true;
+    try {
+      const r = await window.orange.skinInspectDocument();
+      if (!r.ok) throw Error(r.error || '读取文档失败');
+      st.cap = { docId: r.docId, name: r.name, width: r.width, height: r.height, groups: r.groups || [] };
+      $('documentInfo').textContent = r.name + ' · ' + r.width + '×' + r.height;
+      const select = $('targetGroup'); select.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择目标蒙版组'; select.appendChild(placeholder);
+      for (const group of r.groups || []) {
+        const option = document.createElement('option'); option.value = String(group.id); option.textContent = group.path + (group.enabled ? '' : '（蒙版禁用或含矢量蒙版）'); option.disabled = !group.enabled; select.appendChild(option);
+      }
+      select.disabled = !(r.groups || []).some(g => g.enabled);
+      stat(select.disabled ? '无可用蒙版组' : '已识别文档，选择含商品图层的组', select.disabled ? 'err' : 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); }
+  }
+  $('btnCap').addEventListener('click', capture);
+  $('targetGroup').addEventListener('change', async () => {
+    if (st.busy || !st.cap) return;
+    const layerId = Number($('targetGroup').value);
+    if (!layerId) return;
+    st.cap.layerId = layerId;
+    $('btnList').disabled = false;
+    st.layers = null; st.plan = null;
+    $('layerList').innerHTML = '<div class="tip">点「分析图层」。</div>';
+    $('btnApply').disabled = true;
+    const cv = $('cv'); cv.width = 1; cv.height = 1;
+    $('hint').classList.remove('off');
+  });
+
+  async function listLayers() {
+    if (st.busy || !st.cap || !st.cap.layerId) return;
+    st.busy = true; $('btnList').classList.add('busy'); stat('读取图层主体边界…');
+    try {
+      const r = await window.orange.productListBBoxes({ docId: st.cap.docId, layerId: st.cap.layerId });
+      if (!r.ok) throw Error(r.error || '读取失败');
+      st.layers = r.layers; st.canvas = r.canvas;
+      const box = $('layerList'); box.innerHTML = '';
+      if (!r.layers.length) { box.innerHTML = '<div class="tip warn">组内没有带内容的图层</div>'; return; }
+      for (const l of r.layers) {
+        const div = document.createElement('div'); div.className = 'layerRow';
+        div.innerHTML = '<span class="nm">' + l.name + '</span><span class="bb">' + l.bbox.w + '×' + l.bbox.h + '</span>';
+        box.appendChild(div);
+      }
+      stat('已分析 ' + r.layers.length + ' 个图层，设占比后生成对齐计划', 'ok');
+      makePlan();
+    } catch (e) { stat('分析失败：' + e.message, 'err'); glog('list 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnList').classList.remove('busy'); }
+  }
+  $('btnList').addEventListener('click', listLayers);
+
+  function makePlan() {
+    if (!st.layers || !st.canvas) return;
+    const r = PA.planAlign(st.layers, st.canvas, { occupy: target.occupy / 100, anchor: target.anchor });
+    if (!r.ok) { stat('计划生成失败：' + r.reason, 'err'); return; }
+    st.plan = r.plan.filter(p2 => !p2.skip);
+    const skipped = r.plan.length - st.plan.length;
+    $('planInfo').textContent = '对齐 ' + st.plan.length + ' 层' + (skipped ? '，跳过 ' + skipped + ' 层（主体过小）' : '') + ' · 统一高度占比 ' + target.occupy + '%';
+    $('btnApply').disabled = st.plan.length === 0;
+    // 预览：画出canvas与各newBox
+    const cv = $('cv');
+    const scale = Math.min(cv.parentElement.clientWidth / st.canvas.width, cv.parentElement.clientHeight / st.canvas.height) * 0.92;
+    cv.width = Math.round(st.canvas.width * scale); cv.height = Math.round(st.canvas.height * scale);
+    const g2 = cv.getContext('2d');
+    g2.fillStyle = '#2a2c33'; g2.fillRect(0, 0, cv.width, cv.height);
+    for (const p2 of st.plan) {
+      g2.strokeStyle = '#4fc3f7'; g2.lineWidth = 1.5;
+      g2.strokeRect(p2.newBox.x * scale, p2.newBox.y * scale, p2.newBox.w * scale, p2.newBox.h * scale);
+      g2.fillStyle = 'rgba(79,195,247,.12)';
+      g2.fillRect(p2.newBox.x * scale, p2.newBox.y * scale, p2.newBox.w * scale, p2.newBox.h * scale);
+    }
+    $('hint').classList.add('off');
+    $('tag').textContent = '对齐预览（蓝框=目标位置）';
+    stat('对齐计划就绪：' + st.plan.length + ' 层', 'ok');
+  }
+
+  $('btnApply').addEventListener('click', async () => {
+    if (st.busy || !st.plan || !st.plan.length || !st.cap) return;
+    st.busy = true; $('btnApply').classList.add('busy');
+    try {
+      stat('执行几何变换（等比缩放+平移）…');
+      const r = await window.orange.productAlignPlace({
+        docId: st.cap.docId, plan: st.plan,
+      });
+      if (!r.ok) throw Error(r.error || 'PS执行失败');
+      stat('✓ 已对齐 ' + (r.applied || 0) + ' 个图层（PS历史一步撤销）', 'ok');
+    } catch (e) { stat('应用失败: ' + (e.message || e), 'err'); glog('apply 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnApply').classList.remove('busy'); }
+  });
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

@@ -252,6 +252,16 @@ const handlers = {
   async placeSkinMatchLayers(params) { return require('./skinmatch.host').place(params); },
   async placeProportionLayer(params) { return require('./proportion.host').place(params); },
   async placeWhiteBgLayer(params) { return require('./whitebg.host').place(params); },
+  async placeShineRemoveLayer(params) { return require('./shineremove.host').place(params); },
+  async placeShadowLayer(params) { return require('./shadow.host').place(params); },
+  async placeToneUnifyLayer(params) { return require('./toneunify.host').place(params); },
+  async placeEdgeCleanLayer(params) { return require('./edgeclean.host').place(params); },
+  async placeProductAlign(params) { return require('./productalign.host').place(params); },
+  async placeWrinkleLayer(params) { return require('./wrinkle.host').place(params); },
+  async placeSkinTextureLayer(params) { return require('./skintexture.host').place(params); },
+  async placeMaterialLayer(params) { return require('./material.host').place(params); },
+  async listLayerBBoxes(params) { return require('./productalign.host').listLayerBBoxes(params); },
+  async placeDefectCleanLayer(params) { return require('./defectclean.host').place(params); },
   async captureInput(params) {
     if (!app.activeDocument && !(params && params.docId)) throw new Error('没有打开的文档');
     // 用户点生成那一刻看着的文档=采集目标（命令已串行化，此刻没有我们自己的模态在切文档）

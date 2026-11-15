@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: normal; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+  #ctrl { flex: 0 0 290px; width: 290px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  .tip.warn { color: var(--err); }
+  .tip.ok { color: var(--ok); }
+  .prow { display: flex; align-items: center; gap: 6px; }
+  .prow label { flex: 0 0 62px; font-size: 10px; color: var(--text-dim); }
+  .prow input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent); }
+  .prow input[type=number] { flex: 0 0 52px; width: 52px; height: 22px; border-radius: 6px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 10px; text-align: center; user-select: text; }
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel option { background: #23252b; color: #fff; }
+  .taskItem { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 9px; background: var(--btn-bg); margin-top: 3px; }
+  .taskItem .nm { flex: 1; font-size: 10.5px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .taskItem .stt { font-size: 10px; color: var(--text-dim); flex: 0 0 auto; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="toneunify-core.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title">🎨 色调统一</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">① 读取PS当前文档（当前组=当前处理目标）<br>② 选本地标准图，自动统计商品色调基准<br>③ 当前文档立即预览；其他打开的文档逐张应用<br>每张输出独立图层，商品标准色受保护</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass>读取PS文档</button>
+        <button class="abtn" id="btnRef" data-pass>选标准图</button>
+        <button class="abtn" id="btnPreview" data-pass disabled>预览当前</button>
+        <button class="abtn acc" id="btnApply" data-pass disabled>应用到当前</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">当前处理组</div>
+        <div id="documentInfo" class="tip" role="status">请先读取PS文档</div>
+        <select id="targetGroup" class="msel" data-pass disabled><option value="">读取后选择带蒙版的组</option></select>
+        <div class="tip">其他打开的同规格文档：切到该文档后点「读取PS文档」刷新，再逐张应用。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">标准参考图</div>
+        <div id="refStatus" class="tip">未选择。标准图的商品区域将作为色调基准。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">匹配参数</div>
+        <div class="prow"><label>色调强度</label><input type="range" id="pStrength" min="0" max="100" value="80"><input type="number" id="pStrengthN" min="0" max="100" value="80"></div>
+        <div class="prow"><label>明暗强度</label><input type="range" id="pLight" min="0" max="100" value="70"><input type="number" id="pLightN" min="0" max="100" value="70"></div>
+        <div class="tip">只对齐曝光/白平衡/色彩倾向，商品固有颜色轻微修正。接近标准色区域受保护（改动力降至30%）。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">处理记录</div>
+        <div id="taskList"><div class="tip">应用后逐张记录。</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const TU = window.ToneUnify;
+  const st = { cap: null, srcPix: null, refStats: null, refName: '', busy: false, tasks: [] };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[toneunify] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+
+  const params = { strength: 80, lightStrength: 70 };
+  for (const [id, key] of [['pStrength', 'strength'], ['pLight', 'lightStrength']]) {
+    const r = $(id), n = $(id + 'N');
+    r.addEventListener('input', () => { params[key] = Number(r.value); n.value = r.value; });
+    n.addEventListener('change', () => { params[key] = Math.max(0, Math.min(100, Number(n.value) || 0)); r.value = params[key]; });
+  }
+
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('扫描PS文档及蒙版组…');
+    $('targetGroup').disabled = true;
+    try {
+      const r = await window.orange.skinInspectDocument();
+      if (!r.ok) throw Error(r.error || '读取文档失败');
+      st.cap = { docId: r.docId, name: r.name, width: r.width, height: r.height, groups: r.groups || [] };
+      $('documentInfo').textContent = r.name + ' · ' + r.width + '×' + r.height;
+      const select = $('targetGroup'); select.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择目标蒙版组'; select.appendChild(placeholder);
+      for (const group of r.groups || []) {
+        const option = document.createElement('option'); option.value = String(group.id); option.textContent = group.path + (group.enabled ? '' : '（蒙版禁用或含矢量蒙版）'); option.disabled = !group.enabled; select.appendChild(option);
+      }
+      select.disabled = !(r.groups || []).some(g => g.enabled);
+      stat(select.disabled ? '无可用蒙版组' : '已识别「' + r.name + '」，选商品蒙版组', select.disabled ? 'err' : 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); }
+  }
+  $('btnCap').addEventListener('click', capture);
+  $('targetGroup').addEventListener('change', async () => {
+    if (st.busy || !st.cap) return;
+    const layerId = Number($('targetGroup').value);
+    if (!layerId) return;
+    st.busy = true; $('targetGroup').disabled = true; stat('读取商品像素…');
+    try {
+      const mk = await window.orange.skinReadMask({ docId: st.cap.docId, layerId });
+      if (!mk.ok) throw Error(mk.error || '蒙版读取失败');
+      const img = await loadImg('data:image/png;base64,' + mk.image);
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0);
+      st.srcPix = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+      st.cap.layerId = layerId;
+      $('hint').classList.add('off');
+      $('tag').textContent = '当前：' + mk.layerName;
+      $('btnPreview').disabled = !st.refStats;
+      $('btnApply').disabled = !st.refStats;
+      stat('已读取「' + mk.layerName + '」' + (st.refStats ? '，可预览/应用' : '，请先选标准图'), st.refStats ? 'ok' : '');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('targetGroup').disabled = false; }
+  });
+
+  $('btnRef').addEventListener('click', async () => {
+    const paths = await window.orange.pickFiles({ filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp'] }], multi: false });
+    if (!paths || !paths.length) return;
+    try {
+      const rd = await window.orange.skinReadImage(paths[0]);
+      if (!rd || !rd.ok) throw Error((rd && rd.error) || '读取失败');
+      const ext = (paths[0].split('.').pop() || 'png').toLowerCase();
+      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+      const im = await loadImg('data:' + mime + ';base64,' + rd.base64);
+      const scale = Math.min(1, 700 / Math.max(im.naturalWidth, im.naturalHeight));
+      const w = Math.max(3, Math.round(im.naturalWidth * scale)), h = Math.max(3, Math.round(im.naturalHeight * scale));
+      const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+      c2.getContext('2d').drawImage(im, 0, 0, w, h);
+      const ref = TU.analyzeRef(c2.getContext('2d').getImageData(0, 0, w, h));
+      st.refStats = ref.stats;
+      st.refName = paths[0].split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+      $('refStatus').innerHTML = '<span class="tip ok">已加载「' + st.refName + '」（商品样本 ' + ref.stats.samples + '）</span>';
+      if (st.srcPix) { $('btnPreview').disabled = false; $('btnApply').disabled = false; }
+      stat('标准图已就绪' + (st.srcPix ? '，可预览/应用' : '，请读取文档'), 'ok');
+    } catch (e) { stat(paths[0].split(/[\\/]/).pop() + ': ' + (e.message || e), 'err'); }
+  });
+
+  function doPreview() {
+    if (st.busy || !st.srcPix || !st.refStats) return;
+    try {
+      const r = TU.applyToTarget(st.srcPix, st.refStats, { strength: params.strength / 100, lightStrength: params.lightStrength / 100 });
+      const cv = $('cv'); cv.width = r.out.width; cv.height = r.out.height;
+      cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.out.data), r.out.width, r.out.height), 0, 0);
+      st.lastResult = r.out;
+      stat('预览完成（商品占比 ' + Math.round(r.coverage * 100) + '%）— 切换其他文档可逐张应用', 'ok');
+    } catch (e) { stat('预览失败: ' + (e.message || e), 'err'); glog('preview 异常 ' + (e.stack || e)); }
+  }
+  $('btnPreview').addEventListener('click', doPreview);
+
+  function addTask(name, ok, note) {
+    st.tasks.push({ name, ok, note });
+    const box = $('taskList'); box.innerHTML = '';
+    for (const t of st.tasks.slice(-8)) {
+      const div = document.createElement('div'); div.className = 'taskItem';
+      div.innerHTML = '<div class="nm">' + t.name + '</div><div class="stt">' + (t.ok ? '✓' : '✕') + '</div>';
+      box.appendChild(div);
+    }
+  }
+
+  $('btnApply').addEventListener('click', async () => {
+    if (st.busy || !st.srcPix || !st.refStats || !st.cap) return;
+    st.busy = true; $('btnApply').classList.add('busy');
+    try {
+      let out = st.lastResult;
+      if (!out) {
+        const r = TU.applyToTarget(st.srcPix, st.refStats, { strength: params.strength / 100, lightStrength: params.lightStrength / 100 });
+        out = r.out;
+      }
+      const d = out.data;
+      let bin = '';
+      const CH = 0x8000;
+      for (let i = 0; i < d.length; i += CH) bin += String.fromCharCode.apply(null, d.subarray(i, i + CH));
+      const rgbaB64 = btoa(bin);
+      stat('写回PS（创建统一图层，原组保留）…');
+      const r = await window.orange.toneUnifyPlace({
+        docId: st.cap.docId, layerId: st.cap.layerId,
+        name: '色调统一 · ' + st.cap.name.slice(0, 40),
+        rgbaB64, width: out.width, height: out.height,
+      });
+      if (!r.ok) throw Error(r.error || 'PS写回失败');
+      addTask(st.cap.name, true);
+      stat('✓ 已创建图层（置顶显示，原组保留）。处理其他文档：切换文档→读取→应用', 'ok');
+    } catch (e) { addTask(st.cap.name, false, e.message); stat('应用失败: ' + (e.message || e), 'err'); glog('apply 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnApply').classList.remove('busy'); }
+  });
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="theme.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
+  #card { position: absolute; inset: 12px; border-radius: 22px; display: flex; flex-direction: column; overflow: hidden; color: var(--text); }
+  #head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; cursor: grab; flex: 0 0 auto; min-height: 30px; }
+  #head .title { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: #fff; }
+  #head .sp { flex: 1; }
+  #stat { font-size: 9.5px; color: var(--text-dim); white-space: normal; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
+  #stat.err { color: var(--err); }
+  #stat.ok { color: var(--ok); }
+  #body { flex: 1 1 auto; min-height: 0; display: flex; gap: 10px; padding: 0 14px 12px; }
+  #left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage { flex: 1 1 auto; min-height: 0; position: relative; border-radius: 12px; overflow: hidden; background: var(--inset-bg); border: 1px solid var(--inset-border); display: flex; align-items: center; justify-content: center; }
+  #cv { width: 100%; height: 100%; display: block; object-fit: contain; }
+  #hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11.5px; line-height: 1.9; color: var(--text-dim); pointer-events: none; padding: 20px; }
+  #hint.off { display: none; }
+  #tag { position: absolute; left: 8px; top: 6px; font-size: 9px; color: var(--text-dim); pointer-events: none; }
+  #actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .abtn { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 12px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+  .abtn.acc { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
+  .abtn.acc:hover { background: var(--accent); color: #fff; }
+  .abtn[disabled] { opacity: 0.4; pointer-events: none; }
+  .abtn.busy { opacity: 0.6; pointer-events: none; }
+  #ctrl { flex: 0 0 290px; width: 290px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #ctrl::-webkit-scrollbar { width: 0; }
+  .grp { border-radius: 12px; background: var(--inset-bg); border: 1px solid var(--inset-border); padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .grp .gt { font-size: 10px; letter-spacing: 1px; color: var(--accent-text); font-weight: 700; margin-bottom: 2px; }
+  .tip { font-size: 9.5px; line-height: 1.7; color: var(--text-dim); }
+  .prow { display: flex; align-items: center; gap: 6px; }
+  .prow label { flex: 0 0 62px; font-size: 10px; color: var(--text-dim); }
+  .prow input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent); }
+  .prow input[type=number] { flex: 0 0 52px; width: 52px; height: 22px; border-radius: 6px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 10px; text-align: center; user-select: text; }
+  .msel { width: 100%; height: 30px; border-radius: 8px; border: 1px solid var(--inset-border); background: var(--btn-bg); color: #fff; font-size: 11px; padding: 0 8px; outline: none; cursor: pointer; }
+  .msel option { background: #23252b; color: #fff; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="shadow-core.js"></script>
+<div id="card" class="lg">
+  <div id="head">
+    <span class="title">🫥 智能阴影</span>
+    <div class="sp"></div>
+    <span id="stat"></span>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div id="stage" data-nodrag>
+        <canvas id="cv"></canvas>
+        <div id="hint">① 读取PS当前文档，选择商品蒙版组<br>② 生成接触阴影/方向投影（透明独立图层）<br>③ 阴影层组内置底，商品层不受影响；方向/长度/强度可调</div>
+        <div id="tag"></div>
+      </div>
+      <div id="actions" data-nodrag>
+        <button class="abtn" id="btnCap" data-pass>读取PS文档</button>
+        <button class="abtn" id="btnPreview" data-pass disabled>预览阴影</button>
+        <button class="abtn acc" id="btnApply" data-pass disabled>应用到PS</button>
+      </div>
+    </div>
+    <div id="ctrl" data-nodrag>
+      <div class="grp">
+        <div class="gt">商品组</div>
+        <div id="documentInfo" class="tip" role="status">请先读取PS文档</div>
+        <select id="targetGroup" class="msel" data-pass disabled><option value="">读取后选择带蒙版的组</option></select>
+        <div class="tip">自动定位商品底部接触线；阴影只画在背景区，商品本体不受影响。</div>
+      </div>
+      <div class="grp">
+        <div class="gt">阴影参数</div>
+        <div class="prow"><label>类型</label><select id="pType" data-pass style="flex:1;height:24px"><option value="contact">接触阴影</option><option value="direction">方向投影</option><option value="both" selected>接触+投影</option></select></div>
+        <div class="prow"><label>光源方向</label><input type="range" id="pDir" min="0" max="360" value="115"><input type="number" id="pDirN" min="0" max="360" value="115"></div>
+        <div class="prow"><label>阴影长度</label><input type="range" id="pLen" min="1" max="30" value="8"><input type="number" id="pLenN" min="1" max="30" value="8"></div>
+        <div class="prow"><label>柔化</label><input type="range" id="pBlur" min="0" max="100" value="50"><input type="number" id="pBlurN" min="0" max="100" value="50"></div>
+        <div class="prow"><label>强度</label><input type="range" id="pOpacity" min="5" max="100" value="45"><input type="number" id="pOpacityN" min="5" max="100" value="45"></div>
+        <div class="tip">方向=光源方位角（0°=右，90°=下……阴影投向反侧）；长度=占短边百分比。近似投影，不声称恢复真实三维光照。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const SG = window.ShadowGen;
+  const st = { cap: null, srcPix: null, busy: false, lastResult: null };
+  const stat = (t, cls) => { const s = $('stat'); s.textContent = t || ''; s.className = cls || ''; };
+  const glog = (m) => { try { window.orange.glassLog('[shadow] ' + m); } catch (e) {} };
+  window.addEventListener('error', (e) => glog('运行时错误: ' + (e.message || e) + ' @' + (e.lineno || '')));
+  const loadImg = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('图片解码失败')); im.src = src; });
+
+  const params = { type: 'both', direction: 115, length: 8, blur: 50, opacity: 45 };
+  $('pType').addEventListener('change', () => { params.type = $('pType').value; schedulePreview(); });
+  for (const [id, key, max] of [['pDir','direction',360],['pLen','length',30],['pBlur','blur',100],['pOpacity','opacity',100]]) {
+    const r = $(id), n = $(id + 'N');
+    r.addEventListener('input', () => { params[key] = Number(r.value); n.value = r.value; schedulePreview(); });
+    n.addEventListener('change', () => { params[key] = Math.max(0, Math.min(max, Number(n.value) || 0)); r.value = params[key]; schedulePreview(); });
+  }
+
+  let previewTimer = null;
+  function schedulePreview() { if (!st.srcPix) return; clearTimeout(previewTimer); previewTimer = setTimeout(doPreview, 250); }
+
+  async function capture() {
+    if (st.busy) return;
+    st.busy = true; $('btnCap').classList.add('busy'); stat('扫描PS文档及蒙版组…');
+    $('targetGroup').disabled = true;
+    try {
+      const r = await window.orange.skinInspectDocument();
+      if (!r.ok) throw Error(r.error || '读取文档失败');
+      st.cap = { docId: r.docId, name: r.name, width: r.width, height: r.height, groups: r.groups || [] };
+      $('documentInfo').textContent = r.name + ' · ' + r.width + '×' + r.height;
+      const select = $('targetGroup'); select.innerHTML = '';
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择目标蒙版组'; select.appendChild(placeholder);
+      for (const group of r.groups || []) {
+        const option = document.createElement('option'); option.value = String(group.id); option.textContent = group.path + (group.enabled ? '' : '（蒙版禁用或含矢量蒙版）'); option.disabled = !group.enabled; select.appendChild(option);
+      }
+      select.disabled = !(r.groups || []).some(g => g.enabled);
+      stat(select.disabled ? '文档中没有可用的像素蒙版组' : '已识别文档，请选择商品的蒙版组', select.disabled ? 'err' : 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('btnCap').classList.remove('busy'); }
+  }
+  $('btnCap').addEventListener('click', capture);
+  $('targetGroup').addEventListener('change', async () => {
+    if (st.busy || !st.cap) return;
+    const layerId = Number($('targetGroup').value);
+    if (!layerId) return;
+    st.busy = true; $('targetGroup').disabled = true; stat('读取商品像素…');
+    try {
+      const mk = await window.orange.skinReadMask({ docId: st.cap.docId, layerId });
+      if (!mk.ok) throw Error(mk.error || '蒙版读取失败');
+      const img = await loadImg('data:image/png;base64,' + mk.image);
+      const cv = $('cv'); cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0);
+      st.srcPix = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+      st.cap.layerId = layerId;
+      $('hint').classList.add('off');
+      $('tag').textContent = '商品组：' + mk.layerName;
+      $('btnPreview').disabled = false;
+      stat('已读取「' + mk.layerName + '」，可预览阴影', 'ok');
+    } catch (e) { stat('读取失败：' + e.message, 'err'); }
+    finally { st.busy = false; $('targetGroup').disabled = false; }
+  });
+
+  function doPreview() {
+    if (st.busy || !st.srcPix) return;
+    try {
+      const r = SG.generate(st.srcPix, { type: params.type, direction: params.direction, length: params.length / 100, blur: params.blur / 100, opacity: params.opacity / 100 });
+      st.lastResult = r;
+      // 预览：原图 + 阴影合成（阴影是黑+alpha）
+      const out = new Uint8ClampedArray(st.srcPix.data);
+      for (let i = 0; i < out.length; i += 4) {
+        const a = r.data[i + 3] / 255;
+        if (a <= 0) continue;
+        out[i] = Math.round(out[i] * (1 - a));
+        out[i + 1] = Math.round(out[i + 1] * (1 - a));
+        out[i + 2] = Math.round(out[i + 2] * (1 - a));
+      }
+      const cv = $('cv'); cv.width = r.width; cv.height = r.height;
+      cv.getContext('2d').putImageData(new ImageData(out, r.width, r.height), 0, 0);
+      $('btnApply').disabled = false;
+      stat('预览完成（参数改动实时刷新）', 'ok');
+    } catch (e) { stat('预览失败: ' + (e.message || e), 'err'); glog('preview 异常 ' + (e.stack || e)); }
+  }
+  $('btnPreview').addEventListener('click', doPreview);
+
+  $('btnApply').addEventListener('click', async () => {
+    if (st.busy || !st.lastResult || !st.cap) return;
+    st.busy = true; $('btnApply').classList.add('busy');
+    try {
+      // 阴影层是独立透明图层：RGBA（黑+alpha）直接 base64
+      const d = st.lastResult.data;
+      let bin = '';
+      const CH = 0x8000;
+      for (let i = 0; i < d.length; i += CH) bin += String.fromCharCode.apply(null, d.subarray(i, i + CH));
+      const rgbaB64 = btoa(bin);
+      stat('写回PS（创建透明阴影图层，组内置底）…');
+      const r = await window.orange.shadowPlace({
+        docId: st.cap.docId, layerId: st.cap.layerId,
+        name: '智能阴影 · ' + ({ contact: '接触', direction: '投影', both: '接触+投影' }[params.type]),
+        rgbaB64, width: st.lastResult.width, height: st.lastResult.height,
+      });
+      if (!r.ok) throw Error(r.error || 'PS写回失败');
+      stat('✓ 已创建阴影图层「' + r.layerName + '」（组内置底，可在PS调透明度）', 'ok');
+    } catch (e) { stat('应用失败: ' + (e.message || e), 'err'); glog('apply 异常 ' + (e.stack || e)); }
+    finally { st.busy = false; $('btnApply').classList.remove('busy'); }
+  });
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>
