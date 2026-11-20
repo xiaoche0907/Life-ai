@@ -844,7 +844,7 @@ async function placeWithRetry(action, params, timeoutMs) {
 }
 ctx.placeWithRetry = placeWithRetry;
 
-async function runBatch(params, count, forceDocId) {
+async function runBatch(params, count, forceDocId, { requireSelection = false } = {}) {
   const total = Math.max(1, Math.min(100, Number(count) || 1));
   params.prompt = applyPromptControls(params.prompt);   // 滑块/填空值织入最终提示词
 
@@ -879,7 +879,7 @@ async function runBatch(params, count, forceDocId) {
     // fullIfNoSel：设置里"无选区默认跑全图"开着→桥接件无选区时按整幅画布捕获（桥接件v25+支持）
     // 桥接 v57+ 会回 fullMode=true 标记"这张是无选区跑的全图"，比例据此锁成原图比例（0911 用户裁定的防蠢设计；v56 此处有作用域错误已废）
     // docId：批处理逐图跑时指定目标文档（桥接件v29+会先激活它再读选区）
-    const cap = await sendToPSAwait({ action: 'captureInput', params: { antiMode, fullIfNoSel: !!config.gen.noSelFull, docId: forceDocId || undefined } }, 30000);
+    const cap = await sendToPSAwait({ action: 'captureInput', params: { antiMode, fullIfNoSel: !requireSelection && !!config.gen.noSelFull, docId: forceDocId || undefined } }, 30000);
     if (cap.ok && cap.result) psCtx = cap.result;
     else capErr = cap.error || '采集无返回';
     try {
@@ -903,7 +903,7 @@ async function runBatch(params, count, forceDocId) {
   // 无选区=不跑图（生成链路以选区img2img为核心，纯文生图容易误触浪费扣费）；
   // 设置开了"无选区默认跑全图"时由桥接件转成全图选区，走不到这里——走到=PS里还跑着不认 fullIfNoSel 的老版插件
   if (!psCtx || !psCtx.selection) {
-    if (config.gen.noSelFull) olog('[中止] 无选区且全图捕获未生效——PS里的来福插件是旧版（v' + ctx.bridgeVer() + '，需 v25+），请完全退出并重启一次PS完成更新', 'err');
+    if (!requireSelection && config.gen.noSelFull) olog('[中止] 无选区且全图捕获未生效——PS里的来福插件是旧版（v' + ctx.bridgeVer() + '，需 v25+），请完全退出并重启一次PS完成更新', 'err');
     else olog('[中止] 没有选区——请先在PS里框选生成区域（设置里可开启"无选区默认跑全图"）', 'err');
     return { ok: false, error: '没有选区', done: 0, fail: 0, total };
   }
@@ -992,6 +992,7 @@ async function runBatch(params, count, forceDocId) {
   // 自动回传关着时原来一声不吭（0909"跑完图不传回"排查：生图模式卡右上角回传按钮被误关=最常见原因之一）
   if (config.gen.autoReturn === false && doneTasks.length) olog('⬇ 自动回传已关闭：本批 ' + doneTasks.length + ' 张已生成未贴回——进度卡点图可手动贴回；生图模式卡右上角「回传」按钮可重新打开', 'err');
   let placedOk = false;
+  let placeError = '';
   if (config.gen.autoReturn !== false && doneTasks.length) {
     placingBatches.add(batchId);   // 贴回期间拒绝同批「提前贴回」（否则同一批贴两遍）
     let pr;
@@ -1004,13 +1005,14 @@ async function runBatch(params, count, forceDocId) {
         group: true,   // 自动回传整批=打组；进度卡手动单张贴回不带此参=免打组
       }, 0);   // 0905:回传不限时
     } finally { placingBatches.delete(batchId); }
-    if (pr.ok) {
+    if (!pr.ok || pr.result?.placed === 0) placeError = pr.error || pr.result?.note || 'Photoshop 没有贴回图层';
+    if (!placeError) {
       doneTasks.forEach((t) => { t.status = 'placed'; });
       broadcastTasks();
       placedOk = true;
     }
     const note = pr.result && pr.result.note;
-    olog((pr.ok ? '⬇ 统一回图 ' + doneTasks.length + '张 完成' : '⬇ 统一回图失败: ' + (pr.error || '') + '（图已保留在进度卡，点图可手动贴回）') + (note ? ' · ' + note : ''), pr.ok ? 'ok' : 'err');
+    olog((placedOk ? '⬇ 统一回图 ' + doneTasks.length + '张 完成' : '⬇ 统一回图失败: ' + placeError + '（图已保留在进度卡，点图可手动贴回）') + (note && note !== placeError ? ' · ' + note : ''), placedOk ? 'ok' : 'err');
   }
   // 色卡结算：测量色卡偏差→生成校正→遮卡（带发起文档id：贴回后PS已切回用户正看的文档，结算得自己找回贴卡那张）
   // 提前贴回过的批次也要结算：色卡是跑图前贴在文档上的，图已经进 PS 了，不结算就一直留着
@@ -1026,7 +1028,7 @@ async function runBatch(params, count, forceDocId) {
   }
   broadcast('billing', { provider: rvb.prov, cost: costTotal, currency: rvb.meta.currency });
 
-  return { ok: true, done, fail, total };
+  return { ok: true, done, fail, total, placed: placedOk, placeError };
 }
 ipcMain.handle('ai-generate-batch', (_e, { params, count }) => runBatch(params, count));
 

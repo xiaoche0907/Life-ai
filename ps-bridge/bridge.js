@@ -929,7 +929,7 @@ function connect() {
     // 版本握手：软件端据此判断桥接件是否为旧版（提醒Reload）
     try {
       ws.send(JSON.stringify({
-        hello: true, version: 75,
+        hello: true, version: 77,
         presetImport: presetImportState,
         colorcal: Object.keys(hostRegistry).join(','),
         hostErr: hostLoadErr || undefined,

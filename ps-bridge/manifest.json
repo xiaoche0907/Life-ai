@@ -1,7 +1,7 @@
 {
   "id": "com.orange.bridge",
   "name": "来福桥接",
-  "version": "1.0.75",
+  "version": "1.0.77",
   "main": "index.html",
   "manifestVersion": 6,
   "host": {

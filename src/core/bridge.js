@@ -265,7 +265,7 @@ ctx.isCurrentPSSocket = (socket) => socket === psSocket && socket.readyState ===
 ctx.refreshGarmentPanel = () => {
   if (psBridgeVer >= 71 && psSocket?.readyState === 1) psSocket.send(JSON.stringify({ garmentPanelRefresh: true }));
 };
-ctx.curBridgeVer = 75;   // 当前随包桥接版本，v75 补齐 Photoshop 停靠图标资源
+ctx.curBridgeVer = 77;   // v77 更新服装精修侧栏的共享生图状态提示
 // v56 是致命版：captureInput 必抛 "fullMode is not defined"（有没有选区都采不到）。握手撞见它要用最响的话说清楚——
 // 用户在 v5.18.39~42 安装包上重启过 PS 才会加载到它，"重启也没用"就是这个
 ctx.bridgeFatalVers = { 56: 'v56 采集选区必失败（fullMode 作用域错误）' };

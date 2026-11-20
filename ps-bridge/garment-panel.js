@@ -78,8 +78,8 @@ function createPanel(request) {
     status.textContent = `正在生成「${label}」…`;
     render();
     try {
-      await request('generate', { group, preset, ratio, size: activeSize });
-      status.textContent = `「${label}」已贴回，可在 Photoshop 一步撤销。`;
+      const result = await request('generate', { group, preset, ratio, size: activeSize });
+      status.textContent = result.pending ? result.note : `「${label}」已贴回，可在生成进度查看。`;
     } catch (error) {
       status.textContent = error.message;
     } finally {

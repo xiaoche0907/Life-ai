@@ -1604,7 +1604,7 @@ ipcMain.on('prompt-lib-fill', () => {
 });
 ipcMain.on('open-hub', () => toggleHub(true));
 // 程序化确保打开（不toggle）：生图弹进度卡等场景用
-ipcMain.on('show-card', (_e, id) => {
+function showCard(id) {
   cancelReap(id);
   // 融合叠成员：程序化确保可见=翻到它（如生图自动弹进度卡）
   const st0 = stackOf(id);
@@ -1614,7 +1614,9 @@ ipcMain.on('show-card', (_e, id) => {
   if (w && !w.isDestroyed()) { if (!w.isVisible()) w.showInactive(); raiseCard(w); }
   else openCard(id);
   broadcastOpenStates();
-});
+}
+ctx.showCard = showCard;
+ipcMain.on('show-card', (_e, id) => showCard(id));
 
 // 0919 进度卡/聊天等"点击填入提示词"专用：发起方发请求→主进程广播给所有窗口→提示词卡无条件覆盖
 ipcMain.on('prompt-force-fill-request', (_e, txt) => {

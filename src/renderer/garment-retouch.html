@@ -17,7 +17,6 @@
   #model { display: grid; place-items: center; flex: none; margin-left: auto; min-width: 36px; min-height: 36px; color: var(--accent-text); }
   #model svg { width: 18px; height: 18px; }
   main { flex: 1; min-height: 0; overflow: auto; scrollbar-width: none; padding: 0 16px 12px; }
-  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-height: 100%; }
   .panel { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--inset-border); border-radius: 14px; background: var(--inset-bg); }
   .fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   label { display: grid; gap: 4px; align-content: start; font-weight: 600; }
@@ -35,25 +34,16 @@
   input[type=checkbox] { width: auto; margin: 0; accent-color: var(--accent); }
   :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
   button:disabled { cursor: default; opacity: .45; }
-  .primary { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
   .muted, summary, #status { color: var(--text-dim); }
   details { border-top: 1px solid var(--inset-border); padding-top: 8px; }
   summary { cursor: pointer; }
   #constraints { display: grid; gap: 5px; padding-top: 6px; }
   #constraints label { display: flex; align-items: baseline; gap: 7px; font-weight: 400; }
-  .viewbar { display: flex; align-items: center; gap: 6px; }
-  .viewbar strong { margin-right: auto; }
-  button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-text); }
-  .stage { display: grid; flex: 1; min-height: 260px; position: relative; place-items: center; border-radius: 8px; overflow: hidden; background: var(--inset-bg); text-align: center; }
-  .stage img { position: absolute; width: 100%; height: 100%; inset: 0; object-fit: contain; }
-  .stage p { max-width: 230px; margin: 0; padding: 8px; }
-  #document { min-height: 20px; overflow-wrap: anywhere; }
   footer { border-top: 1px solid var(--inset-border); flex-wrap: wrap; }
   footer button { min-height: 36px; }
   #status { flex: 1 1 190px; margin: 0; overflow-wrap: anywhere; }
   #status.error { color: var(--err); }
   #status.success { color: var(--ok); }
-  @media (max-width: 610px) { .layout { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -73,7 +63,7 @@
         </div>
         <label>分类<select id="category"></select></label>
         <label>搜索能力<input id="search" type="search" placeholder="例如：双车线、格纹、膝盖"></label>
-        <p class="muted">点图标生成，选区和蒙版将发送到当前生图渠道并按该渠道计费。</p>
+        <p class="muted">在 Photoshop 框选区域后点击能力，按当前生图设置执行。结果可在「生成进度」查看。</p>
         <div id="tools" class="tool-grid" role="group" aria-label="点击能力图标生成"></div>
         <p id="noMatches" class="muted" hidden>没有匹配的精修能力。</p>
         <details data-pass>
@@ -82,23 +72,11 @@
           <div id="constraints"></div>
         </details>
       </section>
-      <section class="panel" aria-label="选区预览">
-        <div class="viewbar">
-          <strong>选区预览</strong>
-          <button id="before" type="button" aria-pressed="false" disabled>原图</button>
-          <button id="after" type="button" aria-pressed="true" disabled>精修</button>
-        </div>
-        <div class="stage">
-          <p id="placeholder" class="muted">在 Photoshop 用选框、套索或快速蒙版建立选区，再生成预览。</p>
-          <img id="image" alt="" hidden>
-        </div>
-        <div id="document" class="muted"></div>
-      </section>
     </div>
   </main>
   <footer data-nodrag>
     <p id="status" role="status" aria-live="polite"></p>
-    <button id="apply" class="primary" type="button" disabled>应用到 Photoshop</button>
+    <button id="progress" type="button">生成进度</button>
   </footer>
 </div>
 <script>
@@ -115,8 +93,7 @@
   const groupIcons = ['fav', 'brush', 'qp-freq2', 'qp-freq3', 'align', 'qp-grain', 'defectclean', 'lock', 'layout', 'garment-retouch', 'garment-retouch', 'garment-retouch', 'garment-retouch', 'qpresets', 'fx', 'qp-edit'];
   const prompt = $('prompt');
   let config = null;
-  let result = null;
-  let applied = false;
+  let submitted = false;
   let busy = false;
   let configRequest = 0;
   $('icon').innerHTML = window.ORANGE_ICONS['garment-retouch'];
@@ -132,7 +109,6 @@
       button.disabled = busy || !connected || !config.model || !size.value;
       button.setAttribute('aria-busy', String(busy && button === activeTool));
     });
-    $('apply').disabled = busy || !connected || !result || applied;
   }
 
   async function refreshConfig() {
@@ -149,7 +125,7 @@
       const displaySize = config.sizes.includes(preferredSize) ? preferredSize : config.defaultSize;
       size.replaceChildren(...config.sizes.map(value => new Option(value, value, false, value === displaySize)));
       if (!size.value) size.add(new Option('模型无可用档位', ''));
-      if (!busy && !result) {
+      if (!busy && !submitted) {
         if (!config.connected) status('请先连接 Photoshop 桥接。');
         else if (config.bridge < config.requiredBridge) status('请更新 Photoshop 桥接并重启 Photoshop。');
         else if (!config.model) status('请在生图模式选择模型。');
@@ -206,16 +182,9 @@
   }
   renderPresets();
 
-  function showPreview(which) {
-    $('image').src = result[which];
-    $('image').alt = which === 'original' ? 'Photoshop 原始选区' : '服装精修后选区';
-    $('before').setAttribute('aria-pressed', String(which === 'original'));
-    $('after').setAttribute('aria-pressed', String(which === 'preview'));
-  }
-  $('before').addEventListener('click', () => showPreview('original'));
-  $('after').addEventListener('click', () => showPreview('preview'));
   $('model').innerHTML = window.ORANGE_ICONS['ai-gen'];
   $('model').addEventListener('click', () => api.showCard('ai-gen'));
+  $('progress').addEventListener('click', () => api.showCard('progress'));
 
   async function generate(label, preset, button) {
     if (busy || button.disabled) return;
@@ -232,29 +201,14 @@
     const { provider, model } = config;
     activeTool = button;
     busy = true;
-    result = null;
-    applied = false;
+    submitted = true;
     syncButtons();
-    $('image').hidden = true;
-    $('image').removeAttribute('src');
-    $('placeholder').hidden = false;
-    $('placeholder').textContent = '正在读取选区并等待模型返回…';
-    $('document').textContent = '';
-    $('before').disabled = $('after').disabled = true;
     status(`正在生成「${label}」…`);
     try {
       const response = await api.garmentRetouchGenerate({ prompt: body, provider, model, size: size.value, ratio: ratio.value });
       if (!response.ok) throw Error(response.error);
-      result = response;
-      $('document').textContent = `${response.title || 'Photoshop 文档'} · ${response.width} × ${response.height} · ${response.model}`;
-      $('image').hidden = false;
-      $('placeholder').hidden = true;
-      $('before').disabled = $('after').disabled = false;
-      showPreview('preview');
-      if (window.matchMedia('(max-width: 610px)').matches) $('image').scrollIntoView({ block: 'nearest' });
-      status('请比较原图与精修效果，确认后应用。', 'success');
+      status(response.pending ? response.note : '精修已贴回，可在生成进度查看。', 'success');
     } catch (error) {
-      $('placeholder').textContent = '建立选区并生成后，可在这里对比效果。';
       status(error.message || String(error), 'error');
     } finally {
       busy = false;
@@ -264,22 +218,6 @@
     }
   }
 
-  $('apply').addEventListener('click', async () => {
-    busy = true;
-    syncButtons();
-    status('正在写回 Photoshop…');
-    try {
-      const response = await api.garmentRetouchApply();
-      if (!response.ok) throw Error(response.error);
-      applied = true;
-      status('已添加「服装精修」图层，可在 Photoshop 一步撤销。', 'success');
-    } catch (error) {
-      status(error.message || String(error), 'error');
-    } finally {
-      busy = false;
-      syncButtons();
-    }
-  });
 
   api.onPSStatus(refreshConfig);
   api.onProvidersChanged(refreshConfig);
