@@ -37,7 +37,7 @@ function startBridgeServer() {
     psSocket = socket;
     psBridgeVer = 0;
     ctx.broadcast('ps-status', { connected: true, bridgeVer: 0 });
-    socket.on('message', (raw) => {
+    socket.on('message', async (raw) => {
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
       if (msg.hello) {   // 桥接件版本握手
@@ -64,6 +64,14 @@ function startBridgeServer() {
         return;
       }
       // 桥接件开机自装选框预设的终态（v52：PS开机即查即导，不等切比例）
+      if (msg.garmentPanel) {
+        if (psSocket !== socket || psBridgeVer < 71 || !Number.isSafeInteger(msg.requestId)) return;
+        let result;
+        try { result = await ctx.garmentPanelRequest(socket, msg.garmentPanel, msg.params); }
+        catch (error) { result = { ok: false, error: error.message || String(error) }; }
+        if (psSocket === socket && socket.readyState === 1) socket.send(JSON.stringify({ garmentPanelReply: msg.requestId, result }));
+        return;
+      }
       if (msg.presetImport) { logPresetImport(msg.presetImport); return; }
       // 老host模块的推流消息（校色等）：统一写入生图日志 + 转发给卡片
       if (msg.push) {
@@ -253,7 +261,11 @@ ctx.startBridgeServer = startBridgeServer;
 ctx.sendToPSAwait = sendToPSAwait;
 ctx.psConnected = () => !!(psSocket && psSocket.readyState === 1);   // COM兜底探测据此让位
 ctx.bridgeVer = () => psBridgeVer;
-ctx.curBridgeVer = 69;   // 期望的桥接件版本（与ps-bridge/bridge.js的hello version同步抬；68=批量改色原生工程；69=肤色统一写回动作）
+ctx.isCurrentPSSocket = (socket) => socket === psSocket && socket.readyState === 1;
+ctx.refreshGarmentPanel = () => {
+  if (psBridgeVer >= 71 && psSocket?.readyState === 1) psSocket.send(JSON.stringify({ garmentPanelRefresh: true }));
+};
+ctx.curBridgeVer = 75;   // 当前随包桥接版本，v75 补齐 Photoshop 停靠图标资源
 // v56 是致命版：captureInput 必抛 "fullMode is not defined"（有没有选区都采不到）。握手撞见它要用最响的话说清楚——
 // 用户在 v5.18.39~42 安装包上重启过 PS 才会加载到它，"重启也没用"就是这个
 ctx.bridgeFatalVers = { 56: 'v56 采集选区必失败（fullMode 作用域错误）' };

@@ -13,12 +13,14 @@
     display: flex; flex-direction: column;
     overflow: hidden;
     color: var(--text);
+    container-type: inline-size;
   }
 
   #head {
     display: flex; align-items: center; gap: 8px;
     padding: 14px 16px 8px;
     cursor: grab;
+    flex: none;
   }
   #head:active { cursor: grabbing; }
   #head .title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; letter-spacing: 1px; color: #fff; }
@@ -36,24 +38,38 @@
   #btnClose { font-size: 15px; color: #fff; line-height: 1; }
 
 
-  /* 网格与气泡全部用vw定尺：窗口拉多窄，图标/文字/间距同步等比缩小，永远一排4个 */
-  #grid {
-    flex: 1; overflow-y: auto;
+  #grid, #subgrid {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden auto;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 2.85vw;
-    padding: 1.4vw 3.8vw 3.8vw;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: clamp(6px, 3cqw, 12px);
+    padding: 6px clamp(8px, 3cqw, 14px) 12px;
     align-content: start;
+    grid-auto-rows: max-content;
+    scrollbar-width: none;
   }
-  #grid::-webkit-scrollbar { width: 0; }
+  @container (width < 300px) {
+    #grid, #subgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @container (width < 218px) {
+    #grid, #subgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @container (width < 146px) {
+    #grid, #subgrid { grid-template-columns: minmax(0, 1fr); }
+  }
 
   /* ---------- 方形功能气泡（液态玻璃小方块，真模糊面板基底） ---------- */
   .bubble {
     aspect-ratio: 1;
-    border-radius: 4.76vw;
+    min-width: 0;
+    min-height: 0;
+    padding: 4px;
+    border-radius: clamp(10px, 4.8cqw, 20px);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 1.43vw;
+    gap: clamp(4px, 1.5cqw, 8px);
     cursor: grab;
     transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), background 0.2s;
   }
@@ -62,9 +78,9 @@
     transform: translateY(-3px);
   }
   .bubble:active { cursor: grabbing; transform: scale(0.94); }
-  .bubble .ico { display: flex; color: var(--accent-text); }
-  .bubble .ico svg { width: 5.95vw; height: 5.95vw; }
-  .bubble .lab { font-size: 2.62vw; color: #fff; letter-spacing: 0.12vw; white-space: nowrap; }
+  .bubble .ico { display: flex; align-items: center; color: var(--accent-text); font-size: clamp(15px, 5.95cqw, 27px); }
+  .bubble .ico svg { width: 1em; height: 1em; }
+  .bubble .lab { max-width: 100%; text-align: center; overflow-wrap: anywhere; font-size: clamp(10px, 3.1cqw, 14px); color: #fff; }
   .bubble.stub .ico { opacity: 0.55; }
   /* 已打开的模块：主题色内部填充 + 边缘发光 */
   .bubble.open {
@@ -108,10 +124,10 @@
   }
 
   /* ---------- 商业精修分组子视图：点组气泡进入，返回键回主网格 ---------- */
-  #subview { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+  #subview { flex: 1; min-height: 0; display: none; flex-direction: column; overflow: hidden; }
   body.submode #grid { display: none; }
   body.submode #subview { display: flex; }
-  #subhead { display: flex; align-items: center; gap: 2.4vw; padding: 0.6vw 3.8vw 1.2vw; }
+  #subhead { flex: none; display: flex; align-items: center; gap: 8px; padding: 3px clamp(8px, 3cqw, 14px) 4px; }
   #btnBack {
     width: 6.2vw; height: 6.2vw; border-radius: 2.4vw; flex: none;
     display: flex; align-items: center; justify-content: center;
@@ -121,16 +137,7 @@
   #btnBack:hover { background: var(--btn-bg-hover); }
   #btnBack:active { transform: scale(0.9); }
   #btnBack svg { width: 3.4vw; height: 3.4vw; }
-  #subTitle { font-size: 3.1vw; font-weight: 700; color: #fff; letter-spacing: 0.2vw; }
-  #subgrid {
-    flex: 1; overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 2.85vw;
-    padding: 0.5vw 3.8vw 3.8vw;
-    align-content: start;
-  }
-  #subgrid::-webkit-scrollbar { width: 0; }
+  #subTitle { font-size: clamp(12px, 3.5cqw, 16px); font-weight: 700; color: #fff; }
 </style>
 </head>
 <body>
@@ -192,7 +199,7 @@
     const GROUPS = [
       {
         id: 'group-retouch', label: '商业精修', icon: 'brush',
-        members: ['recolor', 'toneunify', 'skinmatch', 'proportion', 'whitebg', 'edgeclean', 'shineremove', 'defectclean', 'shadow', 'wrinkle', 'skintexture', 'material', 'productalign', 'qualitycheck', 'layersplit'],
+        members: ['garment-retouch', 'recolor', 'toneunify', 'skinmatch', 'proportion', 'whitebg', 'edgeclean', 'shineremove', 'defectclean', 'shadow', 'wrinkle', 'skintexture', 'material', 'productalign', 'qualitycheck', 'layersplit'],
       },
     ];
     const memberSet = new Set();
@@ -256,6 +263,7 @@
       curGroup = g;
       document.getElementById('subTitle').textContent = g.label;
       subgrid.innerHTML = '';
+      subgrid.scrollTop = 0;
       g.members.forEach((id) => {
         const m = mods.find((x) => x.id === id);
         if (!m) return;   // 被隐藏/裁掉的成员静默跳过

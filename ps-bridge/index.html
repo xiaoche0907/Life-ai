@@ -3,14 +3,32 @@
 <head>
 <meta charset="UTF-8" />
 <style>
-  body { font-family: sans-serif; padding: 12px; color: #ccc; background: #1e1e1e; }
+  body { font-family: sans-serif; color: var(--uxp-host-text-color, #ddd); background: var(--uxp-host-background-color, #292929); }
+  #status, .garment-panel { padding: 10px; }
+  .garment-panel { height: 100vh; box-sizing: border-box; overflow-y: auto; }
+  .garment-heading { display: flex; align-items: center; margin-bottom: 8px; }
+  .garment-heading img { width: 28px; height: 28px; margin-right: 8px; }
+  .garment-row { display: flex; flex-wrap: wrap; margin: 6px 0; }
+  .garment-row button { min-height: 28px; padding: 3px 8px; margin: 2px; color: var(--uxp-host-text-color, #ddd); background: var(--uxp-host-widget-hover-background-color, #414141); border: 1px solid #777; border-radius: 5px; }
+  .garment-row button:hover { border-color: #56c2cb; }
+  .garment-row button[aria-pressed="true"], .garment-row button[aria-expanded="true"] { border-color: #56c2cb; }
+  .garment-row .garment-tool { flex: 1 0 42%; min-height: 34px; }
+  .garment-row button:disabled { opacity: .45; }
   #status { font-size: 13px; }
   .on { color: #30d158; }
   .off { color: #ff453a; }
 </style>
 </head>
 <body>
-  <div id="status" class="off">● 未连接来福软件</div>
+  <div class="garment-panel">
+    <div class="garment-heading"><img src="garment-panel@2x.png" alt="来福"><sp-heading size="S">服装精修</sp-heading></div>
+    <sp-body id="garment-model" size="S">正在连接来福…</sp-body>
+    <div class="garment-row" id="garment-params"></div>
+    <div class="garment-row" id="garment-options"></div>
+    <div class="garment-row" id="garment-actions"></div>
+    <sp-body id="garment-status" size="S" role="status" aria-live="polite">在 Photoshop 框选服装区域，连接来福后即可精修。</sp-body>
+    <sp-body id="status" class="off" size="S">● 未连接来福软件</sp-body>
+  </div>
   <script src="bridge.js"></script>
 </body>
 </html>

@@ -262,6 +262,8 @@ const handlers = {
   async placeMaterialLayer(params) { return require('./material.host').place(params); },
   async listLayerBBoxes(params) { return require('./productalign.host').listLayerBBoxes(params); },
   async placeDefectCleanLayer(params) { return require('./defectclean.host').place(params); },
+  async captureGarmentRetouch() { return require('./garment-retouch.host').capture(readSelection); },
+  async placeGarmentRetouch(params) { return require('./garment-retouch.host').place(params); },
   async captureInput(params) {
     if (!app.activeDocument && !(params && params.docId)) throw new Error('没有打开的文档');
     // 用户点生成那一刻看着的文档=采集目标（命令已串行化，此刻没有我们自己的模态在切文档）
@@ -862,6 +864,16 @@ function runSerial(fn) {
 async function handleMessage(raw) {
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
+  if (msg.garmentPanelRefresh) { garmentPanel?.refresh(false); return; }
+  if (Number.isSafeInteger(msg.garmentPanelReply)) {
+    const job = panelRequests.get(msg.garmentPanelReply);
+    if (!job) return;
+    panelRequests.delete(msg.garmentPanelReply);
+    clearTimeout(job.timer);
+    if (msg.result?.ok) job.resolve(msg.result);
+    else job.reject(Error(msg.result?.error || '来福未完成操作'));
+    return;
+  }
   const { id, action: act, params } = msg;
   const reply = { id, ok: false };
   try {
@@ -882,24 +894,60 @@ async function handleMessage(raw) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(reply));
 }
 
+const panelRequests = new Map();
+let panelSequence = 0;
+let garmentPanel;
+function requestGarmentPanel(method, params) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== 1) { reject(Error('请先启动来福')); return; }
+    const requestId = ++panelSequence;
+    const timer = method === 'settings' ? setTimeout(() => {
+      panelRequests.delete(requestId);
+      reject(Error('来福未响应，请确认已更新到支持侧栏的版本。'));
+    }, 8000) : null;
+    panelRequests.set(requestId, { resolve, reject, timer });
+    try { ws.send(JSON.stringify({ garmentPanel: method, requestId, params })); }
+    catch (error) { clearTimeout(timer); panelRequests.delete(requestId); reject(error); }
+  });
+}
+
+try {
+  garmentPanel = require('./garment-panel.js')(requestGarmentPanel);
+} catch (error) {
+  const message = '服装精修载入失败：' + (error.message || String(error));
+  document.getElementById('garment-status').textContent = message;
+  console.error(message);
+}
+
 // ---------- 连接管理：断线自动重连 ----------
 function connect() {
   try { ws = new WebSocket(WS_URL); } catch { scheduleRetry(); return; }
 
   ws.onopen = () => {
+    const socket = ws;
     setStatus(true);
     // 版本握手：软件端据此判断桥接件是否为旧版（提醒Reload）
     try {
       ws.send(JSON.stringify({
-        hello: true, version: 69,
+        hello: true, version: 75,
         presetImport: presetImportState,
         colorcal: Object.keys(hostRegistry).join(','),
         hostErr: hostLoadErr || undefined,
       }));
     } catch (e) {}
+    if (socket === ws) garmentPanel?.connected(true);
   };
   ws.onmessage = (e) => handleMessage(e.data);
-  ws.onclose = () => { setStatus(false); scheduleRetry(); };
+  ws.onclose = () => {
+    setStatus(false);
+    garmentPanel?.connected(false);
+    for (const job of panelRequests.values()) {
+      clearTimeout(job.timer);
+      job.reject(Error('与来福的连接已断开，请检查任务结果后重试。'));
+    }
+    panelRequests.clear();
+    scheduleRetry();
+  };
   ws.onerror = () => { /* onclose会跟着触发 */ };
 }
 

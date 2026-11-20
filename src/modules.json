@@ -210,6 +210,15 @@
     "ready": true
   },
   {
+    "id": "garment-retouch",
+    "icon": "🧵",
+    "label": "服装精修",
+    "file": "garment-retouch.html",
+    "width": 820,
+    "height": 660,
+    "ready": true
+  },
+  {
     "id": "wrinkle",
     "icon": "🧵",
     "label": "褶皱优化",

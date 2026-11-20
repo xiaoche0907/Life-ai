@@ -1,7 +1,7 @@
 {
   "id": "com.orange.bridge",
   "name": "来福桥接",
-  "version": "1.0.69",
+  "version": "1.0.75",
   "main": "index.html",
   "manifestVersion": 6,
   "host": {
@@ -17,29 +17,22 @@
     },
     "localFileSystem": "fullAccess"
   },
+  "icons": [
+    { "width": 23, "height": 23, "path": "garment-panel.png", "scale": [1, 2], "theme": ["all"], "species": ["generic", "pluginList"] }
+  ],
   "entrypoints": [
     {
       "type": "panel",
-      "id": "orangeBridgePanel",
-      "label": {
-        "default": "来福桥接"
-      },
-      "minimumSize": {
-        "width": 200,
-        "height": 100
-      },
-      "maximumSize": {
-        "width": 400,
-        "height": 300
-      },
-      "preferredDockedSize": {
-        "width": 220,
-        "height": 120
-      },
-      "preferredFloatingSize": {
-        "width": 220,
-        "height": 120
-      }
+      "id": "lifeGarmentRetouch",
+      "label": { "default": "服装精修" },
+      "minimumSize": { "width": 220, "height": 170 },
+      "maximumSize": { "width": 1200, "height": 2000 },
+      "preferredDockedSize": { "width": 265, "height": 480 },
+      "preferredFloatingSize": { "width": 285, "height": 480 },
+      "icons": [
+        { "width": 23, "height": 23, "path": "garment-panel.png", "scale": [1, 2], "theme": ["darkest", "dark", "medium"] },
+        { "width": 23, "height": 23, "path": "garment-panel.png", "scale": [1, 2], "theme": ["lightest", "light"] }
+      ]
     }
   ]
 }

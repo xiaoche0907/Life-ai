@@ -206,7 +206,7 @@ function resolveGen(p) {
   // （/v1/images/generations 文生图、/v1/images/edits 传图）。模型表里写了 api 的（历史遗留）以表为准。
   const forceApi = (meta && meta.openai) ? 'openai' : undefined;
   const api2 = (mconf && mconf.api) || forceApi;
-  return { prov, meta, pc, base, key, model, mconf, effSize, requestModel, cost, api: api2 };
+  return { prov, meta, pc, base, key, model, mconf, effSize, requestModel, cost, api: api2, rememberModel: p?.rememberModel !== false };
 }
 
 async function generateOne(p) {
@@ -242,8 +242,10 @@ function saveResult(rv, buf, mime, wantDataUrl) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'gen_' + uniq() + '.' + ext);
   fs.writeFileSync(file, buf);
-  config.providers[rv.prov].model = rv.model;
-  saveConfig();
+  if (rv.rememberModel) {
+    config.providers[rv.prov].model = rv.model;
+    saveConfig();
+  }
   const out = { ok: true, file };
   try {
     const image = nativeImage.createFromBuffer(buf);
@@ -267,7 +269,7 @@ async function fetchImage(url, signal) {
 }
 // 参考图列表 → [{buf,mime}]（三条路共用，最多 12 张，坏文件跳过）
 function readRefs(p) {
-  const out = [];
+  const out = Buffer.isBuffer(p.maskPng) ? [{ buf: p.maskPng, mime: 'image/png' }] : [];
   if (!Array.isArray(p.refs)) return out;
   for (const fp of p.refs.slice(0, 12)) {
     try {
@@ -479,15 +481,8 @@ async function generateViaGemini(p, rv) {
   if (p.inputImage) {
     parts.push({ inlineData: { mimeType: p.inputMime || 'image/jpeg', data: p.inputImage } });
   }
-  if (Array.isArray(p.refs)) {
-    for (const fp of p.refs.slice(0, 12)) {
-      try {
-        const buf = fs.readFileSync(fp);
-        const ext2 = path.extname(fp).toLowerCase();
-        const mime2 = (ext2 === '.jpg' || ext2 === '.jpeg') ? 'image/jpeg' : (ext2 === '.webp' ? 'image/webp' : 'image/png');
-        parts.push({ inlineData: { mimeType: mime2, data: buf.toString('base64') } });
-      } catch {}
-    }
+  for (const ref of readRefs(p)) {
+    parts.push({ inlineData: { mimeType: ref.mime, data: ref.buf.toString('base64') } });
   }
   const body = {
     contents: [{ role: 'user', parts }],

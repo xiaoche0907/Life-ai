@@ -43,6 +43,7 @@ require('./core/plib-import');   // 提示词批量导入/搬运（0906）
 require('./core/plib-update');   // 提示词远程更新：OSS 拉取+按条合并（1012）
 require('./core/updater');       // 软件本体更新：查版本/下载安装包/启动安装程序（1013，更新卡）
 require('./core/gen');
+require('./core/garment-retouch');
 require('./core/viewer');   // 看图层：进度卡右键大图（整屏压暗模糊/滚轮切图/点图贴回，0913）
 require('./core/chat');
 require('./core/forge');

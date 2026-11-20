@@ -782,7 +782,10 @@ ipcMain.handle('set-config', (e, patch) => {
       if (config.providers[k]) Object.assign(config.providers[k], v);
       else if (/^cus_[a-z0-9]{3,16}$/.test(k)) config.providers[k] = Object.assign({ base: '', key: '', model: '', models: [], label: k, hidden: false }, v);
     }
-    if (typeof ctx.broadcast === 'function') ctx.broadcast('providers-changed', {});   // 渠道增删/显隐→各卡刷新（broadcast 由 windows.js 稍后挂上，启动早期可能还没有）
+  }
+  if (patch.provider || patch.providers) {
+    if (typeof ctx.broadcast === 'function') ctx.broadcast('providers-changed', {});
+    ctx.refreshGarmentPanel?.();
   }
   // 流畅优先（低配电脑）：写入后立即重算轮询频率/回收时限/动画开关，并广播给各卡（省得重启才生效）
   if (patch.perf && typeof patch.perf === 'object') {

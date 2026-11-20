@@ -104,6 +104,9 @@ const API = {
   // --- AI生图 ---
   aiGenerate: (params) => ipcRenderer.invoke('ai-generate', params),
   aiGenerateBatch: (params, count) => ipcRenderer.invoke('ai-generate-batch', { params, count }),
+  garmentRetouchSettings: () => ipcRenderer.invoke('garment-retouch-settings'),
+  garmentRetouchGenerate: (params) => ipcRenderer.invoke('garment-retouch-generate', params),
+  garmentRetouchApply: () => ipcRenderer.invoke('garment-retouch-apply'),
   getGenTasks: () => ipcRenderer.invoke('get-gen-tasks'),
   onGenTasks: (cb) => ipcRenderer.on('gen-tasks', (_e, t) => cb(t)),
   taskAction: (id, action) => ipcRenderer.send('task-action', { id, action }),

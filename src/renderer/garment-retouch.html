@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>服装精修</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; color: var(--text); font: 13px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  #card { position: absolute; inset: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  #head, footer { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+  #head { cursor: grab; }
+  #head h1 { margin: 0; font-size: 16px; white-space: nowrap; }
+  #icon { display: flex; color: var(--accent-text); }
+  #icon svg { width: 18px; height: 18px; }
+  #model { display: grid; place-items: center; flex: none; margin-left: auto; min-width: 36px; min-height: 36px; color: var(--accent-text); }
+  #model svg { width: 18px; height: 18px; }
+  main { flex: 1; min-height: 0; overflow: auto; scrollbar-width: none; padding: 0 16px 12px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-height: 100%; }
+  .panel { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--inset-border); border-radius: 14px; background: var(--inset-bg); }
+  .fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  label { display: grid; gap: 4px; align-content: start; font-weight: 600; }
+  .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 86px), 1fr)); gap: 8px; }
+  .tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 62px; overflow-wrap: anywhere; }
+  .tool .tool-icon { display: flex; color: var(--accent-text); }
+  .tool svg { width: 20px; height: 20px; }
+  .tool:hover:not(:disabled) { background: var(--accent-soft); }
+  .tool[aria-busy=true] { border-color: var(--accent-border); color: var(--accent-text); }
+  button, select, input, textarea { border: 1px solid var(--inset-border); border-radius: 8px; padding: 7px 9px; color: var(--text); background: var(--btn-bg); font: inherit; }
+  button, select { cursor: pointer; }
+  input, select, textarea { min-width: 0; width: 100%; }
+  option { background: #26282e; color: white; }
+  textarea { resize: vertical; min-height: 96px; user-select: text; }
+  input[type=checkbox] { width: auto; margin: 0; accent-color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+  button:disabled { cursor: default; opacity: .45; }
+  .primary { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+  .muted, summary, #status { color: var(--text-dim); }
+  details { border-top: 1px solid var(--inset-border); padding-top: 8px; }
+  summary { cursor: pointer; }
+  #constraints { display: grid; gap: 5px; padding-top: 6px; }
+  #constraints label { display: flex; align-items: baseline; gap: 7px; font-weight: 400; }
+  .viewbar { display: flex; align-items: center; gap: 6px; }
+  .viewbar strong { margin-right: auto; }
+  button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-text); }
+  .stage { display: grid; flex: 1; min-height: 260px; position: relative; place-items: center; border-radius: 8px; overflow: hidden; background: var(--inset-bg); text-align: center; }
+  .stage img { position: absolute; width: 100%; height: 100%; inset: 0; object-fit: contain; }
+  .stage p { max-width: 230px; margin: 0; padding: 8px; }
+  #document { min-height: 20px; overflow-wrap: anywhere; }
+  footer { border-top: 1px solid var(--inset-border); flex-wrap: wrap; }
+  footer button { min-height: 36px; }
+  #status { flex: 1 1 190px; margin: 0; overflow-wrap: anywhere; }
+  #status.error { color: var(--err); }
+  #status.success { color: var(--ok); }
+  @media (max-width: 610px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="garment-retouch-prompts.js"></script>
+<div id="card" class="lg">
+  <header id="head">
+    <span id="icon" aria-hidden="true"></span><h1>服装精修</h1>
+    <button id="model" type="button" title="打开生图模式" aria-label="打开生图模式"></button>
+  </header>
+  <main data-nodrag>
+    <div class="layout">
+      <section class="panel" aria-label="精修提示词">
+        <div class="fields">
+          <label>比例<select id="ratio"><option value="Auto">Auto</option></select></label>
+          <label>分辨率<select id="size"><option value="2K">2K</option></select></label>
+        </div>
+        <label>分类<select id="category"></select></label>
+        <label>搜索能力<input id="search" type="search" placeholder="例如：双车线、格纹、膝盖"></label>
+        <p class="muted">点图标生成，选区和蒙版将发送到当前生图渠道并按该渠道计费。</p>
+        <div id="tools" class="tool-grid" role="group" aria-label="点击能力图标生成"></div>
+        <p id="noMatches" class="muted" hidden>没有匹配的精修能力。</p>
+        <details data-pass>
+          <summary>自定义与保留限制</summary>
+          <label>补充提示词<textarea id="prompt" maxlength="4000" rows="3" placeholder="填写后会附加到所点击的能力"></textarea></label>
+          <div id="constraints"></div>
+        </details>
+      </section>
+      <section class="panel" aria-label="选区预览">
+        <div class="viewbar">
+          <strong>选区预览</strong>
+          <button id="before" type="button" aria-pressed="false" disabled>原图</button>
+          <button id="after" type="button" aria-pressed="true" disabled>精修</button>
+        </div>
+        <div class="stage">
+          <p id="placeholder" class="muted">在 Photoshop 用选框、套索或快速蒙版建立选区，再生成预览。</p>
+          <img id="image" alt="" hidden>
+        </div>
+        <div id="document" class="muted"></div>
+      </section>
+    </div>
+  </main>
+  <footer data-nodrag>
+    <p id="status" role="status" aria-live="polite"></p>
+    <button id="apply" class="primary" type="button" disabled>应用到 Photoshop</button>
+  </footer>
+</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const { groups, constraints } = window.GarmentRetouchPrompts;
+  const api = window.orange;
+  const category = $('category');
+  const tools = $('tools');
+  const ratio = $('ratio');
+  const size = $('size');
+  let activeTool = null;
+  let preferredSize = '2K';
+  const groupIcons = ['fav', 'brush', 'qp-freq2', 'qp-freq3', 'align', 'qp-grain', 'defectclean', 'lock', 'layout', 'garment-retouch', 'garment-retouch', 'garment-retouch', 'garment-retouch', 'qpresets', 'fx', 'qp-edit'];
+  const prompt = $('prompt');
+  let config = null;
+  let result = null;
+  let applied = false;
+  let busy = false;
+  let configRequest = 0;
+  $('icon').innerHTML = window.ORANGE_ICONS['garment-retouch'];
+
+  function status(text, type = '') {
+    $('status').textContent = text;
+    $('status').className = type;
+  }
+
+  function syncButtons() {
+    const connected = config?.connected && config.bridge >= config.requiredBridge;
+    tools.querySelectorAll('button').forEach(button => {
+      button.disabled = busy || !connected || !config.model || !size.value;
+      button.setAttribute('aria-busy', String(busy && button === activeTool));
+    });
+    $('apply').disabled = busy || !connected || !result || applied;
+  }
+
+  async function refreshConfig() {
+    const request = ++configRequest;
+    try {
+      const current = await api.garmentRetouchSettings();
+      if (request !== configRequest) return;
+      config = current;
+      const modelLabel = `${config.channel} · ${config.modelName || '未选择模型'}（打开生图模式）`;
+      $('model').title = modelLabel;
+      $('model').setAttribute('aria-label', modelLabel);
+      const ratioValue = ratio.value;
+      ratio.replaceChildren(...config.ratios.map(value => new Option(value, value, false, value === ratioValue)));
+      const displaySize = config.sizes.includes(preferredSize) ? preferredSize : config.defaultSize;
+      size.replaceChildren(...config.sizes.map(value => new Option(value, value, false, value === displaySize)));
+      if (!size.value) size.add(new Option('模型无可用档位', ''));
+      if (!busy && !result) {
+        if (!config.connected) status('请先连接 Photoshop 桥接。');
+        else if (config.bridge < config.requiredBridge) status('请更新 Photoshop 桥接并重启 Photoshop。');
+        else if (!config.model) status('请在生图模式选择模型。');
+        else if (!$('status').classList.contains('error')) status('请在 Photoshop 建立选区。');
+      }
+    } catch (error) {
+      if (request !== configRequest) return;
+      config = null;
+      $('model').title = '生图配置读取失败（打开生图模式）';
+      $('model').setAttribute('aria-label', $('model').title);
+      if (!busy) status(error.message || String(error), 'error');
+    }
+    syncButtons();
+  }
+
+  function renderPresets() {
+    const query = $('search').value.trim().toLowerCase();
+    const seen = new Set();
+    tools.replaceChildren();
+    groups.forEach(([name, items], index) => {
+      if (!query && index !== Number(category.value)) return;
+      for (const [label, text] of items) {
+        if (query && (!`${label} ${text}`.toLowerCase().includes(query) || seen.has(text))) continue;
+        seen.add(text);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'tool';
+        button.title = `${name} · ${label}\n${text}`;
+        const graphic = document.createElement('span');
+        graphic.className = 'tool-icon';
+        graphic.setAttribute('aria-hidden', 'true');
+        graphic.innerHTML = window.ORANGE_ICONS[groupIcons[index]] || window.ORANGE_ICONS.brush;
+        button.append(graphic, document.createTextNode(label));
+        button.addEventListener('click', () => generate(label, text, button));
+        tools.append(button);
+      }
+    });
+    category.disabled = !!query;
+    $('noMatches').hidden = !!tools.childElementCount;
+    syncButtons();
+  }
+
+  groups.forEach(([name], index) => category.add(new Option(name, index)));
+  category.addEventListener('change', renderPresets);
+  $('search').addEventListener('input', renderPresets);
+  size.addEventListener('change', () => { preferredSize = size.value; });
+  for (const text of constraints) {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = text;
+    label.append(checkbox, document.createTextNode(text));
+    $('constraints').append(label);
+  }
+  renderPresets();
+
+  function showPreview(which) {
+    $('image').src = result[which];
+    $('image').alt = which === 'original' ? 'Photoshop 原始选区' : '服装精修后选区';
+    $('before').setAttribute('aria-pressed', String(which === 'original'));
+    $('after').setAttribute('aria-pressed', String(which === 'preview'));
+  }
+  $('before').addEventListener('click', () => showPreview('original'));
+  $('after').addEventListener('click', () => showPreview('preview'));
+  $('model').innerHTML = window.ORANGE_ICONS['ai-gen'];
+  $('model').addEventListener('click', () => api.showCard('ai-gen'));
+
+  async function generate(label, preset, button) {
+    if (busy || button.disabled) return;
+    const rules = Array.from(document.querySelectorAll('#constraints input:checked'), input => input.value);
+    const extra = prompt.value.trim();
+    if (preset.includes('【问题】') && !extra) {
+      prompt.closest('details').open = true;
+      prompt.focus();
+      status('请先填写自定义修复要求。', 'error');
+      return;
+    }
+    const body = (preset.includes('【问题】') ? [extra, ...rules] : [preset, extra, ...rules].filter(Boolean)).join('\n');
+    if (body.length > 4000) { status('提示词和保留限制合计最多 4000 字。', 'error'); return; }
+    const { provider, model } = config;
+    activeTool = button;
+    busy = true;
+    result = null;
+    applied = false;
+    syncButtons();
+    $('image').hidden = true;
+    $('image').removeAttribute('src');
+    $('placeholder').hidden = false;
+    $('placeholder').textContent = '正在读取选区并等待模型返回…';
+    $('document').textContent = '';
+    $('before').disabled = $('after').disabled = true;
+    status(`正在生成「${label}」…`);
+    try {
+      const response = await api.garmentRetouchGenerate({ prompt: body, provider, model, size: size.value, ratio: ratio.value });
+      if (!response.ok) throw Error(response.error);
+      result = response;
+      $('document').textContent = `${response.title || 'Photoshop 文档'} · ${response.width} × ${response.height} · ${response.model}`;
+      $('image').hidden = false;
+      $('placeholder').hidden = true;
+      $('before').disabled = $('after').disabled = false;
+      showPreview('preview');
+      if (window.matchMedia('(max-width: 610px)').matches) $('image').scrollIntoView({ block: 'nearest' });
+      status('请比较原图与精修效果，确认后应用。', 'success');
+    } catch (error) {
+      $('placeholder').textContent = '建立选区并生成后，可在这里对比效果。';
+      status(error.message || String(error), 'error');
+    } finally {
+      busy = false;
+      activeTool = null;
+      syncButtons();
+      refreshConfig();
+    }
+  }
+
+  $('apply').addEventListener('click', async () => {
+    busy = true;
+    syncButtons();
+    status('正在写回 Photoshop…');
+    try {
+      const response = await api.garmentRetouchApply();
+      if (!response.ok) throw Error(response.error);
+      applied = true;
+      status('已添加「服装精修」图层，可在 Photoshop 一步撤销。', 'success');
+    } catch (error) {
+      status(error.message || String(error), 'error');
+    } finally {
+      busy = false;
+      syncButtons();
+    }
+  });
+
+  api.onPSStatus(refreshConfig);
+  api.onProvidersChanged(refreshConfig);
+  api.onGenVars(refreshConfig);
+  window.addEventListener('focus', refreshConfig);
+  refreshConfig();
+})();
+</script>
+<script src="glass.js"></script>
+</body>
+</html>
