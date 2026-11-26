@@ -2,66 +2,88 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const file = path.join(__dirname, '../src/core/bridge-install.js');
-const code = fs.readFileSync(file, 'utf8');
-async function scenario({ alive = true, current = false, processError = false, installerError = false, permissionDenied = false } = {}) {
-  const state = { alive, current, installs: 0, scheduled: [], broadcasts: [] };
+
+const code = fs.readFileSync(path.join(__dirname, '../src/core/bridge-install.js'), 'utf8');
+const source = path.join('mock', 'ps-bridge');
+const machine = 'C:\\Program Files\\Common Files\\Adobe\\UXP';
+const ext = path.join(machine, 'Plugins', 'External');
+const stable = path.join(ext, 'com.orange.bridge_live');
+const registry = path.join(machine, 'PluginsInfo', 'v1', 'PS.json');
+const manifest = { id: 'com.orange.bridge', version: '1.0.77' };
+const missing = () => Object.assign(Error('Missing path'), { code: 'ENOENT' });
+
+async function scenario({ alive = false, complete = false, deny = false, queryError = false } = {}) {
+  const state = { alive, complete, launches: [], timers: [], logs: [] };
   const handlers = {};
-  const manifest = { id: 'com.orange.bridge', version: '1.0.59' };
-  const ext = path.join('C:\\Program Files\\Common Files\\Adobe\\UXP', 'Plugins', 'External');
-  const stable = path.join(ext, 'com.orange.bridge_live');
-  const reg = path.join('C:\\Program Files\\Common Files\\Adobe\\UXP', 'PluginsInfo', 'v1', 'PS.json');
-  const fakeFS = {
-    existsSync: (p) => state.current && (p === ext || p === reg),
-    readFileSync: (p) => {
-      if (p === reg) return JSON.stringify({ plugins: [{ pluginId: manifest.id, versionString: manifest.version, status: 'enabled', path: '$systemPlugins\\External\\com.orange.bridge_live' }] });
-      if (p.endsWith('result.json')) return JSON.stringify(permissionDenied ? { ok: false, error: 'Access denied', code: 'PERMISSION_DENIED' } : installerError ? { ok: false, error: 'DENIED' } : { ok: true, updated: true, removed: 2 });
-      if (p.endsWith('manifest.json')) return JSON.stringify(manifest);
-      throw Error('Unexpected read: ' + p);
-    },
-    readdirSync: (p, opts) => p === ext && opts ? [{ name: 'com.orange.bridge_live', isDirectory: () => true }] : [],
-    mkdtempSync: () => 'mock-job', rmSync: () => {},
+  const ctx = {
+    SRC: path.join('mock', 'src'),
+    comBridge: { psProcessAlive: async () => { if (queryError) throw Error('process query failed'); return state.alive; } },
+    olog: message => state.logs.push(message),
+    dlog() {},
   };
-  const context = {
-    require: (id) => {
-      if (id === 'electron') return { app: { isPackaged: false, getPath: () => 'mock-data', whenReady: () => new Promise(() => {}), on: () => {} }, ipcMain: { handle: (name, fn) => { handlers[name] = fn; } } };
+  const fakeFS = {
+    readdirSync(file) {
+      if (file === ext) return ['com.orange.bridge_live'];
+      if (file === source || file === stable) return ['manifest.json', 'bridge.js', 'presets'];
+      if (file === path.join(source, 'presets')) return ['marquee.tpl'];
+      throw missing();
+    },
+    statSync(file) { return { isFile: () => !file.endsWith('presets'), isDirectory: () => file.endsWith('presets') }; },
+    readFileSync(file, encoding) {
+      if (file === registry) return JSON.stringify({ plugins: [{ ...manifest, pluginId: manifest.id, versionString: manifest.version, path: '$systemPlugins\\External\\com.orange.bridge_live', status: 'enabled' }] });
+      if (file.startsWith(stable) && file.endsWith('marquee.tpl') && !state.complete) throw missing();
+      if (file.endsWith('manifest.json')) return encoding ? JSON.stringify(manifest) : Buffer.from(JSON.stringify(manifest));
+      if (file.startsWith(source) || file.startsWith(stable)) return Buffer.from('resource');
+      throw missing();
+    },
+  };
+  vm.runInNewContext(code, {
+    require(id) {
+      if (id === 'electron') return { app: { isPackaged: false, getPath: () => 'mock-data', whenReady: () => Promise.resolve() }, ipcMain: { handle: (name, fn) => { handlers[name] = fn; } } };
       if (id === 'path') return path;
       if (id === 'fs') return fakeFS;
-      if (id === './ctx') return { SRC: 'mock-src', broadcast: (...args) => state.broadcasts.push(args), olog: () => {} };
-      if (id === 'child_process') return { execFile: (cmd, args, opts, cb) => {
-        if (cmd === 'tasklist.exe') return cb(processError ? Error('timeout') : null, state.alive ? '"Photoshop.exe","123"' : '');
-        state.installs++;
-        if (!installerError) state.current = true;
+      if (id === './ctx') return ctx;
+      if (id === 'child_process') return { execFile(_cmd, args, _opts, cb) {
+        const elevated = args.includes('-EncodedCommand');
+        state.launches.push(elevated);
+        if (!elevated || deny) return cb(Error('Access denied'), '', 'Access denied');
+        state.complete = true;
         cb(null);
       } };
       throw Error(id);
     },
-    setTimeout: (fn) => { const timer = { fn, unref() {} }; state.scheduled.push(timer); return timer; },
-    clearTimeout: () => {}, Buffer, console,
-  };
-  vm.runInNewContext(code, context, { filename: file });
-  return { state, handlers, stable };
+    Buffer,
+    setTimeout: fn => state.timers.push(fn),
+  });
+  await Promise.resolve();
+  return { ctx, state, reinstall: handlers['bridge-reinstall'] };
 }
+
 (async () => {
-  const queued = await scenario();
-  const first = await queued.handlers['bridge-reinstall']();
-  assert.equal(first.status, 'waiting');
-  assert.equal(queued.state.installs, 0);
-  queued.state.alive = false;
-  await queued.state.scheduled.shift().fn();
-  assert.equal(queued.state.installs, 1);
-  assert.equal(queued.handlers['bridge-install-status']().status, 'installed');
-  const error = await scenario({ alive: false, processError: true });
-  assert.equal((await error.handlers['bridge-reinstall']()).ok, false);
-  assert.equal(error.state.installs, 0);
-  const force = await scenario({ alive: false, current: true });
-  assert.equal((await force.handlers['bridge-reinstall']()).updated, true);
-  assert.equal(force.state.installs, 1);
-  const failed = await scenario({ alive: false, installerError: true });
-  assert.equal((await failed.handlers['bridge-reinstall']()).status, 'error');
-  const denied = await scenario({ alive: false, permissionDenied: true });
-  const deniedResult = await denied.handlers['bridge-reinstall']();
-  assert.equal(deniedResult.status, 'needs-admin');
-  assert.equal(deniedResult.needsAdmin, true);
-  console.log('PASS: waiting without writes, automatic resume, process-query failure, forced repair, installer failure, administrator guidance.');
-})().catch((error) => { console.error(error); process.exitCode = 1; });
+  const waiting = await scenario({ alive: true });
+  await waiting.state.timers.shift()();
+  assert.equal(waiting.state.launches.length, 0);
+  assert.match(waiting.state.logs[0], /完全退出 Photoshop/);
+  assert.match((await waiting.reinstall()).error, /再点重新安装/);
+  waiting.state.alive = false;
+  await waiting.state.timers.shift()();
+  assert.deepEqual(waiting.state.launches, [false, true]);
+  assert.equal(waiting.state.complete, true);
+  assert.match(waiting.state.logs[1], /安装成功/);
+
+  const intact = await scenario({ complete: true });
+  assert.equal((await intact.ctx.installBridge()).updated, false);
+  assert.equal(intact.state.launches.length, 0);
+  assert.equal((await intact.reinstall()).updated, true);
+  assert.deepEqual(intact.state.launches, [false, true]);
+
+  const denied = await scenario({ deny: true });
+  assert.match((await denied.ctx.installBridge()).error, /旧机器级桥接修复失败/);
+  assert.deepEqual(denied.state.launches, [false, true]);
+  assert.equal(denied.state.complete, false);
+
+  const query = await scenario({ queryError: true });
+  assert.match((await query.reinstall()).error, /process query failed/);
+  assert.equal(query.state.launches.length, 0);
+  console.log('PASS: deferred upgrade, automatic resume, same-version repair, manual reinstall, and denied elevation.');
+})().catch(error => { console.error(error); process.exitCode = 1; });

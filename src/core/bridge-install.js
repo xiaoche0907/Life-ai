@@ -122,9 +122,8 @@ function directInstallLevel(src, mf, ver, li) {
   const t = LEVELS()[li];
   try {
     const dst = path.join(t.ext, STABLE_NAME);
-    // 先拆后装=真·重装（1011用户要求：手动点按钮必须彻底换新，不能文件一致就跳过）
-    try { fs.rmSync(dst, { recursive: true, force: true }); } catch (e) {}
     copyDirSync(src, dst);
+    if (!sameFiles(src, dst)) throw Error('复制后的桥接文件校验失败');
     registerPlugin(t.info, t.token, mf, ver);
     if (li === 1) { try { removePluginEntry(LEVELS()[0].info); } catch (e) {} }
     cleanupOldVersions();
@@ -132,110 +131,83 @@ function directInstallLevel(src, mf, ver, li) {
   } catch (e) { return { ok: false, error: t.tag + ':' + (e.code || e.message) }; }
 }
 
-// 提权安装到机器级（0905坑64）：用户级PluginsInfo未证实被所有PS读取（盗版27.2实测：
-// 用户级落位后增效工具菜单不出现）——机器级是唯一全球实证可信的落位。
-// 仅手动点「重新安装」时弹UAC（用户有预期），开机静默安装不打扰。
-// 脚本纯ASCII+可变信息走job.json+工作目录钉在C:\Users\Public（坑34/48：提权边界的GBK绞肉机）
-function elevatedInstall(src, mf, ver) {
-  return new Promise((resolve) => {
-    try {
-      const wd = 'C:\\Users\\Public\\orange-bridge-install';
-      fs.mkdirSync(wd, { recursive: true });
-      const jobPath = path.join(wd, 'job.json');
-      const donePath = path.join(wd, 'done.txt');
-      const ps1 = path.join(wd, 'el.ps1');
-      try { fs.rmSync(donePath, { force: true }); } catch (e) {}
-      const L0 = LEVELS()[0];
-      fs.writeFileSync(jobPath, JSON.stringify({
-        src, dstExt: path.join(L0.ext, STABLE_NAME), reg: path.join(L0.info, 'PS.json'),
-        extBase: L0.ext, keep: STABLE_NAME, prefix: BRIDGE_ID + '_',
-        entry: {
-          hostMinVersion: (mf.host && mf.host.minVersion) || '23.3.0',
-          name: mf.name || '来福桥接',
-          path: L0.token + '\\External\\' + STABLE_NAME,
-          pluginId: BRIDGE_ID, status: 'enabled', type: 'uxp', versionString: ver,
-        },
-      }));
-      fs.writeFileSync(ps1, [
-        '$ErrorActionPreference = "Stop"',
-        'try {',
-        '  $job = Get-Content -Raw -Encoding UTF8 $args[0] | ConvertFrom-Json',
-        '  New-Item -ItemType Directory -Force -Path $job.dstExt | Out-Null',
-        '  if (Test-Path $job.dstExt) { Remove-Item -Path $job.dstExt -Recurse -Force -ErrorAction SilentlyContinue }',
-        '  Copy-Item -Path ($job.src + "\\*") -Destination $job.dstExt -Recurse -Force',
-        '  New-Item -ItemType Directory -Force -Path (Split-Path $job.reg) | Out-Null',
-        '  $j = $null',
-        '  if (Test-Path $job.reg) { try { $j = Get-Content -Raw -Encoding UTF8 $job.reg | ConvertFrom-Json } catch {} }',
-        '  if (-not $j) { $j = [pscustomobject]@{ plugins = @() } }',
-        '  $keep = @($j.plugins | Where-Object { $_.pluginId -ne $job.entry.pluginId })',
-        '  $j.plugins = $keep + $job.entry',
-        '  [IO.File]::WriteAllText($job.reg, ($j | ConvertTo-Json -Depth 6))',
-        '  Get-ChildItem $job.extBase -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like ($job.prefix + "*") -and $_.Name -ne $job.keep } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue',
-        '  Set-Content -Path $args[1] -Value "OK"',
-        '} catch { Set-Content -Path $args[1] -Value ("ERR " + $_.Exception.Message) }',
-      ].join('\r\n'));
-      execFile('powershell.exe', ['-NoProfile', '-Command',
-        "Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','" + ps1 + "','" + jobPath + "','" + donePath + "'"],
-        { windowsHide: true, timeout: 120000 }, () => {
-          let out = '';
-          try { out = fs.readFileSync(donePath, 'utf8').trim(); } catch (e) {}
-          if (/^OK/.test(out)) resolve({ ok: true, updated: true, detail: '安装成功·机器级(管理员)（重启PS后自动连接）' });
-          else resolve({ ok: false, error: '提权安装未完成' + (out ? '：' + out.slice(0, 160) : '（UAC被拒绝或超时）') });
-        });
-    } catch (e) { resolve({ ok: false, error: '提权安装异常: ' + (e.message || e) }); }
+function installMachine(src, userRoot, elevate) {
+  const script = app.isPackaged ? path.join(process.resourcesPath, 'bridge-machine-install.ps1') : path.join(ctx.SRC, '..', 'bridge-machine-install.ps1');
+  const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, src, userRoot];
+  const quote = value => "'" + value.replace(/'/g, "''") + "'";
+  const launch = elevate
+    ? ['-NoProfile', '-EncodedCommand', Buffer.from(
+      "$ErrorActionPreference='Stop'; $p=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList " +
+      quote(args.map(arg => '"' + arg + '"').join(' ')) + '; exit $p.ExitCode', 'utf16le').toString('base64')]
+    : args;
+  return new Promise(resolve => {
+    execFile('powershell.exe', launch, { windowsHide: true }, (error, _stdout, stderr) => {
+      if (error?.code === 2) return resolve({ ok: false, deferred: true, error: '请先保存文档并完全退出 Photoshop，来福会继续修复插件' });
+      if (error) return resolve({ ok: false, error: String(stderr || '').trim() || (elevate ? '管理员安装未完成' : error.message) });
+      if (!sameFiles(src, installedDirs()[0])) return resolve({ ok: false, error: '机器级桥接文件校验失败' });
+      resolve({ ok: true, updated: true, detail: '安装成功·机器级（重新打开 Photoshop 后自动连接）' });
+    });
   });
 }
 
-// 彻底卸载（1011）：两级插件目录+两级注册条目全拆，给手动「重新安装」做真·重装
-// 机器级目录删除大概率因无权限失败——best-effort；提权脚本里还有 Remove-Item -Force 补刀
-function uninstallAll() {
-  const removed = [];
-  for (const li of LEVELS()) {
-    try { fs.rmSync(path.join(li.ext, STABLE_NAME), { recursive: true, force: true }); removed.push(li.tag); } catch (e) {}
-    try { removePluginEntry(li.info); } catch (e) {}
-  }
-  try { ctx.dlog('[bridge-install] 彻底卸载: ' + (removed.join('+') || '目录无可删（注册条目已清）')); } catch (e) {}
-  return removed;
+function containsBridge(level) {
+  try {
+    if (fs.readdirSync(level.ext).some(name => name.startsWith(BRIDGE_ID + '_'))) return true;
+  } catch (e) { if (e.code !== 'ENOENT') return true; }
+  try {
+    const registry = JSON.parse(fs.readFileSync(path.join(level.info, 'PS.json'), 'utf8'));
+    return registry.plugins?.some(entry => entry?.pluginId === BRIDGE_ID) || false;
+  } catch (e) { return e.code !== 'ENOENT'; }
 }
 
 // zip打包（无第三方依赖：PowerShell Compress-Archive）→ 重命名.ccx → UPIA /install
-function installBridge(opts) {
+function installBridgeOnce(opts) {
   return new Promise((resolve) => {
     (async () => {
     const src = bridgeSrcDir();
     const mf = readManifest(src);
-    if (!mf) return resolve({ ok: false, error: '安装源缺失（ps-bridge/manifest.json读不到）' });
-    const force = !!(opts && opts.force);
-    if (force) uninstallAll();   // 手动重装：先全拆再装（文件一致也要走完整安装链）
+    if (mf?.id !== BRIDGE_ID || !['bridge.js', 'presets/marquee.tpl'].every(name => {
+      try { return fs.statSync(path.join(src, name)).isFile(); } catch { return false; }
+    })) return resolve({ ok: false, error: '安装包内桥接文件不完整，请重新下载安装包' });
+    const force = !!opts?.force;
     const ver = mf.version || '1.0.0';
-    // 已是最新判定：稳定目录逐文件比对；顺手重申注册表指针（老版本号条目→稳定路径的迁移期修正）
-    const infos = [
-      { dir: installedDirs()[0], info: 'C:\\Program Files\\Common Files\\Adobe\\UXP\\PluginsInfo\\v1', token: '$systemPlugins' },
-      { dir: installedDirs()[1], info: path.join(app.getPath('appData'), 'Adobe', 'UXP', 'PluginsInfo', 'v1'), token: '$userPlugins' },
-    ];
-    if (!force) for (const L of infos) {
-      if (fs.existsSync(L.dir) && sameFiles(src, L.dir)) {
-        try { registerPlugin(L.info, L.token, mf, ver); } catch (e) {}
-        cleanupOldVersions();
-        return resolve({ ok: true, updated: false, detail: '已是最新。若PS状态点不亮：完全退出并重启一次PS' });
+    const [machine, user] = LEVELS();
+    const [machineDir, userDir] = installedDirs();
+    const hasMachine = containsBridge(machine);
+    const hasUser = containsBridge(user);
+    const hasOnlyStable = level => {
+      try { return !fs.readdirSync(level.ext).some(name => name.startsWith(BRIDGE_ID + '_') && name !== STABLE_NAME); }
+      catch { return false; }
+    };
+    if (!force) {
+      const level = hasMachine && !hasUser && hasOnlyStable(machine) && sameFiles(src, machineDir) ? machine
+        : !hasMachine && hasOnlyStable(user) && sameFiles(src, userDir) ? user : null;
+      if (level) {
+        try {
+          const reg = JSON.parse(fs.readFileSync(path.join(level.info, 'PS.json'), 'utf8'));
+          const entries = reg.plugins.filter(entry => entry?.pluginId === BRIDGE_ID);
+          if (entries.length === 1 && entries[0].path === level.token + '\\External\\' + STABLE_NAME && entries[0].versionString === ver && entries[0].status === 'enabled') {
+            return resolve({ ok: true, updated: false });
+          }
+        } catch (e) { ctx.dlog('[bridge-install] 需要修复插件登记: ' + e.message); }
       }
     }
-    // 直写安装链（0905坑62/64）：机器级→(手动重装:UAC提权机器级)→用户级→UPIA
-    // 机器级=唯一全球实证可信落位；用户级注册表部分PS不读（盗版27.2实测菜单不现身）
-    const d0 = directInstallLevel(src, mf, ver, 0);
-    if (d0.ok) return resolve(d0);
-    if (opts && opts.allowElevate) {
-      const de = await elevatedInstall(src, mf, ver);
-      if (de.ok) return resolve(de);
-      try { ctx.dlog('[bridge-install] 提权失败: ' + de.error); } catch (e) {}
+    if (await ctx.comBridge?.psProcessAlive()) return resolve({ ok: false, deferred: true, error: '请先保存文档并完全退出 Photoshop，来福会继续修复插件' });
+    const userRoot = path.join(app.getPath('appData'), 'Adobe', 'UXP');
+    let d0 = await installMachine(src, userRoot, false);
+    if (d0.ok || d0.deferred) return resolve(d0);
+    if (opts?.allowElevate || hasMachine) {
+      d0 = await installMachine(src, userRoot, true);
+      if (d0.ok || d0.deferred) return resolve(d0);
     }
+    if (hasMachine) return resolve({ ok: false, error: '旧机器级桥接修复失败：' + d0.error + '。请在设置里重新安装并允许管理员权限' });
     const d1 = directInstallLevel(src, mf, ver, 1);
     if (d1.ok) {
-      d1.detail += '。⚠若重启PS后增效工具菜单仍无「来福桥接」：请点设置「重新安装PS插件」（会请求管理员权限装到机器级）';
+      d1.detail += '。若重启 Photoshop 后仍未连接，请在设置中重新安装 PS 插件';
       return resolve(d1);
     }
     const upia = findUPIA();
-    if (!upia) return resolve({ ok: false, error: '重装失败（' + d0.error + ' / ' + d1.error + '）' + (force ? '；旧插件已卸载，请截图反馈' : '') });
+    if (!upia) return resolve({ ok: false, error: '重装失败（' + d0.error + ' / ' + d1.error + '）' });
     const ccx = path.join(app.getPath('temp'), 'orange-bridge.ccx');
     const zip = ccx.replace(/\.ccx$/, '.zip');
     try { fs.rmSync(ccx, { force: true }); fs.rmSync(zip, { force: true }); } catch {}
@@ -246,10 +218,13 @@ function installBridge(opts) {
       execFile(upia, ['/install', ccx], { windowsHide: true }, (ei, stdout) => {
         const out = String(stdout || '');
         if (!ei && /Successful/i.test(out)) {
-          cleanupOldVersions(BRIDGE_ID + '_' + ver);   // UPIA装的是版本号文件夹，别把它自己清了
+          const name = BRIDGE_ID + '_' + ver;
+          const verified = LEVELS().some(level => sameFiles(src, path.join(level.ext, name)));
+          if (!verified) return resolve({ ok: false, error: 'UPIA 安装后未找到完整的桥接文件' });
+          cleanupOldVersions(name);
           resolve({ ok: true, updated: true, detail: 'UPIA安装成功（重启PS后自动连接）' });
         } else {
-          resolve({ ok: false, error: 'UPIA安装失败: ' + (out.trim() || (ei && ei.message) || '未知') + (force ? '；旧插件已卸载，请截图反馈' : '') });
+          resolve({ ok: false, error: 'UPIA安装失败: ' + (out.trim() || (ei && ei.message) || '未知') });
         }
       });
     });
@@ -257,9 +232,20 @@ function installBridge(opts) {
   });
 }
 
-// 启动自动装（静默；有动作或失败才吭声），设置卡可手动重装
-app.whenReady().then(() => setTimeout(async () => {
+let installing;
+function installBridge(opts) {
+  if (installing) return installing;
+  installing = installBridgeOnce(opts).finally(() => { installing = null; });
+  return installing;
+}
+
+async function autoInstall(waiting = false) {
   const r = await installBridge();
+  if (r.deferred) {
+    if (!waiting) ctx.olog('🔌 ' + r.error);
+    setTimeout(() => autoInstall(true), 5000);
+    return;
+  }
   try {
     ctx.dlog('[bridge-install] ' + JSON.stringify(r));
     if (r.ok && r.updated) ctx.olog('🔌 PS插件已自动安装/更新：' + (r.detail || '重启PS后生效'));
@@ -283,16 +269,13 @@ app.whenReady().then(() => setTimeout(async () => {
       }
     } catch {}
   }, 25000);
-}, 2500));
-// 手动重装（1011用户要求）：先彻底卸载再全新安装=真·重装；允许弹UAC提权装机器级（坑64）
-// PS在跑时插件文件被占用会删不掉拷不进=重装白做：先拦下让用户退PS（1025）
-ipcMain.handle('bridge-reinstall', async () => {
-  try {
-    if (ctx.comBridge && await ctx.comBridge.psProcessAlive()) {
-      return { ok: false, error: 'PS正在运行——请先完全退出PS（任务管理器确认无Photoshop.exe），再点重装；装好后再开PS' };
-    }
-  } catch (e) {}
-  return installBridge({ allowElevate: true, force: true });
+}
+app.whenReady().then(() => setTimeout(autoInstall, 2500));
+
+ipcMain.handle('bridge-reinstall', () => {
+  return installBridge({ allowElevate: true, force: true }).then(result => result.deferred
+    ? { ok: false, error: '请先保存文档并完全退出 Photoshop，再点重新安装 PS 插件' }
+    : result);
 });
 
 ctx.installBridge = installBridge;

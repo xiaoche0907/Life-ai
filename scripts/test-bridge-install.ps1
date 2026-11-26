@@ -13,7 +13,8 @@ try {
   $user = Join-Path $root 'user'
   Put (Join-Path $src 'manifest.json') '{"id":"com.orange.bridge","version":"1.0.59","name":"Bridge","host":{"minVersion":"23.3.0"}}'
   Put (Join-Path $src 'bridge.js') 'new code'
-  Put (Join-Path $src 'presets\new.tpl') 'new preset'
+  $preset = Join-Path $src 'presets\marquee.tpl'
+  Put $preset 'new preset'
   foreach ($base in @($machine, $user)) {
     Put (Join-Path $base 'Plugins\External\com.orange.bridge_live\manifest.json') '{"id":"com.orange.bridge","version":"1.0.58"}'
     Put (Join-Path $base 'Plugins\External\com.orange.bridge_live\obsolete.js') 'old code'
@@ -26,7 +27,13 @@ try {
   catch { Assert ($_.Exception.Message -eq 'PS_RUNNING') 'PS guard failed' }
   Assert (Test-Path (Join-Path $machine 'Plugins\External\com.orange.bridge_live\obsolete.js')) 'Running PS installation changed'
   $script:running = $false
-  # A failure after the machine-level changes must restore its files and registry.
+  # An incomplete source must leave the existing installation untouched.
+  Move-Item -LiteralPath $preset -Destination ($preset + '.bak')
+  try { Install-LifeBridge $src $machine $user; throw 'Expected source validation failure' }
+  catch { Assert ($_.Exception.Message -like 'Bridge source missing *') 'Missing source was accepted' }
+  Assert (Test-Path (Join-Path $machine 'Plugins\External\com.orange.bridge_live\obsolete.js')) 'Incomplete package changed the current plugin'
+  Move-Item -LiteralPath ($preset + '.bak') -Destination $preset
+  # A corrupt registry must not leave a partial upgrade.
   $reg = Join-Path $user 'PluginsInfo\v1\PS.json'
   $userReg = [IO.File]::ReadAllText($reg)
   Put $reg '{broken'
@@ -39,7 +46,8 @@ try {
   $result = Install-LifeBridge $src $machine $user
   Assert $result.ok 'Replacement failed'
   Assert ($result.removed -eq 4) 'Duplicate directories not removed'
-  Assert (Test-Path (Join-Path $machine 'Plugins\External\com.orange.bridge_live\presets\new.tpl')) 'Nested file missing'
+  $installedPreset = Join-Path $machine 'Plugins\External\com.orange.bridge_live\presets\marquee.tpl'
+  Assert ((Get-FileHash $installedPreset).Hash -eq (Get-FileHash $preset).Hash) 'Nested preset missing or changed'
   Assert (-not (Test-Path (Join-Path $machine 'Plugins\External\com.orange.bridge_live\obsolete.js'))) 'Obsolete file remains'
   Assert (-not (Test-Path (Join-Path $user 'Plugins\External\com.orange.bridge_live'))) 'Duplicate stable directory remains'
   foreach ($base in @($machine, $user)) {
@@ -50,7 +58,9 @@ try {
   }
   $data = Get-Content $reg -Raw | ConvertFrom-Json
   Assert (@($data.plugins | Where-Object pluginId -eq 'com.orange.bridge').Count -eq 0) 'Duplicate registration remains'
+  Remove-Item -LiteralPath $installedPreset
   $again = Install-LifeBridge $src $machine $user
+  Assert ((Get-FileHash $installedPreset).Hash -eq (Get-FileHash $preset).Hash) 'Same-version recovery did not restore the preset'
   Assert $again.ok 'Repeated installation failed'
   Write-Output 'PASS: process guard, rollback, full replacement, duplicate cleanup, registry preservation, repeated installation.'
 } finally {
